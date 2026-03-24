@@ -1,4 +1,4 @@
-# Wildfire-bsc-thesis
+# Edge-Deployed Multimodal LLMs for Wildfire Detection and Decision Support in Critical Operations
 
 
 
