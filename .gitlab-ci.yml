@@ -1,0 +1,12 @@
+stages:
+  - test
+
+hello-world:
+  stage: test
+  when: manual
+  tags:
+    - wildfire-linux
+  script:
+    - echo "Working"
+    - whoami
+    - date
