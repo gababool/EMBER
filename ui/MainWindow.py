@@ -6,6 +6,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         
         self.setWindowTitle('Hello World Applicaiton')
+        self.resize(800,600)
 
         label = QLabel('Hello World')
         label.setAlignment(Qt.AlignCenter)
