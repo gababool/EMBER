@@ -24,3 +24,10 @@ def test_result_contains_required_fields():
     assert "reason" in result
     assert "resolution" in result
     assert result["resolution"] == [640, 480]
+
+
+def test_custom_threshold_can_be_overridden():
+    # 200x200 fails the default 640x480 but passes a custom 100x100 minimum
+    image = np.zeros((200, 200, 3), dtype=np.uint8)
+    assert check_resolution(image)["passed"] is False
+    assert check_resolution(image, min_width=100, min_height=100)["passed"] is True
