@@ -1,7 +1,6 @@
 import numpy as np
-import pytest
 
-from stage1_quality_screening.stage1_quality_screening import check_resolution
+from quality_screening.resolution import check_resolution
 
 
 def test_large_image_passes():
