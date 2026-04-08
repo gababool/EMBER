@@ -359,6 +359,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "huggingface-hub", specifier = ">=1.9.2" },
+    { name = "huggingface-hub", extras = ["cli"], specifier = ">=1.9.2" },
     { name = "mlx", specifier = ">=0.31.1" },
 ]
