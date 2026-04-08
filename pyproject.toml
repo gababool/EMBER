@@ -5,7 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.13.0",
     "huggingface-hub[cli]>=1.9.2",
     "mlx>=0.31.1",
     "mlx-lm>=0.31.2",
+    "pillow>=12.2.0",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "transformers>=5.5.0",
 ]
