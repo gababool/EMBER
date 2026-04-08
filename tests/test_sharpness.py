@@ -14,9 +14,19 @@ def test_sharp_image_passes():
 
 
 def test_blurry_image_fails():
-    # Heavy Gaussian blur destroys edges, producing near-zero Laplacian variance
+    # Heavy Gaussian blur destroys edges, producing almost zero Laplacian variance
     image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
     image = cv2.GaussianBlur(image, (51, 51), sigmaX=30)
     result = check_sharpness(image)
     assert result["passed"] is False
     assert result["reason"] != ""
+
+
+def test_result_contains_required_fields():
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    cv2.rectangle(image, (50, 50), (590, 430), (255, 255, 255), thickness=2)
+    result = check_sharpness(image)
+    assert "passed" in result
+    assert "reason" in result
+    assert "sharpness" in result
+    assert isinstance(result["sharpness"], float)
