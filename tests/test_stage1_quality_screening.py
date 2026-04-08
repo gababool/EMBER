@@ -15,3 +15,12 @@ def test_small_image_fails():
     result = check_resolution(image)
     assert result["passed"] is False
     assert result["reason"] != ""
+
+
+def test_result_contains_required_fields():
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    result = check_resolution(image)
+    assert "passed" in result
+    assert "reason" in result
+    assert "resolution" in result
+    assert result["resolution"] == [640, 480]
