@@ -1,3 +1,5 @@
+# Run tests with: uv run pytest tests/ -v
+
 from __future__ import annotations
 
 from typing import Any, Dict
