@@ -5,8 +5,8 @@ from pathlib import Path
 
 MODELS = {
     "ministral": "ministral-3:3b",
-    #"qwen": "qwen2.5vl:3b",
-    #"llava": "llava:7b",
+    #"qwen3": "qwen3-vl:4b",
+    #"gemma4": "gemma4:e4b",
 }
 
 def load_image(image_path: str) -> str:
