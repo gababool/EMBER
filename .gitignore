@@ -14,3 +14,10 @@ __pycache__/
 
 # Data
 dataset/wildfire-dataset/the_wildfire_dataset_2n_version
+dataset/wildfire_dataset_2n_version
+
+runs
+runs/detect
+
+# Model weights
+*.pt
