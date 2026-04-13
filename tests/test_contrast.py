@@ -38,3 +38,10 @@ def test_high_contrast_image_fails():
     result = check_contrast(image)
     assert result["passed"] is False
     assert result["reason"] != ""
+
+
+def test_custom_thresholds_can_be_overridden():
+    # Uniform image fails the default min_contrast but passes a custom threshold of 0
+    image = np.full((480, 640, 3), 128, dtype=np.uint8)
+    assert check_contrast(image)["passed"] is False
+    assert check_contrast(image, min_contrast=0.0)["passed"] is True
