@@ -36,6 +36,10 @@ def check_contrast(
         raise TypeError("image must be a numpy ndarray.")
     if image.size == 0:
         raise ValueError("image must not be empty.")
+    if min_contrast < 0 or max_contrast < 0:
+        raise ValueError("min_contrast and max_contrast must not be negative.")
+    if min_contrast > max_contrast:
+        raise ValueError("min_contrast must not be greater than max_contrast.")
 
     gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     contrast = float(np.std(gray.astype(np.float64)))
