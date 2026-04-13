@@ -10,3 +10,11 @@ def test_normal_image_passes():
     image[240:, :] = 180
     result = check_contrast(image)
     assert result["passed"] is True
+
+
+def test_low_contrast_image_fails():
+    # Nearly uniform image (all pixels = 128) gives standard deviance of 0, below min_contrast of 30
+    image = np.full((480, 640, 3), 128, dtype=np.uint8)
+    result = check_contrast(image)
+    assert result["passed"] is False
+    assert result["reason"] != ""
