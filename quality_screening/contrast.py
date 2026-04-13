@@ -16,7 +16,7 @@ def check_contrast(
     """Check whether an image falls within an acceptable contrast range.
 
     Contrast is measured as the standard deviation of pixel values in the
-    grayscale image: a low value indicates a washed-out or near-uniform image,
+    grayscale image: a low value indicates a washed-out image,
     while a very high value indicates an overexposed or extreme image.
 
     Args:
