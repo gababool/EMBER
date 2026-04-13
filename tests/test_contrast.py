@@ -18,3 +18,13 @@ def test_low_contrast_image_fails():
     result = check_contrast(image)
     assert result["passed"] is False
     assert result["reason"] != ""
+
+
+def test_high_contrast_image_fails():
+    # Pure black/white checkerboard gives std dev ~127, above max_contrast of 120
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    image[::2, ::2] = 255
+    image[1::2, 1::2] = 255
+    result = check_contrast(image)
+    assert result["passed"] is False
+    assert result["reason"] != ""
