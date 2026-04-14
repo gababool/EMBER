@@ -14,3 +14,7 @@ __pycache__/
 
 # Data
 dataset/wildfire-dataset/the_wildfire_dataset_2n_version
+
+# Benchmark results
+benchmarks/results/benchmark_progress.log
+benchmarks/results/test.csv
