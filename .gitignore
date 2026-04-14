@@ -20,4 +20,5 @@ runs
 runs/detect
 
 # Model weights
-*.pt
+yolov8n.pt
+yolo11n.pt
