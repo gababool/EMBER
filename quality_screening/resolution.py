@@ -32,6 +32,8 @@ def check_resolution(
         raise TypeError("image must be a numpy ndarray.")
     if image.size == 0:
         raise ValueError("image must not be empty.")
+    if min_width < 0 or min_height < 0:
+        raise ValueError("min_width and min_height must not be negative.")
 
     height, width = image.shape[:2]
 
