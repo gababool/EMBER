@@ -1,3 +1,6 @@
+#To run: go into this object_detection folder in terminal and run:
+#uv run python3 test_yolo_simple.py
+
 from ultralytics import YOLO
 
 # Load the trained model
