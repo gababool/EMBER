@@ -11,3 +11,14 @@ __pycache__/
 
 # Pytest cache
 .pytest_cache/
+
+# Data
+dataset/wildfire-dataset/the_wildfire_dataset_2n_version
+dataset/wildfire_dataset_2n_version
+
+runs
+runs/detect
+
+# Model weights
+yolov8n.pt
+yolo11n.pt

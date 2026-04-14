@@ -17,6 +17,20 @@ dependencies = [
     "numpy>=2.4.4",
     "opencv-python>=4.13.0.92",
     "pyside6>=6.11.0",
+    "kagglehub>=1.0.0",
+    "kaggle>=2.0.1",
+    "dill>=0.4.1",
+    "matplotlib>=3.10.8",
+    "pyyaml>=6.0.3",
+    "requests>=2.33.1",
+    "scipy>=1.17.1",
+    "tqdm>=4.67.3",
+    "psutil>=7.2.2",
+    "py-cpuinfo>=9.0.0",
+    "pandas>=3.0.2",
+    "seaborn>=0.13.2",
+    "ultralytics-thop>=2.0.18",
+    "ultralytics>=8.4.37",
 ]
 
 [dependency-groups]
