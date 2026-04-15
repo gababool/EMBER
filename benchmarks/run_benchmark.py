@@ -33,11 +33,10 @@ from src.metrics import (
 # All models available for benchmarking
 ALL_MODELS = [
     'ministral-3:3b',
-    'ministral-3:8b',
-    #'qwen3-vl:2b',
     'qwen3-vl:4b',
-    'qwen3-vl:8b',
     'gemma4:e2b',
+    'ministral-3:8b',
+    'qwen3-vl:8b',
     'gemma4:e4b',
 ]
 
@@ -153,6 +152,9 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run):
 
     for model_name in models:
         csv_file = output_path / f"accuracy_{model_name.replace(':', '_')}.csv"
+        if csv_file.exists() and csv_file.stat().st_size > 0:
+            log_progress(f"Skipping {model_name} — {csv_file.name} already exists")
+            continue
         init_csv(str(csv_file))
 
         log_progress(f"=== {model_name} — accuracy run ({len(images)} images) ===")
@@ -231,6 +233,9 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
 
     for mi, model_name in enumerate(models):
         csv_file = output_path / f"performance_{model_name.replace(':', '_')}.csv"
+        if csv_file.exists() and csv_file.stat().st_size > 0:
+            log_progress(f"Skipping {model_name} — {csv_file.name} already exists")
+            continue
         init_csv(str(csv_file))
 
         log_progress(f"=== {model_name} — performance run ({len(images)} images) ===")
