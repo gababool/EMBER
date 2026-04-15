@@ -4,6 +4,7 @@ Handles calling Ollama API for multimodal LLM inference.
 Returns both the response text and timing metadata for benchmarking.
 """
 
+import base64
 import ollama
 from pathlib import Path
 
@@ -12,6 +13,12 @@ def load_system_prompt(filepath):
     """Load system prompt from text file."""
     with open(filepath, 'r', encoding='utf-8') as file:
         return file.read()
+
+
+def load_image_b64(image_path):
+    """Read image file and return base64-encoded string."""
+    with open(image_path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
 
 
 def call_llm(model_name, image_path, system_prompt):
@@ -37,6 +44,8 @@ def call_llm(model_name, image_path, system_prompt):
     if not Path(image_path).exists():
         raise FileNotFoundError(f"Image not found at {image_path}")
 
+    image_b64 = load_image_b64(image_path)
+
     response = ollama.chat(
         model=model_name,
         messages=[
@@ -47,7 +56,7 @@ def call_llm(model_name, image_path, system_prompt):
             {
                 "role": "user",
                 "content": "Analyze this wildfire reconnaissance image.",
-                "images": [str(image_path)]
+                "images": [image_b64]
             }
         ]
     )
