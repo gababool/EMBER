@@ -19,6 +19,7 @@ dependencies = [
     "pyside6>=6.11.0",
     "kagglehub>=1.0.0",
     "kaggle>=2.0.1",
+    "matplotlib>=3.10.8",
     "dill>=0.4.1",
     "matplotlib>=3.10.8",
     "pyyaml>=6.0.3",
