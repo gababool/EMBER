@@ -10,8 +10,8 @@ Closes #`<issue-number>`
 ## Checklist
 - [ ] The issue acceptance criteria are satisfied
 - [ ] I have tested the changes
-- [ ] I have reviewed my own changes
-- [ ] I have not committed unnecessary files
+- [ ] I have reviewed the changes
+- [ ] no committed unnecessary files
 - [ ] No sensitive information is included
 
 ## Authors / Co-authors
