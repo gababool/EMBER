@@ -6,18 +6,23 @@ from components.top_bar import TopBar
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+
         self.setWindowTitle("EMBER")
-        self.resize(1400, 800)
+        self.resize(1400, 900)
 
         central = QWidget()
         self.setCentralWidget(central)
 
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        self.main_layout = QVBoxLayout(central)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
         self.top_bar = TopBar()
-        layout.addWidget(self.top_bar)
+        self.main_layout.addWidget(self.top_bar)
+
+        self.content_widget = QWidget()
+        self.content_widget.setStyleSheet("background-color: #23262b;")
+        self.main_layout.addWidget(self.content_widget, 1)
 
         # Example updates
         self.top_bar.set_version("V.0.3.1")
