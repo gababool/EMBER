@@ -1,5 +1,7 @@
 #To run: go into this object_detection folder in terminal and run:
-#uv run python3 test_yolo_simple.py
+#uv run python run.py test_image.jpg --model best
+#best is the model, you can also replace that with test, model_3 etc.
+
 import argparse
 import cv2
 from ultralytics import YOLO
