@@ -3,7 +3,7 @@
 
 import cv2
 from ultralytics import YOLO
-from config import model_next_best
+from config import model_3
 from config import model_last
 from config import model_best
 from config import model_test
@@ -18,11 +18,11 @@ from config import model_test
 
 
 # Test on one fire image
-image_path = '43772086021_c501debc58_o.jpg'
+image_path = 'test_image.jpg'
 
 print(f"Testing YOLO on: {image_path}")
 # Run detection
-results = model_test(image_path)
+results = model_best(image_path)
 
 # Override the names on the result before displaying
 results[0].names = {
