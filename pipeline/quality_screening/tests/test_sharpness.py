@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 # Run tests with: uv run pytest tests/ -v
-from quality_screening.sharpness import check_sharpness
+from pipeline.quality_screening.sharpness import check_sharpness
 
 
 def test_sharp_image_passes():
