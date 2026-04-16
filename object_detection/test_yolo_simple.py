@@ -44,37 +44,4 @@ else:
 
 # Show the image with bounding boxes
 results[0].show()
-"""
-if len(results[0].boxes) > 0:
-    for i, box in enumerate(results[0].boxes):
-        conf = box.conf[0].item()
-        cls = int(box.cls[0].item())
-        print(f"Detection {i+1}: confidence={conf:.2f}, class={cls}")
-        #Class (cls) = 1 is smoke and 0 is fire
-else:
-    print("No detections found")
-    """
 
-# override if necessary
-
-
-
-"""
-for det in results.boxes:
-            cls_id = int(det.cls[0])
-            cls_name = CLASS_MAP.get(cls_id, f"Class {cls_id}")
-            x1, y1, x2, y2 = map(int, det.xyxy[0])
-            conf = float(det.conf[0])
-            color = COLORS.get(cls_name, (255, 255, 255))
-
-            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-            text = f"{cls_name} {conf:.2f}"
-            font_scale = 0.8
-            thickness = 2
-            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
-            label_x = x1
-            label_y = y2 + text_size[1] + 5
-            cv2.putText(img, text, (label_x, label_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
-
-                        """
