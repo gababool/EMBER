@@ -33,6 +33,8 @@ def check_sharpness(
         raise TypeError("image must be a numpy ndarray.")
     if image.size == 0:
         raise ValueError("image must not be empty.")
+    if min_sharpness < 0:
+        raise ValueError("min_sharpness must not be negative.")
 
     gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     sharpness = float(np.var(cv2.Laplacian(gray, cv2.CV_64F)))

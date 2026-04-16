@@ -18,3 +18,12 @@ dataset/wildfire-dataset/the_wildfire_dataset_2n_version
 # Benchmark results
 benchmarks/results/*
 benchmarks/charts/*
+dataset/wildfire_dataset_2n_version
+
+# Yolo runs
+runs
+runs/detect
+
+# Model weights
+yolov8n.pt
+yolo11n.pt

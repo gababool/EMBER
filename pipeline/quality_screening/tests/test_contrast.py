@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 # Run tests with: uv run pytest tests/ -v
 from pipeline.quality_screening.contrast import check_contrast
@@ -45,3 +46,31 @@ def test_custom_thresholds_can_be_overridden():
     image = np.full((480, 640, 3), 128, dtype=np.uint8)
     assert check_contrast(image)["passed"] is False
     assert check_contrast(image, min_contrast=0.0)["passed"] is True
+
+
+def test_negative_thresholds_are_not_allowed():
+    image = np.full((480, 640, 3), 128, dtype=np.uint8)
+    with pytest.raises(ValueError):
+        check_contrast(image, min_contrast=-1.0, max_contrast=-1.0)
+
+
+def test_none_image_is_not_allowed():
+    with pytest.raises(ValueError):
+        check_contrast(None)
+
+
+def test_non_ndarray_image_is_not_allowed():
+    with pytest.raises(TypeError):
+        check_contrast([[1, 2], [3, 4]])
+
+
+def test_empty_image_is_not_allowed():
+    image = np.zeros((0, 0, 3), dtype=np.uint8)
+    with pytest.raises(ValueError):
+        check_contrast(image)
+
+
+def test_min_contrast_greater_than_max_contrast_is_not_allowed():
+    image = np.full((480, 640, 3), 128, dtype=np.uint8)
+    with pytest.raises(ValueError):
+        check_contrast(image, min_contrast=100.0, max_contrast=50.0)

@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+import pytest
 
 # Run tests with: uv run pytest tests/ -v
 from pipeline.quality_screening.sharpness import check_sharpness
@@ -39,3 +40,25 @@ def test_custom_threshold_can_be_overridden():
     image = cv2.GaussianBlur(image, (51, 51), sigmaX=30)
     assert check_sharpness(image)["passed"] is False
     assert check_sharpness(image, min_sharpness=0.1)["passed"] is True
+
+
+def test_negative_threshold_is_not_allowed():
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
+    with pytest.raises(ValueError):
+        check_sharpness(image, min_sharpness=-1.0)
+
+
+def test_none_image_is_not_allowed():
+    with pytest.raises(ValueError):
+        check_sharpness(None)
+
+
+def test_non_ndarray_image_is_not_allowed():
+    with pytest.raises(TypeError):
+        check_sharpness([[1, 2], [3, 4]])
+
+
+def test_empty_image_is_not_allowed():
+    image = np.zeros((0, 0, 3), dtype=np.uint8)
+    with pytest.raises(ValueError):
+        check_sharpness(image)
