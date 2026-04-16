@@ -16,7 +16,6 @@ dependencies = [
     "transformers>=5.5.0",
     "numpy>=2.4.4",
     "opencv-python>=4.13.0.92",
-    "pyside6>=6.11.0",
     "kagglehub>=1.0.0",
     "kaggle>=2.0.1",
     "matplotlib>=3.10.8",
@@ -32,6 +31,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "ultralytics-thop>=2.0.18",
     "ultralytics>=8.4.37",
+    "pyside6>=6.11.0",
 ]
 
 [dependency-groups]
