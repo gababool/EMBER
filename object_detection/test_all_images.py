@@ -5,10 +5,10 @@ from pathlib import Path
 model = YOLO('weights/best.pt')
 
 # Get all test images
-fire_images = list(Path('../test_images/fire').glob('*.jpg'))
+fire_images = list(Path('../dataset/wildfire_dataset_2n_version/test/fire').glob('*.jpg'))
 nofire_images = list(Path('../test_images/nofire').glob('*.jpg'))
 
-print(f"Testing {len(fire_images)} fire images and {len(nofire_images)} non-fire images\n")
+#print(f"Testing {len(fire_images)} fire images and {len(nofire_images)} non-fire images\n")
 
 # Test fire images
 print("=== FIRE IMAGES ===")
@@ -28,6 +28,7 @@ for img in fire_images:
 print(f"\nFire detection rate: {fire_detected}/{len(fire_images)} ({100*fire_detected/len(fire_images):.1f}%)")
 
 # Test non-fire images
+"""
 print("\n=== NON-FIRE IMAGES (Should NOT detect) ===")
 false_positives = 0
 for img in nofire_images:
@@ -41,9 +42,10 @@ for img in nofire_images:
         print(f"{img.name}: {status} ({num_det} detections, max conf: {max_conf:.2f})")
     else:
         print(f"{img.name}: {status}")
+        """
 
-print(f"\nFalse positive rate: {false_positives}/{len(nofire_images)} ({100*false_positives/len(nofire_images):.1f}%)")
+#print(f"\nFalse positive rate: {false_positives}/{len(nofire_images)} ({100*false_positives/len(nofire_images):.1f}%)")
 
 print("\n=== SUMMARY ===")
 print(f"Fire images correctly detected: {fire_detected}/{len(fire_images)}")
-print(f"Non-fire images with false positives: {false_positives}/{len(nofire_images)}")
+#print(f"Non-fire images with false positives: {false_positives}/{len(nofire_images)}")
