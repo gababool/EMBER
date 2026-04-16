@@ -22,11 +22,11 @@ def app_font(size: int, bold: bool = False) -> QFont:
 # -----------------------
 # Colors
 # -----------------------
-BG_TOPBAR = "#1b1d21"
-BG_MAIN = "#23262b"
+BG_TOPBAR = "#FFFFFF"#"#1b1d21"
+BG_MAIN = "#FFFFFF"#"#23262b"
 
-TEXT_PRIMARY = "#cfd3d8"
-TEXT_MUTED = "#7a7f87"
+TEXT_PRIMARY = "#353637"
+TEXT_MUTED = "#343639"
 
 ACCENT_ORANGE = "#ff8c2b"
 ACCENT_BLUE = "#00a6ff"
