@@ -4,7 +4,7 @@
 from ultralytics import YOLO
 
 # Load the trained model
-model = YOLO('weights/best.pt')
+model = YOLO('weights/test.pt')
 
 # Test on one fire image
 image_path = 'test_image.jpg'

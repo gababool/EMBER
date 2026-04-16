@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 # Run tests with: uv run pytest tests/ -v
-from quality_screening.resolution import check_resolution
+from pipeline.quality_screening.resolution import check_resolution
 
 
 def test_large_image_passes():

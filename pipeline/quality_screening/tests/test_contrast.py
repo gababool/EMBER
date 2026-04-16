@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 # Run tests with: uv run pytest tests/ -v
-from quality_screening.contrast import check_contrast
+from pipeline.quality_screening.contrast import check_contrast
 
 
 def test_normal_image_passes():
