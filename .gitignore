@@ -27,3 +27,8 @@ runs/detect
 # Model weights
 yolov8n.pt
 yolo11n.pt
+
+# Local validation artifacts
+evidence/
+pipeline/llm/yolo_annotated_test.jpg
+outputs/
