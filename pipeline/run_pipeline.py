@@ -2,7 +2,7 @@
 # uv run python -m pipeline/run_pipeline.py <image_path> --yolo-model best --llm-model ministral
 
 # Example:
-# uv run python -m pipeline/run_pipeline.py pipeline/object_detection/test_image.jpg --yolo-model best --llm-model ministral
+# uv run python -m pipeline.run_pipeline pipeline/object_detection/test_image.jpg --yolo-model best --llm-model ministral
 
 
 import sys
