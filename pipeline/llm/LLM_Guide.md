@@ -24,13 +24,8 @@ uv sync
 
 ## Usage
 
-```bash
-# Default prompt
-uv run python chat_ollama.py image.jpg
-
-# Custom prompt
-uv run python chat_ollama.py image.jpg "Is there smoke or fire in this image?"
-```
+The script can be run from anywhere.
+The default prompt.txt is resolved relative to the script location.
 
 ## Run model on one image
 
@@ -38,26 +33,41 @@ uv run python chat_ollama.py image.jpg "Is there smoke or fire in this image?"
 uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model ministral
+```
 
 ## Run one model with optional context
 
-```bash 
+```bash
 uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model ministral \
   --context-file pipeline/llm/context.txt
+```
 
-  ## Run all models
-  ```bash
-  uv run python pipeline/llm/inference.py \
+## Run all models
+
+```bash
+uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model all \
   --context-file pipeline/llm/context.txt
+```
 
-  ## Save JSON output
-  ```bash
-  uv run python pipeline/llm/inference.py \
+## Save JSON output
+
+```bash
+uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model all \
   --context-file pipeline/llm/context.txt \
-  --output-json outputs/llm_inference/result.json
+  --output results.json
+```
+
+## Use a custom prompt file
+
+```bash
+uv run python pipeline/llm/inference.py \
+  --image "pipeline/llm/yolo_annotated_test.jpg" \
+  --model ministral \
+  --prompt-file pipeline/llm/prompt.txt
+```

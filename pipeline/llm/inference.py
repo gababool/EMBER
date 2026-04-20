@@ -7,6 +7,10 @@ from typing import Literal
 import ollama
 from pydantic import BaseModel, ValidationError
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_PROMPT_FILE = SCRIPT_DIR / "prompt.txt"
+DEFAULT_CONTEXT_FILE = SCRIPT_DIR / "context.txt"
+
 MODELS = {
     "ministral": "ministral-3:3b",
     "qwen3": "qwen3-vl:4b",
@@ -19,6 +23,11 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
 
+def resolve_path(path_str: str) -> Path:
+    path = Path(path_str).expanduser()
+    if path.is_absolute():
+        return path
+    return (Path.cwd() / path).resolve()
 
 def load_system_prompt(file_path: str) -> str:
     path = Path(file_path)
@@ -124,7 +133,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--prompt-file",
-        default="pipeline/llm/prompt.txt",
+        default=str(DEFAULT_PROMPT_FILE),
         help="Path to the system prompt file.",
     )
     parser.add_argument(
@@ -138,7 +147,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def main() -> None:
     args = parse_args()
 
@@ -146,9 +154,9 @@ def main() -> None:
     additional_context = None
 
     if args.context_file:
-        context_path = Path(args.context_file)
+        context_path = resolve_path(args.context_file)
         if not context_path.exists():
-            raise FileNotFoundError(f"Context file not found at {args.context_file}")
+            raise FileNotFoundError(f"Context file not found at {context_path}")
         additional_context = context_path.read_text(encoding="utf-8")
 
     model_names = list(MODELS.keys()) if args.model == "all" else [args.model]
