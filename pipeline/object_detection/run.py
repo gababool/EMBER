@@ -13,6 +13,8 @@ import argparse
 import cv2
 from ultralytics import YOLO
 from model_handler import get_model, ModelLoadError
+from config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
+
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -67,6 +69,15 @@ def run (image_path: str, model_name: str):
 
                   print(f"{i+1}: {label} | confidence={conf:.2f}")
         result.show()
+          # save annotated image
+        ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
+        annotated = result.plot()
+        cv2.imwrite(str(output_path), annotated)
+        print(f"\nAnnotated image saved to: {output_path}")  
+
+
+
 
 
 if __name__ == "__main__": 

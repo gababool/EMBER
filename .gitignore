@@ -24,6 +24,9 @@ dataset/wildfire_dataset_2n_version
 runs
 runs/detect
 
+#YOLO Output Result Image
+pipeline/object_detection/results/result.jpg
+
 # Model weights
 yolov8n.pt
 yolo11n.pt
