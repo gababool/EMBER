@@ -2,12 +2,20 @@
 #uv run python run.py test_image.jpg --model best
 #best is the model, you can also replace that with test, model_3 etc.
 
+#To run from the repo root:
+# uv run python pipeline/object_detection/run.py <image_path> --model <model_name>
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import argparse
 import cv2
 from ultralytics import YOLO
 from model_handler import get_model, ModelLoadError
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CLASS_NAMES = {
     0: "Smoke",
@@ -19,6 +27,13 @@ def run (image_path: str, model_name: str):
 
         print(f"\nRunning YOLO on: {image_path} (model={model_name})")
 
+        #image path
+        image_path = Path(image_path).resolve()
+
+        if not image_path.exists():
+             print(f"[IMAGE_ERROR] Image not found: {image_path}")
+             return
+
         try:
              model = get_model(model_name)
         except ModelLoadError as e:
@@ -26,7 +41,7 @@ def run (image_path: str, model_name: str):
              return
         
         try:
-             results = model(image_path)
+             results = model(str(image_path))
              result = results[0]
         except Exception as e:
              print(f"[INFERENCE ERROR] failed to process image: {e}")
