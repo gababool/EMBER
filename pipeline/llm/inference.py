@@ -10,7 +10,7 @@ from pydantic import BaseModel, ValidationError
 MODELS = {
     "ministral": "ministral-3:3b",
     "qwen3": "qwen3-vl:4b",
-    "gemma4": "gemma4:e4b",
+    "gemma4": "gemma4:e2b",
 }
 
 
@@ -35,7 +35,9 @@ def load_image(image_path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-def build_user_prompt(base_prompt: str, additional_context: str | None = None) -> str:
+def build_user_prompt(additional_context: str | None = None) -> str:
+    base_prompt = "Analyze this YOLO-annotated wildfire reconnaissance image."
+
     if additional_context and additional_context.strip():
         return (
             f"{base_prompt}\n\n"
@@ -48,8 +50,7 @@ def build_user_prompt(base_prompt: str, additional_context: str | None = None) -
 def run_llm_inference(
     model_name: str,
     image_path: str,
-    prompt: str,
-    system_prompt: str | None = None,
+    system_prompt: str,
     additional_context: str | None = None,
 ) -> dict:
     if model_name not in MODELS:
@@ -59,25 +60,19 @@ def run_llm_inference(
 
     model_tag = MODELS[model_name]
     image_b64 = load_image(image_path)
-    user_prompt = build_user_prompt(prompt, additional_context)
+    user_prompt = build_user_prompt(additional_context)
 
-    messages = []
-
-    if system_prompt:
-        messages.append(
-            {
-                "role": "system",
-                "content": system_prompt,
-            }
-        )
-
-    messages.append(
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
         {
             "role": "user",
             "content": user_prompt,
             "images": [image_b64],
-        }
-    )
+        },
+    ]
 
     response = ollama.chat(
         model=model_tag,
@@ -103,12 +98,6 @@ def run_llm_inference(
         "image_path": image_path,
         "parsed": parsed.model_dump(),
         "raw_response": raw_content,
-        "eval_count": response.get("eval_count", 0),
-        "eval_duration_ns": response.get("eval_duration", 0),
-        "prompt_eval_count": response.get("prompt_eval_count", 0),
-        "prompt_eval_duration_ns": response.get("prompt_eval_duration", 0),
-        "load_duration_ns": response.get("load_duration", 0),
-        "total_duration_ns": response.get("total_duration", 0),
     }
 
 
@@ -134,15 +123,8 @@ def parse_args() -> argparse.Namespace:
         help="Which model to run.",
     )
     parser.add_argument(
-        "--prompt",
-        default=(
-            "Analyze this YOLO-annotated wildfire reconnaissance image and return "
-            "classification, reasoning, and recommendation."
-        ),
-        help="User prompt text.",
-    )
-    parser.add_argument(
         "--prompt-file",
+        default="pipeline/llm/prompt.txt",
         help="Path to the system prompt file.",
     )
     parser.add_argument(
@@ -160,7 +142,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    system_prompt = load_system_prompt(args.prompt_file) if args.prompt_file else None
+    system_prompt = load_system_prompt(args.prompt_file)
     additional_context = None
 
     if args.context_file:
@@ -177,19 +159,11 @@ def main() -> None:
         result = run_llm_inference(
             model_name=model_name,
             image_path=args.image,
-            prompt=args.prompt,
             system_prompt=system_prompt,
             additional_context=additional_context,
         )
 
         print(json.dumps(result["parsed"], indent=2))
-
-        prompt_eval = result["prompt_eval_duration_ns"] / 1e9
-        eval_time = result["eval_duration_ns"] / 1e9
-        total = result["total_duration_ns"] / 1e9
-        print(f"Prompt eval: {prompt_eval:.2f}s")
-        print(f"Eval: {eval_time:.2f}s ({result['eval_count']} tokens)")
-        print(f"Total: {total:.2f}s")
 
         if args.output_json:
             output_path = Path(args.output_json)
