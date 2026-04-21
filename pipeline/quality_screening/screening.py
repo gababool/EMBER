@@ -14,6 +14,11 @@ from pipeline.quality_screening.sharpness import check_sharpness
 
 
 def load_image(image_path: str | Path) -> np.ndarray:
+    """Load an image from disk without altering its original channel layout.
+
+    The image is loaded with cv2.IMREAD_UNCHANGED so that grayscale, BGR,
+    and BGRA images can be handled downstream by the quality screening stage.
+    """
     path = Path(image_path)
 
     if not path.exists():
@@ -33,6 +38,18 @@ def run_quality_screening(
     config: QualityScreeningConfig | None = None,
     stop_on_first_failure: bool = False,
 ) -> Dict[str, Any]:
+    """Run the full quality screening stage on an already loaded image.
+
+    The checks are intentionally run in this order:
+    1. resolution
+    2. brightness
+    3. contrast
+    4. sharpness
+
+    Resolution is checked first because it is cheap and can reject clearly
+    unsuitable inputs early. The remaining checks evaluate image quality
+    characteristics needed by later pipeline stages.
+    """
     if config is None:
         config = QualityScreeningConfig()
 
@@ -94,6 +111,10 @@ def run_quality_screening_from_path(
     config: QualityScreeningConfig | None = None,
     stop_on_first_failure: bool = False,
 ) -> Dict[str, Any]:
+    """Load an image from disk and run the full quality screening stage.
+
+    This is the main entrypoint other file-based pipeline stages should call.
+    """
     image = load_image(image_path)
     result = run_quality_screening(
         image=image,
