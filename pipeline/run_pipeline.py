@@ -16,15 +16,18 @@ import argparse
 from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 from pipeline.object_detection.run import run as run_detection
 from pipeline.llm.inference import run_llm_inference, load_system_prompt
+from pipeline.quality_screening.screening import run_quality_screening_from_path
 
 DEFAULT_PROMPT_FILE = PIPELINE_DIR / "llm" / "prompt.txt"
 
 
 def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
 
-    #gonna add stage 1: Quality Screening as soon as that module is done
-
-
+    print("STAGE 1: QUALITY SCREENING")
+    screening_result = run_quality_screening_from_path(image_path)
+    if not screening_result["passed"]:
+        print(f"[PIPELINE ERROR] Image failed quality screening: {screening_result['failed_checks']}")
+        return
 
     print("STAGE 2: OBJECT DETECTION")
     run_detection(image_path, yolo_model, show=False)
