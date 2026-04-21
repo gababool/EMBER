@@ -5,19 +5,28 @@ Two modes:
   performance  — Small balanced sample, cooldown between images and between models.
                  Measures inference speed, tokens/sec, memory under fair thermal conditions.
 
+Optional YOLO preprocessing adds bounding box annotations to images before
+they reach the LLM. YOLO timing is tracked separately from LLM timing.
+
 Usage:
     uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt
-    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --num-images 100
-    uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt
-    uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt --num-images 5 --cooldown 0 --model-cooldown 180
+    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --with-yolo
+    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --with-yolo --yolo-model best
+    uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt --with-yolo
 
     Add --dry-run to either mode to preview what would be executed.
 """
 
 import argparse
+import json
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Allow importing the object_detection module from the repo root
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 from src.data_loader import get_all_test_images, get_ground_truth, get_balanced_sample
 from src.llm_inference import load_system_prompt, call_llm
@@ -28,8 +37,17 @@ from src.metrics import (
     count_words,
     evaluate_accuracy,
 )
+from src.hardware import get_hardware_specs
 
-# All models available for benchmarking
+
+# Thesis-core models. Used by default when --models is not specified.
+DEFAULT_MODELS = [
+    'ministral-3:3b',
+    'qwen3-vl:4b',
+    'gemma4:e2b',
+]
+
+# Full set of models available for explicit override via --models.
 ALL_MODELS = [
     'ministral-3:3b',
     'ministral-3:8b',
@@ -40,11 +58,64 @@ ALL_MODELS = [
 ]
 
 
-def run_single_inference(model_name, image_path, system_prompt):
-    """Run a single model on a single image and return the result dict."""
+# ── YOLO Integration ─────────────────────────────────────────────────
+
+def _run_yolo(image_path, yolo_model_name):
+    """
+    Run YOLO inference on an image. Returns a dict with the annotated image
+    path, detection count, and wall-clock inference duration.
+
+    Importing YOLO is deferred to this function so benchmarks without
+    --with-yolo don't require ultralytics to be installed.
+    """
+    from pipeline.object_detection.model_handler import get_model
+    from pipeline.object_detection.config import (
+        ANNOTATED_OUTPUT_DIR,
+        ANNOTATED_OUTPUT_FILENAME,
+    )
+    import cv2
+
+    model = get_model(yolo_model_name)
+
+    start = time.perf_counter()
+    results = model(str(image_path))
+    duration_s = time.perf_counter() - start
+
+    result = results[0]
+    detection_count = len(result.boxes)
+
+    ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
+    annotated = result.plot()
+    cv2.imwrite(str(output_path), annotated)
+
+    return {
+        'annotated_path': output_path,
+        'detection_count': detection_count,
+        'duration_s': round(duration_s, 3),
+    }
+
+
+# ── Inference ────────────────────────────────────────────────────────
+
+def run_single_inference(model_name, image_path, system_prompt,
+                         with_yolo=False, yolo_model='best'):
+    """Run one model on one image. Optionally runs YOLO preprocessing first."""
     ground_truth = get_ground_truth(image_path)
 
-    result = call_llm(model_name, str(image_path), system_prompt)
+    # Optional YOLO preprocessing
+    yolo_duration_s = None
+    yolo_detection_count = None
+    llm_input_path = image_path
+
+    if with_yolo:
+        yolo_result = _run_yolo(image_path, yolo_model)
+        yolo_duration_s = yolo_result['duration_s']
+        yolo_detection_count = yolo_result['detection_count']
+        llm_input_path = yolo_result['annotated_path']
+
+    # LLM inference on the image
+    result = call_llm(model_name, str(llm_input_path), system_prompt)
 
     response_text = result['response_text']
     correct = evaluate_accuracy(response_text, ground_truth)
@@ -76,6 +147,10 @@ def run_single_inference(model_name, image_path, system_prompt):
         'load_duration_s': round(result['load_duration_ns'] / 1e9, 3),
         'model_size_gb': get_model_size(model_name),
         'memory_usage_gb': memory_gb,
+        'yolo_enabled': with_yolo,
+        'yolo_model': yolo_model if with_yolo else None,
+        'yolo_duration_s': yolo_duration_s,
+        'yolo_detection_count': yolo_detection_count,
     }
 
 
@@ -93,13 +168,25 @@ def warmup_model(model_name, system_prompt):
         log_progress(f"  Warmup failed for {model_name}: {e}")
 
 
+def write_hardware_json(csv_path, run_id, mode, config):
+    """Write a companion JSON file next to a performance CSV."""
+    json_path = csv_path.with_suffix('.json')
+    payload = {
+        'run_id': run_id,
+        'mode': mode,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'config': config,
+        'hardware': get_hardware_specs(),
+    }
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, indent=2)
+
+
 # ── Accuracy Mode ────────────────────────────────────────────────────
 
 def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
-                 num_images=None, seed=42):
-    """
-    All images (or balanced sample), no cooldown. Measures classification correctness.
-    """
+                 num_images=None, seed=42, with_yolo=False, yolo_model='best'):
+    """All images (or balanced sample), no cooldown. Measures classification correctness."""
     output_path = Path(output_dir) / 'accuracy'
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +208,9 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
         log_progress(
             f"[ACCURACY MODE] {len(images)} images (all), {len(models)} models, no cooldown"
         )
+
+    if with_yolo:
+        log_progress(f"  YOLO preprocessing enabled (model={yolo_model})")
 
     if dry_run:
         for model in models:
@@ -147,7 +237,10 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
 
         for i, image_path in enumerate(images):
             try:
-                result = run_single_inference(model_name, image_path, system_prompt)
+                result = run_single_inference(
+                    model_name, image_path, system_prompt,
+                    with_yolo=with_yolo, yolo_model=yolo_model
+                )
                 log_result(str(csv_file), result)
 
                 if result['correct'] is True:
@@ -155,10 +248,15 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
                 elif result['correct'] is None:
                     ambiguous_count += 1
 
+                yolo_suffix = ''
+                if with_yolo:
+                    yolo_suffix = f" | yolo: {result['yolo_detection_count']} box(es), {result['yolo_duration_s']}s"
+
                 log_progress(
                     f"  [{i+1}/{len(images)}] {image_path.name} -> "
                     f"{result['llm_classification']} "
                     f"({'✓' if result['correct'] else '✗' if result['correct'] is False else '?'})"
+                    f"{yolo_suffix}"
                 )
 
             except Exception as e:
@@ -179,11 +277,9 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
 # ── Performance Mode ─────────────────────────────────────────────────
 
 def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
-                    num_images=3, cooldown=10, model_cooldown=90, seed=42):
-    """
-    Balanced random sample of images with cooldowns. All models run the same images.
-    Each run gets a timestamped CSV so multiple runs accumulate.
-    """
+                    num_images=3, cooldown=10, model_cooldown=90, seed=42,
+                    with_yolo=False, yolo_model='best'):
+    """Balanced random sample with cooldowns. Each run gets a timestamped CSV+JSON."""
     output_path = Path(output_dir) / 'performance'
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -205,6 +301,9 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
     log_progress(f"  Run ID: {run_id}")
     log_progress(f"  Selected images: {[img.name for img in images]}")
 
+    if with_yolo:
+        log_progress(f"  YOLO preprocessing enabled (model={yolo_model})")
+
     if dry_run:
         for model in models:
             log_progress(f"  {model}: {len(images)} images")
@@ -214,17 +313,37 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
         log_progress(f"  Estimated time: ~{est_seconds / 60:.0f} minutes")
         return
 
+    # Config snapshot saved alongside each CSV for reproducibility
+    config_snapshot = {
+        'models': models,
+        'num_images': num_images,
+        'cooldown': cooldown,
+        'model_cooldown': model_cooldown,
+        'seed': seed,
+        'with_yolo': with_yolo,
+        'yolo_model': yolo_model if with_yolo else None,
+        'selected_images': [img.name for img in images],
+    }
+
     for mi, model_name in enumerate(models):
         csv_file = output_path / f"performance_{model_name.replace(':', '_')}_{run_id}.csv"
         init_csv(str(csv_file))
+        write_hardware_json(csv_file, run_id, 'performance', config_snapshot)
 
         log_progress(f"=== {model_name} — performance run ({len(images)} images) ===")
         warmup_model(model_name, system_prompt)
 
         for i, image_path in enumerate(images):
             try:
-                result = run_single_inference(model_name, image_path, system_prompt)
+                result = run_single_inference(
+                    model_name, image_path, system_prompt,
+                    with_yolo=with_yolo, yolo_model=yolo_model
+                )
                 log_result(str(csv_file), result)
+
+                yolo_suffix = ''
+                if with_yolo:
+                    yolo_suffix = f" | yolo: {result['yolo_duration_s']}s ({result['yolo_detection_count']} box)"
 
                 log_progress(
                     f"  [{i+1}/{len(images)}] {image_path.name} -> "
@@ -232,6 +351,7 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
                     f"prompt: {result['prompt_eval_duration_s']}s | "
                     f"eval: {result['eval_duration_s']}s | "
                     f"total: {result['total_duration_s']}s"
+                    f"{yolo_suffix}"
                 )
 
             except Exception as e:
@@ -259,10 +379,18 @@ def main():
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument('--images', required=True, help='Directory containing test images')
     shared.add_argument('--prompt', required=True, help='Path to system prompt text file')
-    shared.add_argument('--models', nargs='+', default=ALL_MODELS, help='Models to benchmark')
+    shared.add_argument(
+        '--models', nargs='+', default=DEFAULT_MODELS,
+        help=f'Models to benchmark. Default: {DEFAULT_MODELS}. '
+             f'All available: {ALL_MODELS}'
+    )
     shared.add_argument('--output', default='results', help='Output directory (default: results/)')
     shared.add_argument('--dry-run', action='store_true', help='Preview without running')
     shared.add_argument('--seed', type=int, default=42, help='Random seed for sampling (default: 42)')
+    shared.add_argument('--with-yolo', action='store_true',
+                        help='Run YOLO preprocessing before LLM inference (default: off)')
+    shared.add_argument('--yolo-model', default='best',
+                        help='YOLO model weights to use when --with-yolo is set (default: best)')
 
     # Accuracy
     acc = subparsers.add_parser('accuracy', parents=[shared],
@@ -291,6 +419,8 @@ def main():
             dry_run=args.dry_run,
             num_images=args.num_images,
             seed=args.seed,
+            with_yolo=args.with_yolo,
+            yolo_model=args.yolo_model,
         )
     elif args.mode == 'performance':
         run_performance(
@@ -303,6 +433,8 @@ def main():
             cooldown=args.cooldown,
             model_cooldown=args.model_cooldown,
             seed=args.seed,
+            with_yolo=args.with_yolo,
+            yolo_model=args.yolo_model,
         )
 
 
