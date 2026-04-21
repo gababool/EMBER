@@ -26,14 +26,15 @@ RESULT_COLUMNS = [
     'load_duration_s',
     'model_size_gb',
     'memory_usage_gb',
+    'yolo_enabled',
+    'yolo_model',
+    'yolo_duration_s',
+    'yolo_detection_count',
 ]
 
 
 def init_csv(filepath, columns=None):
-    """
-    Create CSV file with headers.
-    Uses RESULT_COLUMNS by default.
-    """
+    """Create CSV file with headers."""
     if columns is None:
         columns = RESULT_COLUMNS
 
@@ -44,9 +45,7 @@ def init_csv(filepath, columns=None):
 
 
 def log_result(filepath, data_dict, columns=None):
-    """
-    Append one row to CSV.
-    """
+    """Append one row to CSV."""
     if columns is None:
         columns = RESULT_COLUMNS
 
@@ -61,5 +60,4 @@ def log_progress(message, logfile='results/benchmark_progress.log'):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     with open(logfile, 'a', encoding='utf-8') as f:
         f.write(f"[{timestamp}] {message}\n")
-    # Also print to stdout for live monitoring
     print(f"[{timestamp}] {message}")

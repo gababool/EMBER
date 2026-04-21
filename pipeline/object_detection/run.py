@@ -1,13 +1,29 @@
 #To run: go into this object_detection folder in terminal and run:
 #uv run python run.py test_image.jpg --model best
-#best is the model, you can also replace that with test, model_3 etc.
+#best is the default model, you can also replace that with test, model_3 etc.
+
+#To run from the repo root:
+# uv run python pipeline/object_detection/run.py <image_path> --model <model_name>
+
+# no window of result (dont open image)
+#uv run python pipeline/object_detection/run.py <image_path> --model <model_name>
+
+# with window of result (open image)
+# uv run python pipeline/object_detection/run.py <image_path> --model <model_name> --show
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import argparse
 import cv2
 from ultralytics import YOLO
 from model_handler import get_model, ModelLoadError
+from config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 
 
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 CLASS_NAMES = {
     0: "Smoke",
@@ -15,9 +31,16 @@ CLASS_NAMES = {
 }
 
 
-def run (image_path: str, model_name: str):
+def run (image_path: str, model_name: str, show: bool):
 
         print(f"\nRunning YOLO on: {image_path} (model={model_name})")
+
+        #image path
+        image_path = Path(image_path).resolve()
+
+        if not image_path.exists():
+             print(f"[IMAGE_ERROR] Image not found: {image_path}")
+             return
 
         try:
              model = get_model(model_name)
@@ -26,7 +49,7 @@ def run (image_path: str, model_name: str):
              return
         
         try:
-             results = model(image_path)
+             results = model(str(image_path))
              result = results[0]
         except Exception as e:
              print(f"[INFERENCE ERROR] failed to process image: {e}")
@@ -51,17 +74,28 @@ def run (image_path: str, model_name: str):
                   label = CLASS_NAMES.get(cls, str(cls))
 
                   print(f"{i+1}: {label} | confidence={conf:.2f}")
-        result.show()
+        if show:
+             result.show()
+          # save annotated image
+        ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
+        annotated = result.plot()
+        cv2.imwrite(str(output_path), annotated)
+        print(f"\nAnnotated image saved to: {output_path}")  
+
+
+
 
 
 if __name__ == "__main__": 
      parser = argparse.ArgumentParser()
      parser.add_argument("image_path")
-     parser.add_argument("--model", default="test")
+     parser.add_argument("--model", default="best")
+     parser.add_argument("--show", action="store_true" )
 
      args = parser.parse_args()
 
-     run(args.image_path, args.model)
+     run(args.image_path, args.model, args.show)
 
 
 
