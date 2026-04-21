@@ -72,6 +72,12 @@ def test_brightness_accepts_bgra_images():
     result = check_brightness(image)
     assert result["passed"] is True
 
+def test_brightness_rejects_nan_values():
+    image = np.full((480, 640, 3), 0.5, dtype=np.float32)
+    image[0, 0, 0] = np.nan
+
+    with pytest.raises(ValueError):
+        check_brightness(image)
 
 def test_brightness_accepts_float_images_in_zero_to_one_range():
     image = np.full((480, 640, 3), 0.5, dtype=np.float32)
