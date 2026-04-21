@@ -99,8 +99,10 @@ def run_quality_screening(
             if stop_on_first_failure:
                 break
 
+    passed = len(failed_checks) == 0
+    print("passed" if passed else "failed")
     return {
-        "passed": len(failed_checks) == 0,
+        "passed": passed,
         "checks": checks,
         "failed_checks": failed_checks,
     }
