@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 # Run tests with: uv run pytest tests/ -v
-from quality_screening.brightness import check_brightness
+from pipeline.quality_screening.brightness import check_brightness
 
 
 def test_brightness_check_passes_for_normal_lighting():
@@ -63,6 +63,18 @@ def test_non_ndarray_image_is_not_allowed():
         check_brightness([[1, 2], [3, 4]])
 
 def test_negative_threshold_is_not_allowed():
-    image = np.zeros((0, 0, 3), dtype=np.uint8)
+    image = np.zeros((480, 640, 3), dtype=np.uint8)
     with pytest.raises(ValueError):
         check_brightness(image, min_brightness=-1.0)
+        
+def test_brightness_accepts_bgra_images():
+    image = np.full((480, 640, 4), 128, dtype=np.uint8)
+    result = check_brightness(image)
+    assert result["passed"] is True
+
+
+def test_brightness_accepts_float_images_in_zero_to_one_range():
+    image = np.full((480, 640, 3), 0.5, dtype=np.float32)
+    result = check_brightness(image)
+    assert result["passed"] is True
+    assert 120.0 <= result["brightness"] <= 135.0
