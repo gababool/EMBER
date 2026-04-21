@@ -1,11 +1,13 @@
-# Run tests with: uv run pytest tests/ -v
-
 from __future__ import annotations
 
 from typing import Any, Dict
 
-import cv2
 import numpy as np
+
+from pipeline.quality_screening._shared import (
+    validate_image_array,
+    validate_non_negative_int,
+)
 
 
 def check_resolution(
@@ -13,27 +15,10 @@ def check_resolution(
     min_width: int = 640,
     min_height: int = 480,
 ) -> Dict[str, Any]:
-    """Check whether an image meets the minimum resolution threshold.
-
-    Args:
-        image: Input image as a numpy array (grayscale or BGR).
-        min_width: Minimum acceptable width in pixels.
-        min_height: Minimum acceptable height in pixels.
-
-    Returns:
-        A dict with:
-            passed (bool): True if the image meets the minimum resolution.
-            reason (str): Empty string on pass; "low_resolution" on failure.
-            resolution (list[int, int]): Actual [width, height] of the image.
-    """
-    if image is None:
-        raise ValueError("image must not be None.")
-    if not isinstance(image, np.ndarray):
-        raise TypeError("image must be a numpy ndarray.")
-    if image.size == 0:
-        raise ValueError("image must not be empty.")
-    if min_width < 0 or min_height < 0:
-        raise ValueError("min_width and min_height must not be negative.")
+    """Check whether an image meets the minimum resolution threshold."""
+    validate_image_array(image)
+    validate_non_negative_int("min_width", min_width)
+    validate_non_negative_int("min_height", min_height)
 
     height, width = image.shape[:2]
 
