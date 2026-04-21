@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import argparse
+import json
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -125,3 +128,35 @@ def run_quality_screening_from_path(
     )
     result["image_path"] = str(image_path)
     return result
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="python -m pipeline.quality_screening.screening",
+        description="Run the quality screening pipeline on a single image.",
+    )
+    parser.add_argument(
+        "image_path",
+        type=Path,
+        help="Path to the image to screen (absolute or relative to the current working directory).",
+    )
+    parser.add_argument(
+        "--stop-on-first-failure",
+        action="store_true",
+        help="Stop running checks as soon as one fails.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    result = run_quality_screening_from_path(
+        image_path=args.image_path,
+        stop_on_first_failure=args.stop_on_first_failure,
+    )
+    print(json.dumps(result, indent=2, default=str))
+    return 0 if result["passed"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
