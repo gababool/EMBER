@@ -4,7 +4,7 @@
 # Example:
 # uv run python -m pipeline.run_pipeline pipeline/object_detection/test_image.jpg --yolo-model best --llm-model ministral
 
-
+import json
 import sys
 from pathlib import Path
 
@@ -26,7 +26,15 @@ def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
     print("STAGE 1: QUALITY SCREENING")
     screening_result = run_quality_screening_from_path(image_path)
     if not screening_result["passed"]:
-        print(f"[PIPELINE ERROR] Image failed quality screening: {screening_result['failed_checks']}")
+        failed_checks = screening_result.get("failed_checks", [])
+        checks = screening_result.get("checks", {})
+
+        print(
+            f"[PIPELINE ERROR] Image failed quality screening. "
+            f"Failed checks: {', '.join(failed_checks) if failed_checks else 'unknown'}"
+        )
+        print("[PIPELINE ERROR] Full screening result:")
+        print(json.dumps(checks, indent=2, default=str))
         return
 
     print("STAGE 2: OBJECT DETECTION")
@@ -46,7 +54,6 @@ def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
         system_prompt=system_prompt,
     )
 
-    import json
     print(json.dumps(result["parsed"], indent=2))
 
 
