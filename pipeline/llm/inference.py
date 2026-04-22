@@ -8,8 +8,8 @@ import ollama
 from pydantic import BaseModel, ValidationError
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT_FILE = SCRIPT_DIR / "prompt.txt"
-DEFAULT_CONTEXT_FILE = SCRIPT_DIR / "context.txt"
+PROMPTS_DIR = SCRIPT_DIR / "prompts"
+DEFAULT_PROMPT_FILE = PROMPTS_DIR / "c1v1prompt.txt"
 
 MODELS = {
     "ministral": "ministral-3:3b",
@@ -29,38 +29,49 @@ def resolve_path(path_str: str) -> Path:
         return path
     return (Path.cwd() / path).resolve()
 
-def load_system_prompt(file_path: str) -> str:
-    path = Path(file_path)
+
+def load_text_file(file_path: str, label: str) -> str:
+    path = resolve_path(file_path)
     if not path.exists():
-        raise FileNotFoundError(f"Prompt file not found at {file_path}")
+        raise FileNotFoundError(f"{label} not found at {path}")
     return path.read_text(encoding="utf-8")
 
 
+def load_system_prompt(file_path: str) -> str:
+    return load_text_file(file_path, "Prompt file")
+
+
+def load_context(file_path: str) -> str:
+    return load_text_file(file_path, "Context file")
+
+
 def load_image(image_path: str) -> str:
-    path = Path(image_path)
+    path = resolve_path(image_path)
     if not path.exists():
-        raise FileNotFoundError(f"Image not found at {image_path}")
+        raise FileNotFoundError(f"Image not found at {path}")
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-def build_user_prompt(additional_context: str | None = None) -> str:
-    base_prompt = "Analyze this YOLO-annotated wildfire reconnaissance image."
+def build_user_content(additional_context: str | None = None) -> str:
+    """
+    Keep user content minimal and context-only.
 
+    All task instructions should live in the system prompt file.
+    This function only formats optional extra context.
+    """
     if additional_context and additional_context.strip():
-        return (
-            f"{base_prompt}\n\n"
-            f"Additional operational context:\n"
-            f"{additional_context.strip()}"
-        )
-    return base_prompt
+        return f"Additional operational context:\n{additional_context.strip()}"
+    return ""
 
 
 def run_llm_inference(
     model_name: str,
     image_path: str,
     system_prompt: str,
+    prompt_file: str,
     additional_context: str | None = None,
+    context_file: str | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -68,8 +79,9 @@ def run_llm_inference(
         )
 
     model_tag = MODELS[model_name]
+    image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
-    user_prompt = build_user_prompt(additional_context)
+    user_content = build_user_content(additional_context)
 
     messages = [
         {
@@ -78,7 +90,7 @@ def run_llm_inference(
         },
         {
             "role": "user",
-            "content": user_prompt,
+            "content": user_content,
             "images": [image_b64],
         },
     ]
@@ -104,26 +116,28 @@ def run_llm_inference(
     return {
         "model_name": model_name,
         "model_tag": model_tag,
-        "image_path": image_path,
+        "image_path": image_path_resolved,
+        "prompt_file": str(resolve_path(prompt_file)),
+        "context_file": str(resolve_path(context_file)) if context_file else None,
         "parsed": parsed.model_dump(),
         "raw_response": raw_content,
     }
 
 
 def save_result_json(result: dict, output_path: str) -> None:
-    path = Path(output_path)
+    path = resolve_path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run multimodal LLM inference on a YOLO-annotated image."
+        description="Run multimodal LLM inference on an image."
     )
     parser.add_argument(
         "--image",
         required=True,
-        help="Path to the YOLO-annotated image.",
+        help="Path to the input image.",
     )
     parser.add_argument(
         "--model",
@@ -142,22 +156,26 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-json",
-        help="Optional path to save the result as JSON. When --model all is used, "
-        "the model name will be appended before the file suffix.",
+        help=(
+            "Optional path to save the result as JSON. "
+            "When --model all is used, the model name will be appended before the file suffix."
+        ),
     )
     return parser.parse_args()
+
 
 def main() -> None:
     args = parse_args()
 
-    system_prompt = load_system_prompt(args.prompt_file)
+    prompt_path = resolve_path(args.prompt_file)
+    system_prompt = load_system_prompt(str(prompt_path))
+
     additional_context = None
+    context_path = None
 
     if args.context_file:
         context_path = resolve_path(args.context_file)
-        if not context_path.exists():
-            raise FileNotFoundError(f"Context file not found at {context_path}")
-        additional_context = context_path.read_text(encoding="utf-8")
+        additional_context = load_context(str(context_path))
 
     model_names = list(MODELS.keys()) if args.model == "all" else [args.model]
 
@@ -168,13 +186,16 @@ def main() -> None:
             model_name=model_name,
             image_path=args.image,
             system_prompt=system_prompt,
+            prompt_file=str(prompt_path),
             additional_context=additional_context,
+            context_file=str(context_path) if context_path else None,
         )
 
         print(json.dumps(result["parsed"], indent=2))
 
         if args.output_json:
             output_path = Path(args.output_json)
+
             if args.model == "all":
                 stem = output_path.stem
                 suffix = output_path.suffix or ".json"
