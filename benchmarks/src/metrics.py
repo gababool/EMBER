@@ -19,18 +19,16 @@ MODEL_SIZES = {
 
 def track_memory_usage():
     """
-    Get total RSS memory used by all Ollama processes (macOS specific).
+    Get total RSS memory used by all Ollama processes (macOS-specific).
     Returns total in GB, or None if no Ollama processes found.
     """
     try:
         result = subprocess.run(
             ['ps', '-e', '-o', 'pid,rss,comm'],
-            capture_output=True, text=True
+            capture_output=True, text=True,
         )
-
         total_rss_kb = 0
         found = False
-
         for line in result.stdout.strip().split('\n'):
             if 'ollama' in line.lower():
                 parts = line.split()
@@ -40,11 +38,9 @@ def track_memory_usage():
                         found = True
                     except ValueError:
                         continue
-
         if found:
             return round(total_rss_kb / (1024 * 1024), 2)
         return None
-
     except Exception as e:
         print(f"Error tracking memory: {e}")
         return None
@@ -60,23 +56,22 @@ def count_words(text):
     return len(text.split())
 
 
-def evaluate_accuracy(llm_response, ground_truth):
+def evaluate_accuracy(classification, ground_truth):
     """
-    Check if LLM correctly identified fire/no_fire.
+    Check whether the LLM's structured classification matches ground truth.
+
+    Args:
+        classification: str, one of 'fire_detected', 'no_fire_detected',
+                        or 'uncertain' (from parsed JSON output).
+        ground_truth: str, one of 'fire' or 'no_fire'.
 
     Returns:
-        True if correct, False if incorrect, None if ambiguous/missing classification.
+        True if correct, False if incorrect, None if uncertain.
     """
-    response_upper = llm_response.upper()
-
-    llm_says_fire = '[FIRE_DETECTED]' in response_upper
-    llm_says_nofire = '[NO_FIRE_DETECTED]' in response_upper
-
-    if llm_says_fire and not llm_says_nofire:
-        llm_classification = 'fire'
-    elif llm_says_nofire and not llm_says_fire:
-        llm_classification = 'no_fire'
-    else:
-        return None  # Ambiguous — needs manual review
-
-    return llm_classification == ground_truth
+    if classification == 'uncertain':
+        return None  # Needs manual review
+    if classification == 'fire_detected':
+        return ground_truth == 'fire'
+    if classification == 'no_fire_detected':
+        return ground_truth == 'no_fire'
+    return None
