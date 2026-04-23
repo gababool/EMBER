@@ -12,6 +12,8 @@ can be evaluated without changes to the code.
 
 Optional YOLO preprocessing adds bounding box annotations to images before
 they reach the LLM. YOLO timing is tracked separately from LLM timing.
+Runs with and without YOLO produce separate CSV files, allowing the two
+conditions to be compared during analysis.
 
 Usage:
     uv run python run_benchmark.py accuracy --images ../dataset
@@ -67,6 +69,11 @@ ALL_MODELS = [
 
 # Default system prompt location (Cycle 1 v1)
 DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / 'c1v1prompt.txt'
+
+
+def _yolo_tag(with_yolo):
+    """Short filename suffix indicating whether YOLO preprocessing was used."""
+    return '_yolo' if with_yolo else '_noyolo'
 
 
 # ── YOLO Integration ─────────────────────────────────────────────────
@@ -234,8 +241,10 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
         log_progress(f"  Estimated time: ~{est_minutes:.0f} minutes")
         return
 
+    yolo_tag = _yolo_tag(with_yolo)
+
     for model_name in models:
-        csv_file = output_path / f"accuracy_{model_name.replace(':', '_')}.csv"
+        csv_file = output_path / f"accuracy_{model_name.replace(':', '_')}{yolo_tag}.csv"
         if csv_file.exists() and csv_file.stat().st_size > 0:
             log_progress(f"Skipping {model_name} — {csv_file.name} already exists")
             continue
@@ -340,8 +349,10 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
         'selected_images': [img.name for img in images],
     }
 
+    yolo_tag = _yolo_tag(with_yolo)
+
     for mi, model_name in enumerate(models):
-        csv_file = output_path / f"performance_{model_name.replace(':', '_')}_{run_id}.csv"
+        csv_file = output_path / f"performance_{model_name.replace(':', '_')}{yolo_tag}_{run_id}.csv"
         init_csv(str(csv_file))
         write_hardware_json(csv_file, run_id, 'performance', config_snapshot)
 
