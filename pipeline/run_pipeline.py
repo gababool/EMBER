@@ -18,7 +18,8 @@ from pipeline.object_detection.run import run as run_detection
 from pipeline.llm.inference import run_llm_inference, load_system_prompt
 from pipeline.quality_screening.screening import run_quality_screening_from_path
 
-DEFAULT_PROMPT_FILE = PIPELINE_DIR / "llm" / "prompt.txt"
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "c1v1prompt.txt"
 
 
 def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
@@ -44,6 +45,7 @@ def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
         model_name=llm_model,
         image_path=str(annotated_image_path),
         system_prompt=system_prompt,
+        prompt_file=str(DEFAULT_PROMPT_FILE),
     )
 
     import json
