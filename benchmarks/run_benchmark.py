@@ -5,14 +5,24 @@ Two modes:
   performance  — Small balanced sample, cooldown between images and between models.
                  Measures inference speed, tokens/sec, memory under fair thermal conditions.
 
+The benchmark invokes the LLM with Ollama's structured-output feature,
+enforcing JSON output matching the pipeline's schema. The system prompt
+is loaded from a modular prompt file so that different prompt versions
+can be evaluated without changes to the code.
+
 Optional YOLO preprocessing adds bounding box annotations to images before
 they reach the LLM. YOLO timing is tracked separately from LLM timing.
+Runs with and without YOLO produce separate CSV files, allowing the two
+conditions to be compared during analysis.
 
 Usage:
-    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt
-    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --with-yolo
-    uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --with-yolo --yolo-model best
-    uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt --with-yolo
+    uv run python run_benchmark.py accuracy --images ../dataset
+    uv run python run_benchmark.py accuracy --images ../dataset --with-yolo
+    uv run python run_benchmark.py performance --images ../dataset --with-yolo
+
+    Override the prompt explicitly:
+    uv run python run_benchmark.py accuracy --images ../dataset \\
+        --system-prompt ../pipeline/llm/prompts/c1v2prompt.txt
 
     Add --dry-run to either mode to preview what would be executed.
 """
@@ -29,7 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.data_loader import get_all_test_images, get_ground_truth, get_balanced_sample
-from src.llm_inference import load_system_prompt, call_llm
+from src.llm_inference import load_prompt_file, call_llm
 from src.logger import init_csv, log_result, log_progress, RESULT_COLUMNS
 from src.metrics import (
     track_memory_usage,
@@ -56,6 +66,14 @@ ALL_MODELS = [
     'gemma4:e2b',
     'gemma4:e4b',
 ]
+
+# Default system prompt location (Cycle 1 v1)
+DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / 'c1v1prompt.txt'
+
+
+def _yolo_tag(with_yolo):
+    """Short filename suffix indicating whether YOLO preprocessing was used."""
+    return '_yolo' if with_yolo else '_noyolo'
 
 
 # ── YOLO Integration ─────────────────────────────────────────────────
@@ -114,20 +132,21 @@ def run_single_inference(model_name, image_path, system_prompt,
         yolo_detection_count = yolo_result['detection_count']
         llm_input_path = yolo_result['annotated_path']
 
-    # LLM inference on the image
+    # LLM inference (structured output enforced via schema)
     result = call_llm(model_name, str(llm_input_path), system_prompt)
 
-    response_text = result['response_text']
-    correct = evaluate_accuracy(response_text, ground_truth)
+    classification_raw = result['classification']
+    correct = evaluate_accuracy(classification_raw, ground_truth)
 
-    response_upper = response_text.upper()
-    if '[FIRE_DETECTED]' in response_upper and '[NO_FIRE_DETECTED]' not in response_upper:
+    # Map schema classification to the benchmark's existing label space.
+    if classification_raw == 'fire_detected':
         llm_classification = 'fire'
-    elif '[NO_FIRE_DETECTED]' in response_upper:
+    elif classification_raw == 'no_fire_detected':
         llm_classification = 'no_fire'
     else:
-        llm_classification = 'ambiguous'
+        llm_classification = 'ambiguous'  # 'uncertain' or unknown
 
+    response_text = result['response_text']
     memory_gb = track_memory_usage()
 
     return {
@@ -154,14 +173,14 @@ def run_single_inference(model_name, image_path, system_prompt,
     }
 
 
-def warmup_model(model_name, system_prompt):
+def warmup_model(model_name):
     """Send a throwaway request to load the model into memory."""
     log_progress(f"Warming up {model_name}...")
     try:
         import ollama
         ollama.chat(
             model=model_name,
-            messages=[{"role": "user", "content": "Hello"}]
+            messages=[{"role": "user", "content": "Hello"}],
         )
         log_progress(f"  {model_name} loaded and ready.")
     except Exception as e:
@@ -184,13 +203,13 @@ def write_hardware_json(csv_path, run_id, mode, config):
 
 # ── Accuracy Mode ────────────────────────────────────────────────────
 
-def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
+def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
                  num_images=None, seed=42, with_yolo=False, yolo_model='best'):
     """All images (or balanced sample), no cooldown. Measures classification correctness."""
     output_path = Path(output_dir) / 'accuracy'
     output_path.mkdir(parents=True, exist_ok=True)
 
-    system_prompt = load_system_prompt(prompt_file)
+    system_prompt = load_prompt_file(system_prompt_file)
     all_images = get_all_test_images(image_dir)
 
     if not all_images:
@@ -209,6 +228,7 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
             f"[ACCURACY MODE] {len(images)} images (all), {len(models)} models, no cooldown"
         )
 
+    log_progress(f"  System prompt: {system_prompt_file}")
     if with_yolo:
         log_progress(f"  YOLO preprocessing enabled (model={yolo_model})")
 
@@ -221,15 +241,17 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
         log_progress(f"  Estimated time: ~{est_minutes:.0f} minutes")
         return
 
+    yolo_tag = _yolo_tag(with_yolo)
+
     for model_name in models:
-        csv_file = output_path / f"accuracy_{model_name.replace(':', '_')}.csv"
+        csv_file = output_path / f"accuracy_{model_name.replace(':', '_')}{yolo_tag}.csv"
         if csv_file.exists() and csv_file.stat().st_size > 0:
             log_progress(f"Skipping {model_name} — {csv_file.name} already exists")
             continue
         init_csv(str(csv_file))
 
         log_progress(f"=== {model_name} — accuracy run ({len(images)} images) ===")
-        warmup_model(model_name, system_prompt)
+        warmup_model(model_name)
 
         correct_count = 0
         error_count = 0
@@ -239,7 +261,7 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
             try:
                 result = run_single_inference(
                     model_name, image_path, system_prompt,
-                    with_yolo=with_yolo, yolo_model=yolo_model
+                    with_yolo=with_yolo, yolo_model=yolo_model,
                 )
                 log_result(str(csv_file), result)
 
@@ -276,7 +298,7 @@ def run_accuracy(image_dir, prompt_file, models, output_dir, dry_run,
 
 # ── Performance Mode ─────────────────────────────────────────────────
 
-def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
+def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
                     num_images=3, cooldown=10, model_cooldown=90, seed=42,
                     with_yolo=False, yolo_model='best'):
     """Balanced random sample with cooldowns. Each run gets a timestamped CSV+JSON."""
@@ -285,7 +307,7 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
 
     run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    system_prompt = load_system_prompt(prompt_file)
+    system_prompt = load_prompt_file(system_prompt_file)
     all_images = get_all_test_images(image_dir)
 
     if not all_images:
@@ -299,6 +321,7 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
         f"{len(models)} models, {cooldown}s between images, {model_cooldown}s between models"
     )
     log_progress(f"  Run ID: {run_id}")
+    log_progress(f"  System prompt: {system_prompt_file}")
     log_progress(f"  Selected images: {[img.name for img in images]}")
 
     if with_yolo:
@@ -322,22 +345,25 @@ def run_performance(image_dir, prompt_file, models, output_dir, dry_run,
         'seed': seed,
         'with_yolo': with_yolo,
         'yolo_model': yolo_model if with_yolo else None,
+        'system_prompt_file': str(system_prompt_file),
         'selected_images': [img.name for img in images],
     }
 
+    yolo_tag = _yolo_tag(with_yolo)
+
     for mi, model_name in enumerate(models):
-        csv_file = output_path / f"performance_{model_name.replace(':', '_')}_{run_id}.csv"
+        csv_file = output_path / f"performance_{model_name.replace(':', '_')}{yolo_tag}_{run_id}.csv"
         init_csv(str(csv_file))
         write_hardware_json(csv_file, run_id, 'performance', config_snapshot)
 
         log_progress(f"=== {model_name} — performance run ({len(images)} images) ===")
-        warmup_model(model_name, system_prompt)
+        warmup_model(model_name)
 
         for i, image_path in enumerate(images):
             try:
                 result = run_single_inference(
                     model_name, image_path, system_prompt,
-                    with_yolo=with_yolo, yolo_model=yolo_model
+                    with_yolo=with_yolo, yolo_model=yolo_model,
                 )
                 log_result(str(csv_file), result)
 
@@ -378,11 +404,14 @@ def main():
 
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument('--images', required=True, help='Directory containing test images')
-    shared.add_argument('--prompt', required=True, help='Path to system prompt text file')
+    shared.add_argument(
+        '--system-prompt', default=str(DEFAULT_SYSTEM_PROMPT),
+        help=f'Path to system prompt file (default: {DEFAULT_SYSTEM_PROMPT})',
+    )
     shared.add_argument(
         '--models', nargs='+', default=DEFAULT_MODELS,
         help=f'Models to benchmark. Default: {DEFAULT_MODELS}. '
-             f'All available: {ALL_MODELS}'
+             f'All available: {ALL_MODELS}',
     )
     shared.add_argument('--output', default='results', help='Output directory (default: results/)')
     shared.add_argument('--dry-run', action='store_true', help='Preview without running')
@@ -413,7 +442,7 @@ def main():
     if args.mode == 'accuracy':
         run_accuracy(
             image_dir=args.images,
-            prompt_file=args.prompt,
+            system_prompt_file=args.system_prompt,
             models=args.models,
             output_dir=args.output,
             dry_run=args.dry_run,
@@ -425,7 +454,7 @@ def main():
     elif args.mode == 'performance':
         run_performance(
             image_dir=args.images,
-            prompt_file=args.prompt,
+            system_prompt_file=args.system_prompt,
             models=args.models,
             output_dir=args.output,
             dry_run=args.dry_run,
