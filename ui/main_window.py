@@ -1,11 +1,16 @@
-from PySide6.QtWidgets import QApplication, QSizePolicy, QVBoxLayout, QWidget, QMainWindow, QLabel
-from PySide6.QtGui import QFont
-from PySide6.QtCore import Qt
-from components.top_bar import TopBar
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+
+try:
+    from ui.assets.design import DARK_THEME, LIGHT_THEME, Theme
+    from ui.components.top_bar import TopBar
+except ImportError:
+    from assets.design import DARK_THEME, LIGHT_THEME, Theme
+    from components.top_bar import TopBar
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.theme = DARK_THEME
 
         self.setWindowTitle("EMBER")
         self.resize(1400, 900)
@@ -17,11 +22,11 @@ class MainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        self.top_bar = TopBar()
+        self.top_bar = TopBar(self.theme)
+        self.top_bar.theme_button.clicked.connect(self.toggle_theme)
         self.main_layout.addWidget(self.top_bar)
 
         self.content_widget = QWidget()
-        self.content_widget.setStyleSheet("background-color: #23262b;")
         self.main_layout.addWidget(self.content_widget, 1)
 
         # Example updates
@@ -29,9 +34,25 @@ class MainWindow(QMainWindow):
         self.top_bar.set_wind("5m/s nw")
         self.top_bar.set_gpu("GPU 43%")
         self.top_bar.set_mode("OFFLINE MODE")
+        self.apply_theme(self.theme)
 
-app = QApplication()
-window = MainWindow()
-window.show()
+    def toggle_theme(self):
+        next_theme = LIGHT_THEME if self.theme.name == "dark" else DARK_THEME
+        self.apply_theme(next_theme)
 
-app.exec() 
+    def apply_theme(self, theme: Theme):
+        self.theme = theme
+        self.top_bar.apply_theme(theme)
+        self.content_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {theme.bg_main};
+                color: {theme.text_primary};
+            }}
+        """)
+
+
+if __name__ == "__main__":
+    app = QApplication()
+    window = MainWindow()
+    window.show()
+    app.exec()
