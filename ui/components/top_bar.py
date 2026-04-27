@@ -19,6 +19,7 @@ try:
         app_font,
     )
     from ui.components.status_item import StatusItem
+    from ui.components.stat_meter import StatMeter
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -30,6 +31,7 @@ except ImportError:
         app_font,
     )
     from components.status_item import StatusItem
+    from components.stat_meter import StatMeter
 
 
 class TopBar(QWidget):
@@ -72,12 +74,9 @@ class TopBar(QWidget):
         status_layout.setSpacing(18)
 
         self.wind_item = StatusItem("⇄", "5m/s nw", icon_color=theme.accent_cyan)
-        self.gpu_item = StatusItem(
-            "▣",
-            "GPU 43%",
-            icon_color=theme.accent_purple,
-            text_color=theme.accent_green,
-        )
+        self.cpu_meter = StatMeter("CPU", "cpu.svg", theme.accent_cyan, theme)
+        self.ram_meter = StatMeter("RAM", "memory-stick.svg", theme.accent_green, theme)
+        self.gpu_meter = StatMeter("GPU", "gpu.svg", theme.accent_purple, theme)
 
         self.mode_label = QLabel("OFFLINE MODE")
         self.mode_label.setFont(app_font(FONT_SIZE_LG, bold=True))
@@ -91,7 +90,9 @@ class TopBar(QWidget):
         self.signal_label.setFont(app_font(FONT_SIZE_LG, bold=True))
 
         status_layout.addWidget(self.wind_item)
-        status_layout.addWidget(self.gpu_item)
+        status_layout.addWidget(self.cpu_meter)
+        status_layout.addWidget(self.ram_meter)
+        status_layout.addWidget(self.gpu_meter)
         status_layout.addWidget(self.mode_label)
         status_layout.addWidget(self.theme_button)
         status_layout.addWidget(self.signal_label)
@@ -118,9 +119,12 @@ class TopBar(QWidget):
         self.version_label.setStyleSheet(self._label_style(theme.text_muted))
         self.wind_item.setIconColor(theme.accent_cyan)
         self.wind_item.apply_theme(theme)
-        self.gpu_item.setIconColor(theme.accent_purple)
-        self.gpu_item.setTextColor(theme.accent_green)
-        self.gpu_item.apply_theme(theme)
+        self.cpu_meter.accent_color = theme.accent_cyan
+        self.cpu_meter.apply_theme(theme)
+        self.ram_meter.accent_color = theme.accent_green
+        self.ram_meter.apply_theme(theme)
+        self.gpu_meter.accent_color = theme.accent_purple
+        self.gpu_meter.apply_theme(theme)
         self.mode_label.setStyleSheet(self._label_style(theme.accent_blue))
         self.signal_label.setStyleSheet(self._label_style(theme.accent_orange))
         self.theme_button.setText("LIGHT" if theme.name == "dark" else "DARK")
@@ -156,7 +160,18 @@ class TopBar(QWidget):
         self.wind_item.setText(text)
 
     def set_gpu(self, text: str):
-        self.gpu_item.setText(text)
+        if text.endswith("%"):
+            try:
+                self.gpu_meter.set_value(float(text.removesuffix("%").removeprefix("GPU ")))
+            except ValueError:
+                self.gpu_meter.set_value(None)
+        else:
+            self.gpu_meter.set_value(None)
+
+    def set_system_stats(self, cpu_percent, ram_percent, gpu_percent):
+        self.cpu_meter.set_value(cpu_percent)
+        self.ram_meter.set_value(ram_percent)
+        self.gpu_meter.set_value(gpu_percent)
 
     def set_mode(self, text: str):
         self.mode_label.setText(text)

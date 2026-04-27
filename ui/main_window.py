@@ -6,11 +6,13 @@ try:
     from ui.components.pipeline_dashboard import PipelineDashboard
     from ui.components.top_bar import TopBar
     from ui.pipeline_worker import PipelineWorker
+    from ui.system_monitor import SystemMonitor
 except ImportError:
     from assets.design import DARK_THEME, LIGHT_THEME, Theme
     from components.pipeline_dashboard import PipelineDashboard
     from components.top_bar import TopBar
     from pipeline_worker import PipelineWorker
+    from system_monitor import SystemMonitor
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -39,12 +41,14 @@ class MainWindow(QMainWindow):
         # Example updates
         self.top_bar.set_version("V.0.3.1")
         self.top_bar.set_wind("5m/s nw")
-        self.top_bar.set_gpu("GPU 43%")
         self.top_bar.set_mode("OFFLINE MODE")
         self.apply_theme(self.theme)
 
         self.pipeline_thread = None
         self.pipeline_worker = None
+        self.system_monitor = SystemMonitor(parent=self)
+        self.system_monitor.stats_updated.connect(self.update_system_stats)
+        self.system_monitor.start()
 
     def start_demo(self):
         if self.pipeline_thread is not None:
@@ -72,6 +76,13 @@ class MainWindow(QMainWindow):
         self.top_bar.set_mode("OFFLINE MODE")
         self.pipeline_thread = None
         self.pipeline_worker = None
+
+    def update_system_stats(self, stats):
+        self.top_bar.set_system_stats(
+            stats.cpu_percent,
+            stats.ram_percent,
+            stats.gpu_percent,
+        )
 
     def toggle_theme(self):
         next_theme = LIGHT_THEME if self.theme.name == "dark" else DARK_THEME
