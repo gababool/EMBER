@@ -20,7 +20,7 @@ CPU and RAM percentages work without `sudo`. GPU percentage uses macOS `powermet
 
 ## Demo Flow
 
-Press `Start Demo` to select one random image from the wildfire test dataset, either `fire` or `nofire`, and run it through:
+Press `Test Image` to select one random image from the wildfire test dataset, either `fire` or `nofire`, and run it through:
 
 - quality screening
 - YOLO object detection
@@ -30,7 +30,7 @@ If quality screening fails, the app immediately loads another random image. The 
 
 ## Controls
 
-- `Start Demo`: runs one random dataset image through the pipeline.
+- `Test Image`: runs one random dataset image through the pipeline.
 - model dropdown: selects the LLM model for the next run.
 - theme button: toggles light/dark mode.
 - history strip: click a recent processed image to reload its stored outputs for the current app session.
