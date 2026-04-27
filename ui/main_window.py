@@ -1,5 +1,12 @@
+from pathlib import Path
+import sys
+
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 try:
     from ui.assets.design import DARK_THEME, LIGHT_THEME, Theme
@@ -58,7 +65,9 @@ class MainWindow(QMainWindow):
         self.top_bar.set_mode("RUNNING DEMO")
 
         self.pipeline_thread = QThread(self)
-        self.pipeline_worker = PipelineWorker()
+        self.pipeline_worker = PipelineWorker(
+            llm_model=self.dashboard.selected_llm_model()
+        )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
         self.pipeline_thread.started.connect(self.pipeline_worker.run)

@@ -216,9 +216,10 @@ class HistoryItem(QPushButton):
         """)
         self.title_label.setStyleSheet(self._label_style(theme.text_primary))
         self.subtitle_label.setStyleSheet(self._label_style(theme.text_muted))
+        thumbnail_background = background if self._quality_failed() else theme.bg_panel
         self.thumbnail_label.setStyleSheet(f"""
             QLabel {{
-                background-color: {theme.bg_panel};
+                background-color: {thumbnail_background};
                 border: 1px solid {theme.border};
                 border-radius: 4px;
                 color: {theme.text_muted};
@@ -226,7 +227,7 @@ class HistoryItem(QPushButton):
         """)
         badge_style = f"""
             QLabel {{
-                background-color: {theme.bg_panel};
+                background-color: {thumbnail_background};
                 border: 1px solid {theme.border};
                 border-radius: 10px;
             }}
@@ -300,7 +301,7 @@ class HistoryItem(QPushButton):
             return
 
         self.failure_icon_label.setPixmap(
-            load_svg_icon("circle-x.svg", self.theme.danger, 30)
+            load_svg_icon("circle-x.svg", "#ffffff", 30)
         )
         self.failure_icon_label.setStyleSheet("""
             QLabel {
