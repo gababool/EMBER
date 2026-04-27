@@ -39,3 +39,4 @@ outputs/
 # Inference results
 pipeline/llm/results/
 pipeline/object_detection/results/
+pipeline/object_detection/results/result.jpg
