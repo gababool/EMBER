@@ -40,20 +40,37 @@ def run (image_path: str, model_name: str, show: bool):
 
         if not image_path.exists():
              print(f"[IMAGE_ERROR] Image not found: {image_path}")
-             return
+             return {
+                  "passed": False,
+                  "error": f"Image not found: {image_path}",
+                  "image_path": str(image_path),
+                  "detections": [],
+             }
 
         try:
              model = get_model(model_name)
         except ModelLoadError as e:
              print(f"[MODEL ERROR] {e}")
-             return
+             return {
+                  "passed": False,
+                  "error": str(e),
+                  "image_path": str(image_path),
+                  "model_name": model_name,
+                  "detections": [],
+             }
         
         try:
              results = model(str(image_path))
              result = results[0]
         except Exception as e:
              print(f"[INFERENCE ERROR] failed to process image: {e}")
-             return
+             return {
+                  "passed": False,
+                  "error": f"failed to process image: {e}",
+                  "image_path": str(image_path),
+                  "model_name": model_name,
+                  "detections": [],
+             }
         
 
 
@@ -65,6 +82,8 @@ def run (image_path: str, model_name: str, show: bool):
 
         print(f"\nDetection boxes: {len(boxes)}")
 
+        detections = []
+
         if len(boxes) == 0:
              print("No detection boxes found")
         else : 
@@ -72,6 +91,12 @@ def run (image_path: str, model_name: str, show: bool):
                   conf = float(box.conf[0])
                   cls = int(box.cls[0])
                   label = CLASS_NAMES.get(cls, str(cls))
+                  detections.append({
+                       "index": i + 1,
+                       "label": label,
+                       "class_id": cls,
+                       "confidence": conf,
+                  })
 
                   print(f"{i+1}: {label} | confidence={conf:.2f}")
         if show:
@@ -82,6 +107,13 @@ def run (image_path: str, model_name: str, show: bool):
         annotated = result.plot()
         cv2.imwrite(str(output_path), annotated)
         print(f"\nAnnotated image saved to: {output_path}")  
+        return {
+             "passed": True,
+             "image_path": str(image_path),
+             "model_name": model_name,
+             "annotated_image_path": str(output_path),
+             "detections": detections,
+        }
 
 
 
