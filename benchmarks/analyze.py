@@ -455,7 +455,7 @@ def chart_memory_usage(rows, output_dir):
 
     ax.bar(x - width/2, model_sizes, width, label='Model Size (disk)', color='#BDBDBD')
     ax.bar(x + width/2, medians, width, label='RSS Memory (runtime)',
-           color=[get_color(m) for m in models])
+           color='#FF9800')
 
     ax.axhline(y=16, color='red', linestyle='--', alpha=0.5, label='16GB RAM limit')
     ax.set_ylabel('GB')
