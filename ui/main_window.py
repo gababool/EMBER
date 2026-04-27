@@ -2,9 +2,11 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 
 try:
     from ui.assets.design import DARK_THEME, LIGHT_THEME, Theme
+    from ui.components.pipeline_dashboard import PipelineDashboard
     from ui.components.top_bar import TopBar
 except ImportError:
     from assets.design import DARK_THEME, LIGHT_THEME, Theme
+    from components.pipeline_dashboard import PipelineDashboard
     from components.top_bar import TopBar
 
 class MainWindow(QMainWindow):
@@ -15,10 +17,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("EMBER")
         self.resize(1400, 900)
 
-        central = QWidget()
-        self.setCentralWidget(central)
+        self.central = QWidget()
+        self.central.setObjectName("MainWindowCentral")
+        self.setCentralWidget(self.central)
 
-        self.main_layout = QVBoxLayout(central)
+        self.main_layout = QVBoxLayout(self.central)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
@@ -26,8 +29,8 @@ class MainWindow(QMainWindow):
         self.top_bar.theme_button.clicked.connect(self.toggle_theme)
         self.main_layout.addWidget(self.top_bar)
 
-        self.content_widget = QWidget()
-        self.main_layout.addWidget(self.content_widget, 1)
+        self.dashboard = PipelineDashboard(self.theme)
+        self.main_layout.addWidget(self.dashboard, 1)
 
         # Example updates
         self.top_bar.set_version("V.0.3.1")
@@ -43,10 +46,10 @@ class MainWindow(QMainWindow):
     def apply_theme(self, theme: Theme):
         self.theme = theme
         self.top_bar.apply_theme(theme)
-        self.content_widget.setStyleSheet(f"""
-            QWidget {{
+        self.dashboard.apply_theme(theme)
+        self.central.setStyleSheet(f"""
+            QWidget#MainWindowCentral {{
                 background-color: {theme.bg_main};
-                color: {theme.text_primary};
             }}
         """)
 

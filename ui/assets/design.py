@@ -44,10 +44,10 @@ class Theme:
 DARK_THEME = Theme(
     name="dark",
     bg_topbar="#17191d",
-    bg_main="#23262b",
+    bg_main="#1a1d22",
     bg_panel="#1d2025",
-    bg_panel_alt="#282c33",
-    border="#3a3f48",
+    bg_panel_alt="#242930",
+    border="#272d35",
     text_primary="#edf2f6",
     text_muted="#aeb7c1",
     accent_orange="#ff8c2b",
