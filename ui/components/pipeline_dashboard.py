@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -82,9 +85,11 @@ class PipelineDashboard(QWidget):
         quality_layout.setContentsMargins(0, 0, 0, 0)
         quality_layout.setSpacing(10)
         self.quality_rows = []
+        self.quality_row_map = {}
         for check_name in ("Resolution", "Brightness", "Contrast", "Sharpness"):
             row = self._make_check_row(check_name)
             self.quality_rows.append(row)
+            self.quality_row_map[check_name.lower()] = row
             quality_layout.addWidget(row)
         quality_layout.addStretch()
 
@@ -127,6 +132,96 @@ class PipelineDashboard(QWidget):
         layout.addLayout(self.grid, 1)
 
         self.apply_theme(theme)
+
+    def reset_demo(self):
+        self.subtitle_label.setText("Selecting a random wildfire dataset image...")
+        self.start_button.setEnabled(False)
+        self.start_button.setText("Running")
+        for row in self.quality_rows:
+            row.set_state("pending")
+        self.image_placeholder.setPixmap(QPixmap())
+        self.image_placeholder.setText("Processed image will appear here")
+        self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
+
+    def set_demo_finished(self):
+        self.start_button.setEnabled(True)
+        self.start_button.setText("Start Demo")
+
+    def set_selected_image(self, image_path: str):
+        path = Path(image_path)
+        label = path.parent.name
+        self.subtitle_label.setText(f"Running demo image: {label}/{path.name}")
+
+    def set_pipeline_error(self, message: str):
+        self.reasoning_text.setPlainText(f"Pipeline error:\n{message}")
+
+    def handle_pipeline_event(self, event):
+        if event.event_type == "stage_started":
+            self._set_stage_running(event.stage_name)
+            return
+
+        if event.result is None:
+            return
+
+        result = event.result
+        if result.stage_name == "quality_screening":
+            self.set_quality_result(result.output)
+        elif result.stage_name == "object_detection":
+            self.set_detection_result(result.output)
+        elif result.stage_name == "llm_reasoning":
+            self.set_reasoning_result(result.output)
+
+        if not result.passed and result.error:
+            self.set_pipeline_error(result.error)
+
+    def set_quality_result(self, result: dict):
+        checks = result.get("checks", {})
+        for check_name, row in self.quality_row_map.items():
+            check_result = checks.get(check_name)
+            if check_result is None:
+                row.set_state("pending")
+                continue
+            row.set_state("passed" if check_result.get("passed") else "failed")
+
+    def set_detection_result(self, result: dict):
+        if not result.get("passed"):
+            self.image_placeholder.setPixmap(QPixmap())
+            self.image_placeholder.setText(result.get("error", "Object detection failed"))
+            return
+
+        annotated_path = result.get("annotated_image_path")
+        if not annotated_path:
+            self.image_placeholder.setText("No annotated image returned")
+            return
+
+        pixmap = QPixmap(annotated_path)
+        if pixmap.isNull():
+            self.image_placeholder.setText(f"Could not load image:\n{annotated_path}")
+            return
+
+        self.image_placeholder.setText("")
+        self.image_placeholder.setPixmap(
+            pixmap.scaled(
+                self.image_placeholder.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+    def set_reasoning_result(self, result: dict):
+        parsed = result.get("parsed", {})
+        if not parsed:
+            self.reasoning_text.setPlainText("No reasoning returned.")
+            return
+
+        classification = parsed.get("classification", "unknown")
+        reasoning = parsed.get("reasoning", "")
+        recommendation = parsed.get("recommendation", "")
+        self.reasoning_text.setPlainText(
+            f"Classification: {classification}\n\n"
+            f"Reasoning:\n{reasoning}\n\n"
+            f"Recommendation:\n{recommendation}"
+        )
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
@@ -184,6 +279,16 @@ class PipelineDashboard(QWidget):
         row = CheckRow(label, self.theme)
         return row
 
+    def _set_stage_running(self, stage_name: str):
+        if stage_name == "quality_screening":
+            for row in self.quality_rows:
+                row.set_state("running")
+        elif stage_name == "object_detection":
+            self.image_placeholder.setPixmap(QPixmap())
+            self.image_placeholder.setText("Running object detection...")
+        elif stage_name == "llm_reasoning":
+            self.reasoning_text.setPlainText("Running LLM reasoning...")
+
     @staticmethod
     def _label_style(color: str) -> str:
         return f"""
@@ -199,6 +304,7 @@ class CheckRow(QFrame):
     def __init__(self, text: str, theme: Theme = DEFAULT_THEME, parent=None):
         super().__init__(parent)
         self.theme = theme
+        self.state = "pending"
         self.setFixedHeight(42)
 
         layout = QHBoxLayout(self)
@@ -223,6 +329,29 @@ class CheckRow(QFrame):
 
         self.apply_theme(theme)
 
+    def set_state(self, state: str):
+        state = state.lower()
+        self.state = state
+        if state == "passed":
+            self.icon_label.setText("✓")
+            self.state_label.setText("Passed")
+            color = self.theme.accent_green
+        elif state == "failed":
+            self.icon_label.setText("✕")
+            self.state_label.setText("Failed")
+            color = self.theme.danger
+        elif state == "running":
+            self.icon_label.setText("…")
+            self.state_label.setText("Running")
+            color = self.theme.accent_blue
+        else:
+            self.icon_label.setText("○")
+            self.state_label.setText("Pending")
+            color = self.theme.text_muted
+
+        self.icon_label.setStyleSheet(self._label_style(color))
+        self.state_label.setStyleSheet(self._label_style(color))
+
     def apply_theme(self, theme: Theme):
         self.theme = theme
         self.setStyleSheet(f"""
@@ -232,9 +361,8 @@ class CheckRow(QFrame):
                 border-radius: 4px;
             }}
         """)
-        self.icon_label.setStyleSheet(self._label_style(theme.text_muted))
         self.text_label.setStyleSheet(self._label_style(theme.text_primary))
-        self.state_label.setStyleSheet(self._label_style(theme.text_muted))
+        self.set_state(self.state)
 
     @staticmethod
     def _label_style(color: str) -> str:
