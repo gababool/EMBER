@@ -126,3 +126,145 @@ class ClassificationBadge(QFrame):
                 border: none;
             }}
         """
+
+
+class CorrectnessBadge(QFrame):
+    def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.state = "pending"
+        self.expected_label = None
+        self.predicted_classification = None
+        self.setFixedHeight(58)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(12)
+
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(28, 28)
+        self.icon_label.setAlignment(Qt.AlignCenter)
+
+        text_layout = QHBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(10)
+
+        self.title_label = QLabel("Awaiting Check")
+        self.title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
+
+        self.detail_label = QLabel("Ground truth comparison")
+        self.detail_label.setFont(app_font(FONT_SIZE_SM))
+
+        text_layout.addWidget(self.title_label)
+        text_layout.addStretch()
+        text_layout.addWidget(self.detail_label)
+
+        layout.addWidget(self.icon_label)
+        layout.addLayout(text_layout, 1)
+
+        self.apply_theme(theme)
+
+    def reset(self):
+        self.state = "pending"
+        self.expected_label = None
+        self.predicted_classification = None
+        self._render()
+
+    def set_expected_label(self, expected_label: str):
+        self.expected_label = expected_label
+        self._update_state()
+
+    def set_prediction(self, classification: str):
+        self.predicted_classification = classification
+        self._update_state()
+
+    def apply_theme(self, theme: Theme):
+        self.theme = theme
+        self._render()
+
+    def _update_state(self):
+        if not self.expected_label or not self.predicted_classification:
+            self.state = "pending"
+            self._render()
+            return
+
+        expected = self.expected_label.lower()
+        predicted = self.predicted_classification.lower()
+        is_correct = (
+            expected == "fire"
+            and predicted == "fire_detected"
+        ) or (
+            expected == "nofire"
+            and predicted == "no_fire_detected"
+        )
+        self.state = "correct" if is_correct else "wrong"
+        self._render()
+
+    def _render(self):
+        color, title, detail, icon_name = self._correctness_style()
+        self.setStyleSheet(f"""
+            CorrectnessBadge {{
+                background-color: {self.theme.bg_panel_alt};
+                border: 1px solid {color};
+                border-radius: 5px;
+            }}
+        """)
+        self.title_label.setText(title)
+        self.title_label.setStyleSheet(self._label_style(color))
+        self.detail_label.setText(detail)
+        self.detail_label.setStyleSheet(self._label_style(self.theme.text_muted))
+
+        if icon_name:
+            self.icon_label.setPixmap(ClassificationBadge._load_icon(icon_name, color, 28))
+            self.icon_label.setText("")
+        else:
+            self.icon_label.setPixmap(QPixmap())
+            self.icon_label.setText("○")
+            self.icon_label.setStyleSheet(self._label_style(self.theme.text_muted))
+
+    def _correctness_style(self):
+        expected = self._display_expected_label()
+        if self.state == "correct":
+            return (
+                self.theme.accent_green,
+                "Correct",
+                f"Expected {expected}",
+                "circle-check.svg",
+            )
+        if self.state == "wrong":
+            return (
+                self.theme.danger,
+                "Wrong",
+                f"Expected {expected}",
+                "circle-x.svg",
+            )
+        if self.expected_label:
+            return (
+                self.theme.text_muted,
+                "Awaiting Check",
+                f"Expected {expected}",
+                None,
+            )
+        return (
+            self.theme.text_muted,
+            "Awaiting Check",
+            "Ground truth comparison",
+            None,
+        )
+
+    def _display_expected_label(self) -> str:
+        if self.expected_label == "fire":
+            return "fire"
+        if self.expected_label == "nofire":
+            return "no fire"
+        return "unknown"
+
+    @staticmethod
+    def _label_style(color: str) -> str:
+        return f"""
+            QLabel {{
+                color: {color};
+                background: transparent;
+                border: none;
+            }}
+        """

@@ -23,7 +23,7 @@ try:
         Theme,
         app_font,
     )
-    from ui.components.classification_badge import ClassificationBadge
+    from ui.components.classification_badge import ClassificationBadge, CorrectnessBadge
     from ui.components.result_panel import ResultPanel
 except ImportError:
     from assets.design import (
@@ -35,7 +35,7 @@ except ImportError:
         Theme,
         app_font,
     )
-    from components.classification_badge import ClassificationBadge
+    from components.classification_badge import ClassificationBadge, CorrectnessBadge
     from components.result_panel import ResultPanel
 
 
@@ -43,6 +43,7 @@ class PipelineDashboard(QWidget):
     def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
         super().__init__(parent)
         self.theme = theme
+        self.expected_label = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -110,7 +111,9 @@ class PipelineDashboard(QWidget):
         reasoning_layout.setSpacing(12)
 
         self.classification_badge = ClassificationBadge(theme)
+        self.correctness_badge = CorrectnessBadge(theme)
         reasoning_layout.addWidget(self.classification_badge)
+        reasoning_layout.addWidget(self.correctness_badge)
         reasoning_layout.addWidget(self.reasoning_text, 1)
 
         self.quality_panel = ResultPanel(
@@ -148,11 +151,13 @@ class PipelineDashboard(QWidget):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
         self.start_button.setText("Running")
+        self.expected_label = None
         for row in self.quality_rows:
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
         self.image_placeholder.setText("Processed image will appear here")
         self.classification_badge.set_classification("pending")
+        self.correctness_badge.reset()
         self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
 
     def set_demo_finished(self):
@@ -162,6 +167,8 @@ class PipelineDashboard(QWidget):
     def set_selected_image(self, image_path: str):
         path = Path(image_path)
         label = path.parent.name
+        self.expected_label = label
+        self.correctness_badge.set_expected_label(label)
         self.subtitle_label.setText(f"Running demo image: {label}/{path.name}")
 
     def set_pipeline_error(self, message: str):
@@ -230,6 +237,7 @@ class PipelineDashboard(QWidget):
         reasoning = parsed.get("reasoning", "")
         recommendation = parsed.get("recommendation", "")
         self.classification_badge.set_classification(classification)
+        self.correctness_badge.set_prediction(classification)
         self.reasoning_text.setPlainText(
             f"Reasoning:\n{reasoning}\n\n"
             f"Recommendation:\n{recommendation}"
@@ -270,6 +278,7 @@ class PipelineDashboard(QWidget):
             row.apply_theme(theme)
 
         self.classification_badge.apply_theme(theme)
+        self.correctness_badge.apply_theme(theme)
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
