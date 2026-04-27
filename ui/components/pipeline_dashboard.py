@@ -1,4 +1,7 @@
 from pathlib import Path
+import shutil
+import tempfile
+import uuid
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
@@ -24,6 +27,7 @@ try:
         app_font,
     )
     from ui.components.classification_badge import ClassificationBadge, CorrectnessBadge
+    from ui.components.history_strip import HistoryStrip
     from ui.components.result_panel import ResultPanel
 except ImportError:
     from assets.design import (
@@ -36,7 +40,11 @@ except ImportError:
         app_font,
     )
     from components.classification_badge import ClassificationBadge, CorrectnessBadge
+    from components.history_strip import HistoryStrip
     from components.result_panel import ResultPanel
+
+
+HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
 
 
 class PipelineDashboard(QWidget):
@@ -44,6 +52,8 @@ class PipelineDashboard(QWidget):
         super().__init__(parent)
         self.theme = theme
         self.expected_label = None
+        self.current_run = None
+        self.run_history = []
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -142,8 +152,12 @@ class PipelineDashboard(QWidget):
         self.grid.setColumnStretch(1, 2)
         self.grid.setColumnStretch(2, 2)
 
+        self.history_strip = HistoryStrip(theme)
+        self.history_strip.run_selected.connect(self.load_history_run)
+
         layout.addWidget(header)
         layout.addLayout(self.grid, 1)
+        layout.addWidget(self.history_strip)
 
         self.apply_theme(theme)
 
@@ -152,6 +166,15 @@ class PipelineDashboard(QWidget):
         self.start_button.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
+        self.current_run = {
+            "image_path": None,
+            "expected_label": None,
+            "quality_result": None,
+            "detection_result": None,
+            "reasoning_result": None,
+            "error": None,
+            "history_image_path": None,
+        }
         for row in self.quality_rows:
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
@@ -163,15 +186,21 @@ class PipelineDashboard(QWidget):
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
         self.start_button.setText("Start Demo")
+        self._save_current_run_to_history()
 
     def set_selected_image(self, image_path: str):
         path = Path(image_path)
         label = path.parent.name
         self.expected_label = label
+        if self.current_run is not None:
+            self.current_run["image_path"] = str(path)
+            self.current_run["expected_label"] = label
         self.correctness_badge.set_expected_label(label)
         self.subtitle_label.setText(f"Running demo image: {label}/{path.name}")
 
     def set_pipeline_error(self, message: str):
+        if self.current_run is not None:
+            self.current_run["error"] = message
         self.reasoning_text.setPlainText(f"Pipeline error:\n{message}")
 
     def handle_pipeline_event(self, event):
@@ -194,6 +223,8 @@ class PipelineDashboard(QWidget):
             self.set_pipeline_error(result.error)
 
     def set_quality_result(self, result: dict):
+        if self.current_run is not None:
+            self.current_run["quality_result"] = result
         checks = result.get("checks", {})
         for check_name, row in self.quality_row_map.items():
             check_result = checks.get(check_name)
@@ -203,6 +234,8 @@ class PipelineDashboard(QWidget):
             row.set_state("passed" if check_result.get("passed") else "failed")
 
     def set_detection_result(self, result: dict):
+        if self.current_run is not None:
+            self.current_run["detection_result"] = result
         if not result.get("passed"):
             self.image_placeholder.setPixmap(QPixmap())
             self.image_placeholder.setText(result.get("error", "Object detection failed"))
@@ -228,6 +261,8 @@ class PipelineDashboard(QWidget):
         )
 
     def set_reasoning_result(self, result: dict):
+        if self.current_run is not None:
+            self.current_run["reasoning_result"] = result
         parsed = result.get("parsed", {})
         if not parsed:
             self.reasoning_text.setPlainText("No reasoning returned.")
@@ -279,6 +314,7 @@ class PipelineDashboard(QWidget):
 
         self.classification_badge.apply_theme(theme)
         self.correctness_badge.apply_theme(theme)
+        self.history_strip.apply_theme(theme)
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
@@ -310,6 +346,104 @@ class PipelineDashboard(QWidget):
             self.image_placeholder.setText("Running object detection...")
         elif stage_name == "llm_reasoning":
             self.reasoning_text.setPlainText("Running LLM reasoning...")
+
+    def _save_current_run_to_history(self):
+        if not self.current_run or not self.current_run.get("image_path"):
+            return
+
+        run_record = dict(self.current_run)
+        detection_result = run_record.get("detection_result") or {}
+        annotated_path = detection_result.get("annotated_image_path")
+        history_image_path = self._copy_history_image(annotated_path)
+        if history_image_path is None:
+            history_image_path = self._copy_history_image(run_record.get("image_path"))
+
+        run_record["history_image_path"] = str(history_image_path) if history_image_path else None
+        run_record["classification"] = self._classification_from_run(run_record)
+        self.run_history.append(run_record)
+        self.current_run = None
+        self.history_strip.add_run(run_record)
+
+    def load_history_run(self, index: int):
+        if index < 0 or index >= len(self.run_history):
+            return
+
+        self.current_run = None
+        run_record = self.run_history[index]
+        image_path = Path(run_record.get("image_path", ""))
+        expected_label = run_record.get("expected_label")
+        self.expected_label = expected_label
+        self.subtitle_label.setText(
+            f"Loaded history image: {expected_label}/{image_path.name}"
+        )
+
+        self.reset_loaded_state(expected_label)
+
+        quality_result = run_record.get("quality_result")
+        if quality_result:
+            self.set_quality_result(quality_result)
+
+        detection_result = dict(run_record.get("detection_result") or {})
+        if run_record.get("history_image_path"):
+            detection_result["annotated_image_path"] = run_record["history_image_path"]
+            detection_result["passed"] = detection_result.get("passed", True)
+        if detection_result:
+            self.set_detection_result(detection_result)
+        elif run_record.get("image_path"):
+            self._load_image_into_processed_box(run_record["image_path"])
+
+        reasoning_result = run_record.get("reasoning_result")
+        if reasoning_result:
+            self.set_reasoning_result(reasoning_result)
+        elif run_record.get("error"):
+            self.reasoning_text.setPlainText(f"Pipeline error:\n{run_record['error']}")
+
+        self.current_run = None
+
+    def reset_loaded_state(self, expected_label: str | None):
+        for row in self.quality_rows:
+            row.set_state("pending")
+        self.image_placeholder.setPixmap(QPixmap())
+        self.image_placeholder.setText("Processed image will appear here")
+        self.classification_badge.set_classification("pending")
+        self.correctness_badge.reset()
+        if expected_label:
+            self.correctness_badge.set_expected_label(expected_label)
+        self.reasoning_text.setPlainText("No LLM reasoning stored for this run.")
+
+    def _load_image_into_processed_box(self, image_path: str):
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+            self.image_placeholder.setText("Could not load image")
+            return
+        self.image_placeholder.setText("")
+        self.image_placeholder.setPixmap(
+            pixmap.scaled(
+                self.image_placeholder.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+
+    @staticmethod
+    def _copy_history_image(image_path: str | None):
+        if not image_path:
+            return None
+
+        source = Path(image_path)
+        if not source.exists():
+            return None
+
+        HISTORY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+        target = HISTORY_IMAGE_DIR / f"{uuid.uuid4().hex}{source.suffix}"
+        shutil.copy2(source, target)
+        return target
+
+    @staticmethod
+    def _classification_from_run(run_record: dict) -> str:
+        reasoning_result = run_record.get("reasoning_result") or {}
+        parsed = reasoning_result.get("parsed", {})
+        return parsed.get("classification", "pending")
 
     @staticmethod
     def _label_style(color: str) -> str:
