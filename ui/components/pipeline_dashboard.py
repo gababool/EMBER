@@ -23,6 +23,7 @@ try:
         Theme,
         app_font,
     )
+    from ui.components.classification_badge import ClassificationBadge
     from ui.components.result_panel import ResultPanel
 except ImportError:
     from assets.design import (
@@ -34,6 +35,7 @@ except ImportError:
         Theme,
         app_font,
     )
+    from components.classification_badge import ClassificationBadge
     from components.result_panel import ResultPanel
 
 
@@ -102,6 +104,15 @@ class PipelineDashboard(QWidget):
         self.reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
         self.reasoning_text.setFont(app_font(FONT_SIZE_SM))
 
+        self.reasoning_body = QWidget()
+        reasoning_layout = QVBoxLayout(self.reasoning_body)
+        reasoning_layout.setContentsMargins(0, 0, 0, 0)
+        reasoning_layout.setSpacing(12)
+
+        self.classification_badge = ClassificationBadge(theme)
+        reasoning_layout.addWidget(self.classification_badge)
+        reasoning_layout.addWidget(self.reasoning_text, 1)
+
         self.quality_panel = ResultPanel(
             "Quality Screening",
             "Checklist for image suitability before detection.",
@@ -117,7 +128,7 @@ class PipelineDashboard(QWidget):
         self.reasoning_panel = ResultPanel(
             "LLM Reasoning",
             "Structured assessment and recommendation.",
-            self.reasoning_text,
+            self.reasoning_body,
             theme,
         )
 
@@ -141,6 +152,7 @@ class PipelineDashboard(QWidget):
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
         self.image_placeholder.setText("Processed image will appear here")
+        self.classification_badge.set_classification("pending")
         self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
 
     def set_demo_finished(self):
@@ -217,8 +229,8 @@ class PipelineDashboard(QWidget):
         classification = parsed.get("classification", "unknown")
         reasoning = parsed.get("reasoning", "")
         recommendation = parsed.get("recommendation", "")
+        self.classification_badge.set_classification(classification)
         self.reasoning_text.setPlainText(
-            f"Classification: {classification}\n\n"
             f"Reasoning:\n{reasoning}\n\n"
             f"Recommendation:\n{recommendation}"
         )
@@ -257,6 +269,7 @@ class PipelineDashboard(QWidget):
         for row in self.quality_rows:
             row.apply_theme(theme)
 
+        self.classification_badge.apply_theme(theme)
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
