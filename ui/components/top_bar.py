@@ -20,6 +20,7 @@ try:
     )
     from ui.components.status_item import StatusItem
     from ui.components.stat_meter import StatMeter
+    from ui.components.icon_utils import load_svg_asset
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -32,6 +33,7 @@ except ImportError:
     )
     from components.status_item import StatusItem
     from components.stat_meter import StatMeter
+    from components.icon_utils import load_svg_asset
 
 
 class TopBar(QWidget):
@@ -54,15 +56,27 @@ class TopBar(QWidget):
         logo_widget = QWidget()
         logo_layout = QVBoxLayout(logo_widget)
         logo_layout.setContentsMargins(0, 0, 0, 0)
-        logo_layout.setSpacing(0)
+        logo_layout.setSpacing(2)
+
+        logo_row = QWidget()
+        logo_row_layout = QHBoxLayout(logo_row)
+        logo_row_layout.setContentsMargins(0, 0, 0, 0)
+        logo_row_layout.setSpacing(8)
+
+        self.logo_icon_label = QLabel()
+        self.logo_icon_label.setFixedSize(30, 30)
+        self.logo_icon_label.setScaledContents(True)
 
         self.logo_label = QLabel("EMBER")
         self.logo_label.setFont(app_font(FONT_SIZE_XL, bold=True))
 
+        logo_row_layout.addWidget(self.logo_icon_label)
+        logo_row_layout.addWidget(self.logo_label)
+
         self.version_label = QLabel("V.0.3.1")
         self.version_label.setFont(app_font(FONT_SIZE_XS))
 
-        logo_layout.addWidget(self.logo_label)
+        logo_layout.addWidget(logo_row)
         logo_layout.addWidget(self.version_label)
 
         row_layout.addWidget(logo_widget)
@@ -115,6 +129,7 @@ class TopBar(QWidget):
                 border: none;
             }}
         """)
+        self.logo_icon_label.setPixmap(load_svg_asset("EMBER_LOGO.svg", 30))
         self.logo_label.setStyleSheet(self._label_style(theme.accent_orange))
         self.version_label.setStyleSheet(self._label_style(theme.text_muted))
         self.wind_item.setIconColor(theme.accent_cyan)

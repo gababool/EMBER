@@ -171,7 +171,9 @@ class HistoryItem(QPushButton):
         self.title_label = QLabel(f"{index + 1}. {expected}")
         self.title_label.setFont(app_font(FONT_SIZE_SM, bold=True))
 
+        model = run_record.get("llm_model", "")
         status = run_record.get("classification", "pending").replace("_", " ")
+        status = f"{model} · {status}" if model else status
         self.subtitle_label = QLabel(status)
         self.subtitle_label.setFont(app_font(FONT_SIZE_XS))
         self.subtitle_label.setWordWrap(True)
@@ -183,6 +185,12 @@ class HistoryItem(QPushButton):
         layout.addWidget(thumb_frame)
         layout.addWidget(text_block, 1)
 
+        self.failure_icon_label = QLabel(self)
+        self.failure_icon_label.setFixedSize(30, 30)
+        self.failure_icon_label.move(56, 19)
+        self.failure_icon_label.setAlignment(Qt.AlignCenter)
+        self.failure_icon_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+
         self._set_thumbnail()
         self.apply_theme(theme)
 
@@ -193,9 +201,11 @@ class HistoryItem(QPushButton):
     def apply_theme(self, theme: Theme):
         self.theme = theme
         border = theme.accent_orange if self.selected else theme.border
+        background = "rgba(255, 90, 102, 153)" if self._quality_failed() else theme.bg_panel_alt
+        border = theme.danger if self._quality_failed() else border
         self.setStyleSheet(f"""
             HistoryItem {{
-                background-color: {theme.bg_panel_alt};
+                background-color: {background};
                 border: 1px solid {border};
                 border-radius: 5px;
                 text-align: left;
@@ -225,6 +235,7 @@ class HistoryItem(QPushButton):
         self.correctness_icon_label.setStyleSheet(badge_style)
         self._set_guess_icon()
         self._set_correctness_icon()
+        self._set_failure_overlay()
 
     def _set_thumbnail(self):
         image_path = self.run_record.get("history_image_path") or self.run_record.get("image_path")
@@ -243,6 +254,7 @@ class HistoryItem(QPushButton):
         )
         self._set_guess_icon()
         self._set_correctness_icon()
+        self._set_failure_overlay()
 
     def _set_guess_icon(self):
         classification = self.run_record.get("classification")
@@ -280,6 +292,27 @@ class HistoryItem(QPushButton):
         ):
             return "correct"
         return "wrong"
+
+    def _set_failure_overlay(self):
+        if not self._quality_failed():
+            self.failure_icon_label.setPixmap(QPixmap())
+            self.failure_icon_label.hide()
+            return
+
+        self.failure_icon_label.setPixmap(
+            load_svg_icon("circle-x.svg", self.theme.danger, 30)
+        )
+        self.failure_icon_label.setStyleSheet("""
+            QLabel {
+                background: transparent;
+                border: none;
+            }
+        """)
+        self.failure_icon_label.show()
+        self.failure_icon_label.raise_()
+
+    def _quality_failed(self):
+        return bool(self.run_record.get("quality_failed"))
 
     @staticmethod
     def _label_style(color: str) -> str:

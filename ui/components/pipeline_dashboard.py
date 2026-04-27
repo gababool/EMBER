@@ -28,7 +28,9 @@ try:
     )
     from ui.components.classification_badge import ClassificationBadge, CorrectnessBadge
     from ui.components.history_strip import HistoryStrip
+    from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -41,7 +43,9 @@ except ImportError:
     )
     from components.classification_badge import ClassificationBadge, CorrectnessBadge
     from components.history_strip import HistoryStrip
+    from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
 
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
@@ -85,7 +89,12 @@ class PipelineDashboard(QWidget):
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.setFixedHeight(40)
 
+        self.model_select = ModelComboBox(theme)
+        for model_tag in BENCHMARK_MODEL_TAGS:
+            self.model_select.addItem(model_tag, model_tag)
+
         header_layout.addWidget(title_block, 1)
+        header_layout.addWidget(self.model_select)
         header_layout.addWidget(self.start_button)
 
         self.grid = QGridLayout()
@@ -164,8 +173,13 @@ class PipelineDashboard(QWidget):
     def reset_demo(self):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
+        self.model_select.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
+        self._start_current_run_record()
+        self._reset_stage_views()
+
+    def _start_current_run_record(self):
         self.current_run = {
             "image_path": None,
             "expected_label": None,
@@ -174,7 +188,10 @@ class PipelineDashboard(QWidget):
             "reasoning_result": None,
             "error": None,
             "history_image_path": None,
+            "llm_model": self.selected_llm_model(),
         }
+
+    def _reset_stage_views(self):
         for row in self.quality_rows:
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
@@ -185,10 +202,18 @@ class PipelineDashboard(QWidget):
 
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
+        self.model_select.setEnabled(True)
         self.start_button.setText("Start Demo")
         self._save_current_run_to_history()
 
+    def selected_llm_model(self) -> str:
+        return self.model_select.currentData()
+
     def set_selected_image(self, image_path: str):
+        if self.current_run is None:
+            self._start_current_run_record()
+            self._reset_stage_views()
+
         path = Path(image_path)
         label = path.parent.name
         self.expected_label = label
@@ -214,6 +239,11 @@ class PipelineDashboard(QWidget):
         result = event.result
         if result.stage_name == "quality_screening":
             self.set_quality_result(result.output)
+            if not result.passed:
+                if result.error:
+                    self.set_pipeline_error(result.error)
+                self._save_current_run_to_history(quality_failed=True)
+                return
         elif result.stage_name == "object_detection":
             self.set_detection_result(result.output)
         elif result.stage_name == "llm_reasoning":
@@ -305,6 +335,7 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.accent_cyan};
             }}
         """)
+        self.model_select.apply_theme(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
             panel.apply_theme(theme)
@@ -347,11 +378,12 @@ class PipelineDashboard(QWidget):
         elif stage_name == "llm_reasoning":
             self.reasoning_text.setPlainText("Running LLM reasoning...")
 
-    def _save_current_run_to_history(self):
+    def _save_current_run_to_history(self, quality_failed: bool = False):
         if not self.current_run or not self.current_run.get("image_path"):
             return
 
         run_record = dict(self.current_run)
+        run_record["quality_failed"] = quality_failed
         detection_result = run_record.get("detection_result") or {}
         annotated_path = detection_result.get("annotated_image_path")
         history_image_path = self._copy_history_image(annotated_path)
