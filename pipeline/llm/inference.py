@@ -15,7 +15,16 @@ MODELS = {
     "ministral": "ministral-3:3b",
     "qwen3": "qwen3-vl:4b",
     "gemma4": "gemma4:e2b",
+    "ministral-3:3b": "ministral-3:3b",
+    "qwen3-vl:4b": "qwen3-vl:4b",
+    "gemma4:e2b": "gemma4:e2b",
 }
+
+BENCHMARK_MODEL_TAGS = [
+    "ministral-3:3b",
+    "qwen3-vl:4b",
+    "gemma4:e2b",
+]
 
 
 class LLMInferenceResult(BaseModel):
