@@ -8,16 +8,19 @@ Usage:
 """
 
 import argparse
+from pathlib import Path
 from src.llm_inference import call_llm, load_system_prompt
 from src.metrics import evaluate_accuracy, count_words, get_model_size
 from src.data_loader import get_ground_truth
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / 'c1v1prompt.txt'
 
 def main():
     parser = argparse.ArgumentParser(description='Quick single-image LLM test')
     parser.add_argument('image', help='Path to image file')
     parser.add_argument('--model', default='ministral-3:3b', help='Ollama model tag (default: ministral-3:3b)')
-    parser.add_argument('--prompt', default='prompts/prompt.txt', help='System prompt file (default: prompts/prompt.txt)')
+    parser.add_argument('--prompt', default=DEFAULT_SYSTEM_PROMPT, help='System prompt file (default: pipeline/llm/prompts/c1v1prompt.txt)')
     args = parser.parse_args()
 
     system_prompt = load_system_prompt(args.prompt)

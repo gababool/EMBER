@@ -89,6 +89,11 @@ def run_quality_screening(
             lambda img: check_sharpness(
                 img,
                 min_sharpness=config.min_sharpness,
+                min_texture=config.min_texture,
+                tile_size=config.tile_size,
+                min_valid_tile_fraction=config.min_valid_tile_fraction,
+                min_sharp_tile_fraction=config.min_sharp_tile_fraction,
+                sharpness_percentile=config.sharpness_percentile,
             ),
         ),
     ]

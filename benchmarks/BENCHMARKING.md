@@ -1,12 +1,12 @@
 # Benchmarking
 
-Benchmarks multimodal LLMs on wildfire detection images using Ollama, with optional YOLO preprocessing.
+Benchmarks multimodal LLMs on wildfire detection images using Ollama, with optional YOLO preprocessing. The benchmark invokes the LLM with Ollama's structured-output feature, enforcing JSON output matching the pipeline's schema (`classification`, `reasoning`, `recommendation`).
 
 ## Prerequisites
 
 - [Ollama](https://ollama.com) running (`ollama serve`)
 - Models pulled (e.g. `ollama pull ministral-3:3b`)
-- `uv add ollama matplotlib`
+- `uv add ollama pydantic matplotlib`
 - For YOLO preprocessing: `ultralytics` and `opencv-python` (installed as part of the object detection module)
 
 ## Models
@@ -26,6 +26,18 @@ The three thesis-core models are used by default. All models listed can be selec
 
 Images are expected in a directory with `fire/` and `nofire/` subfolders (ground truth is inferred from folder name). Filename prefixes (`fire_*.jpg` / `nofire_*.jpg`) are supported as a fallback. Subdirectories above `fire/` and `nofire/` (e.g. `test/`, `train/`, `val/`) are traversed automatically.
 
+## Prompts
+
+The benchmark loads a system prompt from a text file. The default points to the canonical Cycle 1 prompt:
+
+```
+pipeline/llm/prompts/c1v1prompt.txt
+```
+
+To evaluate alternative prompts, override the default with `--system-prompt`. The system prompt is the only instructional text sent to the model; the user message carries the image alone.
+
+The prompt must instruct the model to return JSON matching the schema fields `classification`, `reasoning`, `recommendation`, with `classification` being one of `fire_detected`, `no_fire_detected`, or `uncertain`. Ollama's structured-output enforcement guarantees schema-valid JSON at the API level, but the prompt still needs to describe the task so the model populates the fields meaningfully.
+
 ## Quick Test
 
 Run one model on one image:
@@ -37,24 +49,27 @@ uv run python quick_test.py ../dataset/wildfire-dataset/the_wildfire_dataset_2n_
 
 ## Benchmarking
 
-Two modes, both accept `--dry-run` to preview, `--seed` for reproducible sampling, and `--with-yolo` to enable YOLO preprocessing before LLM inference.
+Two modes, both accept `--dry-run` to preview, `--seed` for reproducible sampling, `--system-prompt` to override the default prompt, and `--with-yolo` to enable YOLO preprocessing before LLM inference.
 
 ### Accuracy
 
 All (or sampled) images, no cooldown. Measures classification correctness.
 
 ```bash
-# All images in the dataset, default three models
-uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt
+# All images in the dataset, default three models, default prompt
+uv run python run_benchmark.py accuracy --images ../dataset
 
 # Random balanced sample of 100 images
-uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --num-images 100
+uv run python run_benchmark.py accuracy --images ../dataset --num-images 100
 
 # Specific models only (any from the models table above)
-uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --models ministral-3:8b qwen3-vl:8b
+uv run python run_benchmark.py accuracy --images ../dataset --models ministral-3:8b qwen3-vl:8b
+
+# Override system prompt
+uv run python run_benchmark.py accuracy --images ../dataset --system-prompt ../pipeline/llm/prompts/c1v2prompt.txt
 
 # With YOLO preprocessing
-uv run python run_benchmark.py accuracy --images ../dataset --prompt prompts/prompt.txt --with-yolo
+uv run python run_benchmark.py accuracy --images ../dataset --with-yolo
 ```
 
 Results → `results/accuracy/accuracy_{model}.csv`. Existing files are not overwritten — delete them manually to rerun.
@@ -65,19 +80,19 @@ Balanced random sample with cooldowns to prevent thermal throttling. Measures in
 
 ```bash
 # Default: 3 images, 10s between images, 90s between models
-uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt
+uv run python run_benchmark.py performance --images ../dataset
 
 # Larger sample, longer cooldowns for fanless machines
-uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt --num-images 5 --cooldown 0 --model-cooldown 180
+uv run python run_benchmark.py performance --images ../dataset --num-images 5 --cooldown 0 --model-cooldown 180
 
 # With YOLO preprocessing
-uv run python run_benchmark.py performance --images ../dataset --prompt prompts/prompt.txt --with-yolo
+uv run python run_benchmark.py performance --images ../dataset --with-yolo
 ```
 
 Each run produces two files per model:
 
 - `results/performance/performance_{model}_{timestamp}.csv` — per-inference measurements
-- `results/performance/performance_{model}_{timestamp}.json` — companion file with hardware specs (chip, RAM, OS, Python, Ollama version) and the run configuration
+- `results/performance/performance_{model}_{timestamp}.json` — companion file with hardware specs (chip, RAM, OS, Python, Ollama version), the run configuration, and the prompt file used
 
 Run CSVs are timestamped so multiple runs accumulate for better statistics. The JSON companion allows comparing results across different laptops.
 
@@ -86,6 +101,10 @@ Run CSVs are timestamped so multiple runs accumulate for better statistics. The 
 When `--with-yolo` is set, each image is passed through the YOLO object detection stage before reaching the LLM. The annotated image (with bounding boxes for fire/smoke) becomes the LLM input. `--yolo-model` selects which weights to use (default: `best`).
 
 YOLO timing and detection count are logged as separate CSV columns (`yolo_duration_s`, `yolo_detection_count`) so YOLO cost does not get lumped into LLM timing metrics. This allows analysis of whether YOLO preprocessing affects LLM inference time, accuracy, or both.
+
+### Invalid Output Handling
+
+The benchmark validates each LLM response against the schema. If a model returns output that fails validation (very rare with Ollama's `format` enforcement, but possible), the benchmark logs an error for that image and continues to the next. No partial row is written to the CSV.
 
 ## Analysis
 
@@ -116,7 +135,6 @@ Also prints a summary table with accuracy, precision, recall, F1, MCC, tokens/se
 
 ```
 benchmarks/
-├── prompts/prompt.txt
 ├── src/
 │   ├── data_loader.py
 │   ├── hardware.py
@@ -131,6 +149,8 @@ benchmarks/
 │   └── performance/
 └── charts/           # gitignored
 ```
+
+The system prompt file lives under `pipeline/llm/prompts/` and is shared between the pipeline and the benchmark.
 
 ## Platform Notes
 

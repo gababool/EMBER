@@ -25,7 +25,7 @@ uv sync
 ## Usage
 
 The script can be run from anywhere.
-The default prompt.txt is resolved relative to the script location.
+The default system prompt is loaded from `pipeline/llm/prompts/c1v1prompt.txt`.
 
 ## Run model on one image
 
@@ -60,7 +60,7 @@ uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model all \
   --context-file pipeline/llm/context.txt \
-  --output results.json
+  --output-json results.json
 ```
 
 ## Use a custom prompt file
@@ -69,5 +69,5 @@ uv run python pipeline/llm/inference.py \
 uv run python pipeline/llm/inference.py \
   --image "pipeline/llm/yolo_annotated_test.jpg" \
   --model ministral \
-  --prompt-file pipeline/llm/prompt.txt
+  --prompt-file pipeline/llm/prompts/c1v1prompt.txt
 ```

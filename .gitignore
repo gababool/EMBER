@@ -35,3 +35,6 @@ yolo11n.pt
 evidence/
 pipeline/llm/yolo_annotated_test.jpg
 outputs/
+
+# Inference results
+pipeline/llm/results/
