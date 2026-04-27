@@ -1,62 +1,57 @@
-# To run, from repo root:
-# uv run python -m pipeline/run_pipeline.py <image_path> --yolo-model best --llm-model ministral
-
-# Example:
+# To run from the repo root:
 # uv run python -m pipeline.run_pipeline pipeline/object_detection/test_image.jpg --yolo-model best --llm-model ministral
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
-# make both stage modules importable
-PIPELINE_DIR = Path(__file__).resolve().parent
-
-import argparse
-
-from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
-from pipeline.object_detection.run import run as run_detection
-from pipeline.llm.inference import run_llm_inference, load_system_prompt
-from pipeline.quality_screening.screening import run_quality_screening_from_path
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "c1v1prompt.txt"
+from pipeline.service import create_default_pipeline
 
 
 def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
+    runner = create_default_pipeline(yolo_model=yolo_model, llm_model=llm_model)
+    stage_results = []
 
-    print("STAGE 1: QUALITY SCREENING")
-    screening_result = run_quality_screening_from_path(image_path)
-    if not screening_result["passed"]:
-        failed_checks = screening_result.get("failed_checks", [])
-        checks = screening_result.get("checks", {})
+    for event in runner.iter_events(image_path):
+        if event.event_type == "stage_started":
+            print(f"\nSTAGE: {event.label.upper()}")
+            continue
 
-        print(
-            f"[PIPELINE ERROR] Image failed quality screening. "
-            f"Failed checks: {', '.join(failed_checks) if failed_checks else 'unknown'}"
-        )
-        print("[PIPELINE ERROR] Full screening result:")
-        print(json.dumps(checks, indent=2, default=str))
-        return
+        if event.result is None:
+            continue
 
-    print("STAGE 2: OBJECT DETECTION")
-    run_detection(image_path, yolo_model, show=False)
+        result = event.result
+        stage_results.append(result)
 
-    annotated_image_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
+        if result.passed:
+            print(f"[OK] {result.label}")
+        else:
+            print(f"[PIPELINE ERROR] {result.error or result.label}")
 
-    if not annotated_image_path.exists():
-        print("[PIPELINE ERROR] Annotated image not found — object detection may have failed.")
-        return
+        if result.stage_name == "quality_screening":
+            print(json.dumps(result.output.get("checks", {}), indent=2, default=str))
 
-    print("\nSTAGE 3: LLM INFERENCE")
-    system_prompt = load_system_prompt(str(DEFAULT_PROMPT_FILE))
-    result = run_llm_inference(
-        model_name=llm_model,
-        image_path=str(annotated_image_path),
-        system_prompt=system_prompt,
-        prompt_file=str(DEFAULT_PROMPT_FILE),
-    )
+        if result.stage_name == "object_detection":
+            print(json.dumps(result.output.get("detections", []), indent=2, default=str))
+            print(f"Annotated image: {result.output.get('annotated_image_path')}")
 
-    print(json.dumps(result["parsed"], indent=2))
+        if result.stage_name == "llm_reasoning":
+            print(json.dumps(result.output.get("parsed", {}), indent=2, default=str))
+
+    return {
+        "image_path": str(Path(image_path).resolve()),
+        "passed": all(result.passed for result in stage_results),
+        "stages": [
+            {
+                "stage_name": result.stage_name,
+                "label": result.label,
+                "passed": result.passed,
+                "error": result.error,
+                "output": result.output,
+            }
+            for result in stage_results
+        ],
+    }
 
 
 if __name__ == "__main__":
