@@ -8,6 +8,18 @@ Usage:
 
 Reads all CSV files from accuracy and performance result directories,
 produces PNG charts ready for Overleaf.
+
+Ambiguous handling
+------------------
+Ambiguous predictions (the model returned `uncertain`) are handled as a
+separate category rather than folded into correct/incorrect. Three numbers
+are reported per model:
+  - Raw accuracy         : correct / total. Ambiguous counted as incorrect.
+  - Confident accuracy   : correct / confident. Ambiguous excluded.
+  - Ambiguous rate       : ambiguous / total.
+
+Precision, recall, F1, MCC, and the confusion matrix are computed on
+confident predictions only. Chart titles make this explicit.
 """
 
 import argparse
@@ -46,6 +58,11 @@ def group_by_model(rows):
     return groups
 
 
+def is_ambiguous(row):
+    """True if the row represents an ambiguous/uncertain prediction."""
+    return row['llm_classification'] == 'ambiguous'
+
+
 # ── Chart Helpers ────────────────────────────────────────────────────
 
 MODEL_COLORS = {
@@ -57,6 +74,11 @@ MODEL_COLORS = {
     'gemma4:e2b': '#FF9800',
     'gemma4:e4b': '#E65100',
 }
+
+AMBIGUOUS_COLOR = '#9E9E9E'
+CORRECT_COLOR = '#4CAF50'
+INCORRECT_COLOR = '#F44336'
+
 
 def get_color(model):
     return MODEL_COLORS.get(model, '#888888')
@@ -71,14 +93,34 @@ def save_chart(fig, output_dir, filename):
 
 # ── Classification Metrics ───────────────────────────────────────────
 
+def count_outcomes(rows):
+    """Count correct, incorrect, and ambiguous rows."""
+    correct = incorrect = ambiguous = 0
+    for r in rows:
+        if is_ambiguous(r):
+            ambiguous += 1
+        elif r['correct'] == 'True':
+            correct += 1
+        else:
+            incorrect += 1
+    return correct, incorrect, ambiguous
+
+
 def compute_metrics(rows):
     """
-    Compute TP, FP, TN, FN, precision, recall, F1.
+    Compute confusion counts and classification metrics on confident
+    predictions only. Ambiguous rows are excluded from all computations here
+    and reported separately via count_outcomes.
+
     'fire' is the positive class.
-    Ambiguous responses count as incorrect (FN if ground truth is fire, FP if no_fire).
     """
     tp = fp = tn = fn = 0
+    ambiguous = 0
     for r in rows:
+        if is_ambiguous(r):
+            ambiguous += 1
+            continue
+
         gt = r['ground_truth']
         pred = r['llm_classification']
 
@@ -90,24 +132,35 @@ def compute_metrics(rows):
             tn += 1
         elif gt == 'fire' and pred == 'no_fire':
             fn += 1
-        elif gt == 'fire':  # ambiguous → treated as missed fire
-            fn += 1
-        else:  # gt == 'no_fire', pred == 'ambiguous'
-            fp += 1
 
-    total = tp + fp + tn + fn
-    accuracy = (tp + tn) / total if total > 0 else 0
+    confident_total = tp + fp + tn + fn
+    total = confident_total + ambiguous
+
+    # Confident-prediction accuracy (ambiguous excluded).
+    confident_accuracy = (tp + tn) / confident_total if confident_total > 0 else 0
+
+    # Raw accuracy (ambiguous counted as incorrect).
+    raw_accuracy = (tp + tn) / total if total > 0 else 0
+
+    # Ambiguous rate.
+    ambiguous_rate = ambiguous / total if total > 0 else 0
+
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
 
-    # Matthews Correlation Coefficient — range [-1, 1], robust to class imbalance
+    # Matthews Correlation Coefficient — range [-1, 1], robust to class imbalance.
     mcc_denom = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
     mcc = (tp * tn - fp * fn) / mcc_denom if mcc_denom > 0 else 0
 
     return {
         'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn,
-        'accuracy': accuracy,
+        'ambiguous': ambiguous,
+        'total': total,
+        'confident_total': confident_total,
+        'raw_accuracy': raw_accuracy,
+        'confident_accuracy': confident_accuracy,
+        'ambiguous_rate': ambiguous_rate,
         'precision': precision,
         'recall': recall,
         'f1': f1,
@@ -118,42 +171,54 @@ def compute_metrics(rows):
 # ── Accuracy Charts ──────────────────────────────────────────────────
 
 def chart_accuracy(rows, output_dir):
-    """Bar chart: accuracy % per model."""
+    """Stacked bar chart: correct / incorrect / ambiguous per model."""
     groups = group_by_model(rows)
     models = sorted(groups.keys())
 
-    accuracies = []
-    ambiguous_rates = []
+    correct_pcts = []
+    incorrect_pcts = []
+    ambig_pcts = []
     for model in models:
-        model_rows = groups[model]
-        total = len(model_rows)
-        correct = sum(1 for r in model_rows if r['correct'] == 'True')
-        ambiguous = sum(1 for r in model_rows if r['correct'] == 'None')
-        accuracies.append(correct / total * 100 if total > 0 else 0)
-        ambiguous_rates.append(ambiguous / total * 100 if total > 0 else 0)
+        c, i, a = count_outcomes(groups[model])
+        total = c + i + a
+        if total == 0:
+            correct_pcts.append(0)
+            incorrect_pcts.append(0)
+            ambig_pcts.append(0)
+            continue
+        correct_pcts.append(c / total * 100)
+        incorrect_pcts.append(i / total * 100)
+        ambig_pcts.append(a / total * 100)
 
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(len(models))
-    bars = ax.bar(x, accuracies, 0.5, color=[get_color(m) for m in models])
+    width = 0.5
 
-    ax.set_ylabel('Accuracy (%)')
-    ax.set_title('Classification Accuracy by Model')
+    ax.bar(x, correct_pcts, width, label='Correct', color=CORRECT_COLOR)
+    ax.bar(x, incorrect_pcts, width, bottom=correct_pcts,
+           label='Incorrect', color=INCORRECT_COLOR)
+    ax.bar(x, ambig_pcts, width,
+           bottom=[c + i for c, i in zip(correct_pcts, incorrect_pcts)],
+           label='Ambiguous', color=AMBIGUOUS_COLOR)
+
+    ax.set_ylabel('Share of predictions (%)')
+    ax.set_title('Classification Outcomes by Model')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.set_ylim(0, 105)
+    ax.legend(loc='lower right')
 
-    for bar, acc, amb in zip(bars, accuracies, ambiguous_rates):
-        label = f'{acc:.1f}%'
-        if amb > 0:
-            label += f'\n({amb:.0f}% ambig.)'
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
-                label, ha='center', va='bottom', fontsize=9)
+    # Label each segment with the raw accuracy percentage.
+    for i, model in enumerate(models):
+        ax.text(i, correct_pcts[i] / 2, f'{correct_pcts[i]:.0f}%',
+                ha='center', va='center', fontsize=9, color='white',
+                fontweight='bold')
 
     save_chart(fig, output_dir, 'accuracy_by_model.png')
 
 
 def chart_precision_recall_f1(rows, output_dir):
-    """Grouped bar chart: precision, recall, F1 per model."""
+    """Grouped bar chart: precision, recall, F1 per model (confident predictions only)."""
     groups = group_by_model(rows)
     models = sorted(groups.keys())
 
@@ -172,14 +237,13 @@ def chart_precision_recall_f1(rows, output_dir):
     ax.bar(x + width, f1s, width, label='F1', color='#FF9800')
 
     ax.set_ylabel('Score (%)')
-    ax.set_title('Precision, Recall, and F1 by Model (positive class = fire)')
+    ax.set_title('Precision, Recall, and F1 by Model\n(confident predictions only; positive class = fire)')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.set_ylim(0, 110)
     ax.legend(loc='lower right')
 
-    # Value labels
-    for i, m in enumerate(models):
+    for i in range(len(models)):
         ax.text(i - width, precisions[i] + 1, f'{precisions[i]:.0f}',
                 ha='center', va='bottom', fontsize=8)
         ax.text(i, recalls[i] + 1, f'{recalls[i]:.0f}',
@@ -191,7 +255,7 @@ def chart_precision_recall_f1(rows, output_dir):
 
 
 def chart_mcc(rows, output_dir):
-    """Bar chart: Matthews Correlation Coefficient per model."""
+    """Bar chart: Matthews Correlation Coefficient per model (confident predictions only)."""
     groups = group_by_model(rows)
     models = sorted(groups.keys())
 
@@ -203,7 +267,8 @@ def chart_mcc(rows, output_dir):
 
     ax.axhline(y=0, color='black', linewidth=0.5)
     ax.set_ylabel('MCC')
-    ax.set_title('Matthews Correlation Coefficient by Model\n(range: -1 to +1, higher is better, 0 = random)')
+    ax.set_title('Matthews Correlation Coefficient by Model\n'
+                 '(confident predictions only; range: -1 to +1, higher is better, 0 = random)')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.set_ylim(-1.05, 1.05)
@@ -217,7 +282,7 @@ def chart_mcc(rows, output_dir):
 
 
 def chart_confusion(rows, output_dir):
-    """Per-model: TP, FP, TN, FN counts."""
+    """TP, FP, TN, FN, and ambiguous counts per model."""
     groups = group_by_model(rows)
     models = sorted(groups.keys())
 
@@ -227,18 +292,21 @@ def chart_confusion(rows, output_dir):
     fps = [metrics[m]['fp'] for m in models]
     tns = [metrics[m]['tn'] for m in models]
     fns = [metrics[m]['fn'] for m in models]
+    ambs = [metrics[m]['ambiguous'] for m in models]
 
-    fig, ax = plt.subplots(figsize=(11, 5))
+    fig, ax = plt.subplots(figsize=(12, 5))
     x = np.arange(len(models))
-    width = 0.2
+    width = 0.16
 
-    ax.bar(x - 1.5 * width, tps, width, label='TP (correct fire)', color='#4CAF50')
-    ax.bar(x - 0.5 * width, tns, width, label='TN (correct no-fire)', color='#81C784')
-    ax.bar(x + 0.5 * width, fps, width, label='FP (false alarm)', color='#FFC107')
-    ax.bar(x + 1.5 * width, fns, width, label='FN (missed fire)', color='#F44336')
+    ax.bar(x - 2 * width, tps, width, label='TP (correct fire)', color=CORRECT_COLOR)
+    ax.bar(x - width, tns, width, label='TN (correct no-fire)', color='#81C784')
+    ax.bar(x, fps, width, label='FP (false alarm)', color='#FFC107')
+    ax.bar(x + width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
+    ax.bar(x + 2 * width, ambs, width, label='Ambiguous', color=AMBIGUOUS_COLOR)
 
     ax.set_ylabel('Count')
-    ax.set_title('Confusion Matrix Counts by Model')
+    ax.set_title('Prediction Outcomes by Model\n'
+                 '(TP/TN/FP/FN on confident predictions; ambiguous shown separately)')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.legend(loc='upper right', fontsize=8)
@@ -387,7 +455,7 @@ def chart_memory_usage(rows, output_dir):
 
     ax.bar(x - width/2, model_sizes, width, label='Model Size (disk)', color='#BDBDBD')
     ax.bar(x + width/2, medians, width, label='RSS Memory (runtime)',
-           color=[get_color(m) for m in models])
+           color='#FF9800')
 
     ax.axhline(y=16, color='red', linestyle='--', alpha=0.5, label='16GB RAM limit')
     ax.set_ylabel('GB')
@@ -446,19 +514,29 @@ def print_summary(accuracy_rows, performance_rows):
 
     all_models = sorted(set(list(acc_groups.keys()) + list(perf_groups.keys())))
 
-    print(f"\n{'Model':<20} {'Acc':>6} {'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} {'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}")
-    print('─' * 89)
+    header = (
+        f"{'Model':<20} "
+        f"{'Raw':>6} {'Conf':>6} {'Amb':>6} "
+        f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
+        f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
+    )
+    print()
+    print(header)
+    print('─' * len(header))
 
     for model in all_models:
         if model in acc_groups:
             m = compute_metrics(acc_groups[model])
-            acc_str = f"{m['accuracy']*100:.0f}%"
+            raw_str = f"{m['raw_accuracy']*100:.0f}%"
+            conf_str = f"{m['confident_accuracy']*100:.0f}%"
+            amb_str = f"{m['ambiguous_rate']*100:.0f}%"
             prec_str = f"{m['precision']*100:.0f}%"
             rec_str = f"{m['recall']*100:.0f}%"
             f1_str = f"{m['f1']*100:.0f}%"
             mcc_str = f"{m['mcc']:.2f}"
         else:
-            acc_str = prec_str = rec_str = f1_str = mcc_str = "—"
+            raw_str = conf_str = amb_str = "—"
+            prec_str = rec_str = f1_str = mcc_str = "—"
 
         if model in perf_groups:
             tok = np.median([float(r['tokens_per_sec']) for r in perf_groups[model]])
@@ -471,8 +549,18 @@ def print_summary(accuracy_rows, performance_rows):
         else:
             tok_str = total_str = mem_str = "—"
 
-        print(f"{model:<20} {acc_str:>6} {prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} {tok_str:>8} {total_str:>10} {mem_str:>8}")
+        print(
+            f"{model:<20} "
+            f"{raw_str:>6} {conf_str:>6} {amb_str:>6} "
+            f"{prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} "
+            f"{tok_str:>8} {total_str:>10} {mem_str:>8}"
+        )
 
+    print()
+    print("  Raw  = raw accuracy (ambiguous counted as incorrect)")
+    print("  Conf = confident-prediction accuracy (ambiguous excluded)")
+    print("  Amb  = share of predictions that were ambiguous/uncertain")
+    print("  Prec/Rec/F1/MCC computed on confident predictions only.")
     print()
 
 
