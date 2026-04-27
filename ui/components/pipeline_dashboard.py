@@ -84,7 +84,7 @@ class PipelineDashboard(QWidget):
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
 
-        self.start_button = QPushButton("Start Demo")
+        self.start_button = QPushButton("Test Image")
         self.start_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.setFixedHeight(40)
