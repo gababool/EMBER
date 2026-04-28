@@ -25,6 +25,7 @@ runs
 runs/detect
 
 #YOLO Output Result Image
+pipeline/object_detection/results/
 pipeline/object_detection/results/result.jpg
 
 # Model weights
@@ -38,3 +39,4 @@ outputs/
 
 # Inference results
 pipeline/llm/results/
+

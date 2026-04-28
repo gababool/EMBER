@@ -1,0 +1,43 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Icon-style fire logo</title>
+  <desc id="desc">A clean layered vector flame logo with corrected, narrower proportions and red, orange, and yellow gradients.</desc>
+
+  <defs>
+    <linearGradient id="outerFlame" x1="512" y1="76" x2="512" y2="948" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFB000"/>
+      <stop offset="0.43" stop-color="#FF6A00"/>
+      <stop offset="0.78" stop-color="#FF2D00"/>
+      <stop offset="1" stop-color="#ED0014"/>
+    </linearGradient>
+
+    <linearGradient id="middleFlame" x1="517" y1="382" x2="517" y2="946" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFE04D"/>
+      <stop offset="0.42" stop-color="#FFB800"/>
+      <stop offset="0.77" stop-color="#FF7A00"/>
+      <stop offset="1" stop-color="#FF3600"/>
+    </linearGradient>
+
+    <linearGradient id="innerFlame" x1="514" y1="610" x2="514" y2="948" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFCE8"/>
+      <stop offset="0.38" stop-color="#FFF6A6"/>
+      <stop offset="0.75" stop-color="#FFE35A"/>
+      <stop offset="1" stop-color="#FFC51A"/>
+    </linearGradient>
+
+    <filter id="softShadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#FF5A00" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <!-- Narrower, more vertically balanced flame -->
+  <g filter="url(#softShadow)" transform="translate(189.44 0) scale(0.63 1)">
+    <!-- Outer flame -->
+    <path fill="url(#outerFlame)" d="M512.4 75.4C625.3 126.8 724.1 237.5 735.8 369.9C741.6 435.5 713.7 492.7 723.5 548.7C729.4 582.4 746.3 609 773.4 632.5C774.9 588.8 806.9 546.9 824.5 506.6C844.8 460.1 846.9 424.6 839.9 388.5C929.2 465.4 973.6 566.3 971.6 677.1C968.8 835.7 842.9 943.3 667.2 948.4H356.8C194.9 943.7 61.8 812.4 61.8 653.2C61.8 520.3 136 404.3 262.4 323.3C245.3 366.2 245.8 409 263.7 454.1C280.2 495.7 301.6 521.4 304.3 523.8C321.3 458.3 364.2 398.2 404.4 342.1C458.3 266.9 511.4 192.8 512.4 75.4Z"/>
+
+    <!-- Middle flame -->
+    <path fill="url(#middleFlame)" d="M587.2 379.7C573.8 438.7 597.4 495.3 641.8 546.5C693.8 606.5 738.1 660.4 739.5 735.3C741.6 852.2 641.9 947.1 512.2 948.5C382.9 946.9 286.8 852.1 286.8 735.9C286.8 645.4 339 574.2 395.7 509.8C452.3 445.5 530.7 376.7 587.2 379.7Z"/>
+
+    <!-- Inner flame -->
+    <path fill="url(#innerFlame)" d="M503.7 609.6C552.6 649.4 615.2 720.7 615.2 811.4C615.2 891.9 570.3 947.5 511.5 948.6C451.1 947.8 407.9 893.1 407.9 812.3C407.9 738.8 446.5 700.1 481.7 661.4C511.4 628.8 518.8 596.8 503.7 609.6Z"/>
+  </g>
+</svg>
