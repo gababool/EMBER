@@ -40,3 +40,5 @@ outputs/
 # Inference results
 pipeline/llm/results/
 
+data/gis/osm
+
