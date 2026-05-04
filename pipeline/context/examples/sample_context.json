@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "coordinates": {
+    "latitude": 57.7089,
+    "longitude": 11.9746
+  },
+  "region": {
+    "name": "Gothenburg Municipality",
+    "country_code": "SE",
+    "admin_area": "Västra Götaland County"
+  },
+  "land_cover": "mixed_forest",
+  "terrain": {
+    "elevation_m": 82.0,
+    "slope_degrees": 18.0,
+    "slope_steepness": "steep",
+    "aspect": "SW"
+  },
+  "nearest_water_source": {
+    "name": "Delsjön",
+    "source_type": "lake",
+    "distance_m": 450.0,
+    "bearing": "E"
+  },
+  "nearest_road": {
+    "name": "Road 40",
+    "road_class": "primary",
+    "distance_m": 320.0,
+    "bearing": "NW"
+  },
+  "nearest_settlement": {
+    "name": "Gothenburg",
+    "settlement_type": "city",
+    "distance_m": 3000.0,
+    "bearing": "W"
+  },
+  "wind": null
+}
