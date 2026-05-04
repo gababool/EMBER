@@ -40,5 +40,6 @@ outputs/
 # Inference results
 pipeline/llm/results/
 
-data/gis/osm
+# GIS data (OSM .pbf, Lantmäteriet elevation tiles, etc.) — large, redownloadable
+data/gis/
 
