@@ -247,6 +247,8 @@ def format_context(context: OperationalContext) -> str:
     assets = _format_assets(context.assets_at_risk)
     wind = _format_wind(context)
 
+    named = _format_named_features(context)
+
     sections = [
         "OPERATIONAL CONTEXT",
         location,
@@ -260,8 +262,11 @@ def format_context(context: OperationalContext) -> str:
         settlements,
         "",
         assets,
-        "",
-        wind,
     ]
+
+    if named:
+        sections += ["", *named]
+
+    sections += ["", wind]
 
     return "\n".join(sections)
