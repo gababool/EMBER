@@ -6,13 +6,15 @@ block that can be included in the LLM user message.
 Documented output template:
 
 Operational context:
-- Location: <region>, <country> (<lat>, <lon>)
+- Location: <region>, <admin_area> (<lat>, <lon>)
 - Land cover: <land_cover>
-- Terrain: <elevation>, <slope_steepness> slope (<slope_percent>%), aspect <aspect>
-- Water: <type/name> <distance_km> km <bearing>
-- Road: <road_class/name> <distance_km> km <bearing>
-- Settlement: <type/name> <distance_km> km <bearing>
+- Terrain: <elevation>, <slope_steepness> slope (<slope_percent>%), aspect <aspect> | unavailable
+- Water: <type/name>, <distance_km> <bearing>, road <distance_km> away | unavailable
+- Road: <road_class/name>, <distance_km> <bearing>, accessible <yes/no> | unavailable
+- Settlement: <type/name>, <distance_km> <bearing> | unavailable
 - Wind: <speed_m_s> m/s from <bearing> | unavailable
+
+Extraction metadata is intentionally excluded from the formatted prompt block.
 
 The output should stay under roughly 150 tokens so it remains suitable for
 LLM prompts.
@@ -22,7 +24,7 @@ from __future__ import annotations
 
 import math
 
-from pipeline.context.schemas import OperationalContext
+from pipeline.context.schemas import OperationalContext, Road, Settlement, WaterSource
 
 
 def _humanize_label(value: str | None) -> str:
@@ -49,8 +51,11 @@ def _format_bearing(value: str | None) -> str:
     return value
 
 
-def _metres_to_km(distance_m: float) -> str:
+def _metres_to_km(distance_m: float | None) -> str:
     """Convert metres to kilometres with two decimals."""
+    if distance_m is None:
+        return "unknown km"
+
     return f"{distance_m / 1000:.2f} km"
 
 
@@ -84,6 +89,64 @@ def _format_elevation(elevation_m: float | None) -> str:
     return f"{elevation_m:.0f} m elevation"
 
 
+def _format_water_source(water_source: WaterSource | None) -> str:
+    """Format the most operationally relevant water source."""
+    if water_source is None:
+        return "- Water: unavailable"
+
+    name = (
+        f" {_format_optional_text(water_source.name)}"
+        if water_source.name
+        else ""
+    )
+
+    road_access = ""
+    if water_source.nearest_road_distance_m is not None:
+        road_access = (
+            f", road {_metres_to_km(water_source.nearest_road_distance_m)} away"
+        )
+
+    return (
+        "- Water: "
+        f"{_humanize_label(water_source.source_type)}{name}, "
+        f"{_metres_to_km(water_source.distance_m)} "
+        f"{_format_bearing(water_source.bearing)}"
+        f"{road_access}"
+    )
+
+
+def _format_road(road: Road | None) -> str:
+    """Format the primary vehicle-accessible road."""
+    if road is None:
+        return "- Road: unavailable"
+
+    name = f" {_format_optional_text(road.name)}" if road.name else ""
+    accessible = "yes" if road.vehicle_accessible else "no"
+
+    return (
+        "- Road: "
+        f"{_humanize_label(road.road_class)} road{name}, "
+        f"{_metres_to_km(road.distance_m)} "
+        f"{_format_bearing(road.bearing)}, "
+        f"accessible {accessible}"
+    )
+
+
+def _format_settlement(settlement: Settlement | None) -> str:
+    """Format the nearest settlement."""
+    if settlement is None:
+        return "- Settlement: unavailable"
+
+    name = f" {_format_optional_text(settlement.name)}" if settlement.name else ""
+
+    return (
+        "- Settlement: "
+        f"{_humanize_label(settlement.settlement_type)}{name}, "
+        f"{_metres_to_km(settlement.distance_m)} "
+        f"{_format_bearing(settlement.bearing)}"
+    )
+
+
 def format_context(context: OperationalContext) -> str:
     """Format operational context as a concise LLM-ready text block.
 
@@ -93,59 +156,33 @@ def format_context(context: OperationalContext) -> str:
     Returns:
         A consistently structured plain-text context block.
     """
-    country = context.region.country_code or "unknown country"
+    admin_area = context.region.admin_area or "unknown admin area"
     region = _format_optional_text(context.region.name)
 
     location = (
-        f"- Location: {region}, {country} "
+        f"- Location: {region}, {admin_area} "
         f"({context.coordinates.latitude:.4f}, {context.coordinates.longitude:.4f})"
     )
 
     land_cover = f"- Land cover: {_humanize_label(context.land_cover)}"
 
-    terrain = (
-        "- Terrain: "
-        f"{_format_elevation(context.terrain.elevation_m)}, "
-        f"{_humanize_label(context.terrain.slope_steepness)} slope "
-        f"({_slope_degrees_to_percent(context.terrain.slope_degrees)}), "
-        f"aspect {context.terrain.aspect}"
-    )
+    if context.terrain is None:
+        terrain = "- Terrain: unavailable"
+    else:
+        terrain = (
+            "- Terrain: "
+            f"{_format_elevation(context.terrain.elevation_m)}, "
+            f"{_humanize_label(context.terrain.slope_steepness)} slope "
+            f"({_slope_degrees_to_percent(context.terrain.slope_degrees)}), "
+            f"aspect {context.terrain.aspect}"
+        )
 
-    water_name = (
-        f" {_format_optional_text(context.nearest_water_source.name)}"
-        if context.nearest_water_source.name
-        else ""
-    )
-    water = (
-        "- Water: "
-        f"{_humanize_label(context.nearest_water_source.source_type)}{water_name}, "
-        f"{_metres_to_km(context.nearest_water_source.distance_m)} "
-        f"{_format_bearing(context.nearest_water_source.bearing)}"
-    )
+    primary_water_source = context.water_sources[0] if context.water_sources else None
+    primary_settlement = context.settlements[0] if context.settlements else None
 
-    road_name = (
-        f" {_format_optional_text(context.nearest_road.name)}"
-        if context.nearest_road.name
-        else ""
-    )
-    road = (
-        "- Road: "
-        f"{_humanize_label(context.nearest_road.road_class)} road{road_name}, "
-        f"{_metres_to_km(context.nearest_road.distance_m)} "
-        f"{_format_bearing(context.nearest_road.bearing)}"
-    )
-
-    settlement_name = (
-        f" {_format_optional_text(context.nearest_settlement.name)}"
-        if context.nearest_settlement.name
-        else ""
-    )
-    settlement = (
-        "- Settlement: "
-        f"{_humanize_label(context.nearest_settlement.settlement_type)}{settlement_name}, "
-        f"{_metres_to_km(context.nearest_settlement.distance_m)} "
-        f"{_format_bearing(context.nearest_settlement.bearing)}"
-    )
+    water = _format_water_source(primary_water_source)
+    road = _format_road(context.roads.primary_access)
+    settlement = _format_settlement(primary_settlement)
 
     if context.wind is None:
         wind = "- Wind: unavailable"
