@@ -7,6 +7,8 @@ from dataclasses import dataclass
 class QualityScreeningConfig:
     min_brightness: float = 40.0
     max_brightness: float = 220.0
+    bright_pixel_threshold: float = 150.0
+    min_bright_pixel_fraction: float = 0.01
     min_contrast: float = 30.0
     max_contrast: float = 120.0
     min_width: int = 640
