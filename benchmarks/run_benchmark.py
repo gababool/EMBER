@@ -67,8 +67,11 @@ ALL_MODELS = [
     'gemma4:e4b',
 ]
 
+# Keep this updated
+DEFAULT_PROMPT_FILE_NAME = 'c2v1prompt.txt'
+
 # Default system prompt location (Cycle 1 v1)
-DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / 'c1v1prompt.txt'
+DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PROMPT_FILE_NAME
 
 
 def _yolo_tag(with_yolo):

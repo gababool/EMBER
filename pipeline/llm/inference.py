@@ -28,7 +28,7 @@ BENCHMARK_MODEL_TAGS = [
 
 
 class LLMInferenceResult(BaseModel):
-    classification: Literal["fire_detected", "no_fire_detected", "uncertain"]
+    classification: Literal["fire_detected", "no_fire_detected"]
     reasoning: str
     recommendation: str
 

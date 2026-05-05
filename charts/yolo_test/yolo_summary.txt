@@ -1,0 +1,17 @@
+Model: best
+Images: 100
+Accuracy: 86.00%
+Precision: 81.03%
+Recall: 94.00%
+F1: 87.04%
+MCC: 0.729
+TP: 47
+FP: 11
+TN: 39
+FN: 3
+Median preprocess time: 1.36 ms
+Median inference time: 51.04 ms
+Median postprocess time: 0.54 ms
+Median total YOLO time: 52.94 ms
+Approx. FPS: 18.89
+

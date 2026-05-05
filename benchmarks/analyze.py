@@ -3,27 +3,30 @@ Benchmark Analysis — generates thesis-ready charts from benchmark CSVs.
 
 Usage:
     uv run python analyze.py
+    uv run python analyze.py --compare-yolo
     uv run python analyze.py --accuracy-dir results/accuracy --performance-dir results/performance
     uv run python analyze.py --output charts/
 
-Reads all CSV files from accuracy and performance result directories,
+Reads CSV files from accuracy and performance result directories,
 produces PNG charts ready for Overleaf.
 
-Ambiguous handling
-------------------
-Ambiguous predictions (the model returned `uncertain`) are handled as a
-separate category rather than folded into correct/incorrect. Three numbers
-are reported per model:
-  - Raw accuracy         : correct / total. Ambiguous counted as incorrect.
-  - Confident accuracy   : correct / confident. Ambiguous excluded.
-  - Ambiguous rate       : ambiguous / total.
+Modes
+-----
+Default            : Load only no-YOLO CSVs (filename contains '_noyolo').
+                     Charts show one bar per model, the standard view.
+--compare-yolo     : Load both no-YOLO and YOLO CSVs. Charts add a second
+                     bar per model showing the YOLO-preprocessing variant
+                     alongside the no-YOLO baseline. Requires both CSV
+                     types to be present; errors out otherwise.
 
-Precision, recall, F1, MCC, and the confusion matrix are computed on
-confident predictions only. Chart titles make this explicit.
+Classification
+--------------
+Binary classification only. Every prediction is either correct or incorrect.
 """
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
@@ -33,18 +36,48 @@ import numpy as np
 
 # ── Data Loading ─────────────────────────────────────────────────────
 
-def load_csvs(directory):
-    """Load all CSV files from a directory into a list of dicts."""
-    rows = []
+def load_csvs(directory, compare_yolo=False):
+    """
+    Load CSV files from a directory.
+
+    Returns:
+        (rows_noyolo, rows_yolo)
+
+    Default mode (compare_yolo=False): only loads files whose names contain
+    '_noyolo'. The yolo list is empty.
+
+    Compare mode (compare_yolo=True): loads both '_noyolo' and '_yolo' files
+    into separate lists.
+    """
+    rows_noyolo = []
+    rows_yolo = []
+
     path = Path(directory)
     if not path.exists():
-        return rows
+        return rows_noyolo, rows_yolo
+
     for csv_file in sorted(path.glob('*.csv')):
+        name = csv_file.name
+        is_yolo = '_yolo' in name and '_noyolo' not in name
+        is_noyolo = '_noyolo' in name
+
+        # Skip files that don't match either tag (legacy or unrelated).
+        if not (is_yolo or is_noyolo):
+            continue
+
+        # In default mode, skip YOLO files entirely.
+        if not compare_yolo and is_yolo:
+            continue
+
         with open(csv_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                rows.append(row)
-    return rows
+                if is_yolo:
+                    rows_yolo.append(row)
+                else:
+                    rows_noyolo.append(row)
+
+    return rows_noyolo, rows_yolo
 
 
 def group_by_model(rows):
@@ -56,11 +89,6 @@ def group_by_model(rows):
             groups[model] = []
         groups[model].append(row)
     return groups
-
-
-def is_ambiguous(row):
-    """True if the row represents an ambiguous/uncertain prediction."""
-    return row['llm_classification'] == 'ambiguous'
 
 
 # ── Chart Helpers ────────────────────────────────────────────────────
@@ -75,7 +103,6 @@ MODEL_COLORS = {
     'gemma4:e4b': '#E65100',
 }
 
-AMBIGUOUS_COLOR = '#9E9E9E'
 CORRECT_COLOR = '#4CAF50'
 INCORRECT_COLOR = '#F44336'
 
@@ -91,36 +118,21 @@ def save_chart(fig, output_dir, filename):
     print(f"  Saved {path}")
 
 
+def hatch_pattern_for_yolo():
+    """Hatch pattern used for the YOLO variant in comparison charts."""
+    return '///'
+
+
 # ── Classification Metrics ───────────────────────────────────────────
-
-def count_outcomes(rows):
-    """Count correct, incorrect, and ambiguous rows."""
-    correct = incorrect = ambiguous = 0
-    for r in rows:
-        if is_ambiguous(r):
-            ambiguous += 1
-        elif r['correct'] == 'True':
-            correct += 1
-        else:
-            incorrect += 1
-    return correct, incorrect, ambiguous
-
 
 def compute_metrics(rows):
     """
-    Compute confusion counts and classification metrics on confident
-    predictions only. Ambiguous rows are excluded from all computations here
-    and reported separately via count_outcomes.
+    Compute confusion counts and binary classification metrics.
 
     'fire' is the positive class.
     """
     tp = fp = tn = fn = 0
-    ambiguous = 0
     for r in rows:
-        if is_ambiguous(r):
-            ambiguous += 1
-            continue
-
         gt = r['ground_truth']
         pred = r['llm_classification']
 
@@ -133,18 +145,8 @@ def compute_metrics(rows):
         elif gt == 'fire' and pred == 'no_fire':
             fn += 1
 
-    confident_total = tp + fp + tn + fn
-    total = confident_total + ambiguous
-
-    # Confident-prediction accuracy (ambiguous excluded).
-    confident_accuracy = (tp + tn) / confident_total if confident_total > 0 else 0
-
-    # Raw accuracy (ambiguous counted as incorrect).
-    raw_accuracy = (tp + tn) / total if total > 0 else 0
-
-    # Ambiguous rate.
-    ambiguous_rate = ambiguous / total if total > 0 else 0
-
+    total = tp + fp + tn + fn
+    accuracy = (tp + tn) / total if total > 0 else 0
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
@@ -155,12 +157,8 @@ def compute_metrics(rows):
 
     return {
         'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn,
-        'ambiguous': ambiguous,
         'total': total,
-        'confident_total': confident_total,
-        'raw_accuracy': raw_accuracy,
-        'confident_accuracy': confident_accuracy,
-        'ambiguous_rate': ambiguous_rate,
+        'accuracy': accuracy,
         'precision': precision,
         'recall': recall,
         'f1': f1,
@@ -170,143 +168,265 @@ def compute_metrics(rows):
 
 # ── Accuracy Charts ──────────────────────────────────────────────────
 
-def chart_accuracy(rows, output_dir):
-    """Stacked bar chart: correct / incorrect / ambiguous per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
+def chart_accuracy(rows_noyolo, rows_yolo, output_dir, compare_yolo):
+    """Bar chart: accuracy per model.
 
-    correct_pcts = []
-    incorrect_pcts = []
-    ambig_pcts = []
-    for model in models:
-        c, i, a = count_outcomes(groups[model])
-        total = c + i + a
-        if total == 0:
-            correct_pcts.append(0)
-            incorrect_pcts.append(0)
-            ambig_pcts.append(0)
-            continue
-        correct_pcts.append(c / total * 100)
-        incorrect_pcts.append(i / total * 100)
-        ambig_pcts.append(a / total * 100)
+    In default mode, one bar per model.
+    In compare-yolo mode, two bars per model (no-YOLO and YOLO).
+    """
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(11, 5) if compare_yolo else (10, 5))
     x = np.arange(len(models))
-    width = 0.5
 
-    ax.bar(x, correct_pcts, width, label='Correct', color=CORRECT_COLOR)
-    ax.bar(x, incorrect_pcts, width, bottom=correct_pcts,
-           label='Incorrect', color=INCORRECT_COLOR)
-    ax.bar(x, ambig_pcts, width,
-           bottom=[c + i for c, i in zip(correct_pcts, incorrect_pcts)],
-           label='Ambiguous', color=AMBIGUOUS_COLOR)
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
+        width = 0.35
+        accs_noyolo = [compute_metrics(groups_noyolo.get(m, []))['accuracy'] * 100 for m in models]
+        accs_yolo = [compute_metrics(groups_yolo.get(m, []))['accuracy'] * 100 for m in models]
 
-    ax.set_ylabel('Share of predictions (%)')
-    ax.set_title('Classification Outcomes by Model')
+        ax.bar(x - width / 2, accs_noyolo, width, label='no YOLO',
+               color=[get_color(m) for m in models],
+               edgecolor='black', linewidth=0.5)
+        ax.bar(x + width / 2, accs_yolo, width, label='with YOLO',
+               color=[get_color(m) for m in models],
+               hatch=hatch_pattern_for_yolo(),
+               edgecolor='black', linewidth=0.5)
+
+        for i, (a_no, a_yes) in enumerate(zip(accs_noyolo, accs_yolo)):
+            ax.text(i - width / 2, a_no + 1, f'{a_no:.0f}%',
+                    ha='center', va='bottom', fontsize=8)
+            ax.text(i + width / 2, a_yes + 1, f'{a_yes:.0f}%',
+                    ha='center', va='bottom', fontsize=8)
+    else:
+        width = 0.5
+        accs = [compute_metrics(groups_noyolo[m])['accuracy'] * 100 for m in models]
+        bars = ax.bar(x, accs, width, color=[get_color(m) for m in models])
+
+        for bar, acc in zip(bars, accs):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 1,
+                    f'{acc:.1f}%', ha='center', va='bottom', fontsize=9)
+
+    ax.set_ylabel('Accuracy (%)')
+    title = 'Classification Accuracy by Model'
+    if compare_yolo:
+        title += ' (no YOLO vs. with YOLO)'
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
-    ax.set_ylim(0, 105)
-    ax.legend(loc='lower right')
-
-    # Label each segment with the raw accuracy percentage.
-    for i, model in enumerate(models):
-        ax.text(i, correct_pcts[i] / 2, f'{correct_pcts[i]:.0f}%',
-                ha='center', va='center', fontsize=9, color='white',
-                fontweight='bold')
+    ax.set_ylim(0, 110)
+    if compare_yolo:
+        ax.legend(loc='lower right')
 
     save_chart(fig, output_dir, 'accuracy_by_model.png')
 
 
-def chart_precision_recall_f1(rows, output_dir):
-    """Grouped bar chart: precision, recall, F1 per model (confident predictions only)."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
+def _grouped_bar_chart(metric_fn, rows_noyolo, rows_yolo, output_dir,
+                       compare_yolo, filename, ylabel, title,
+                       value_fmt='{:.0f}', ylim=None,
+                       show_value_labels=True):
+    """
+    Helper: draws a grouped bar chart of `metric_fn(rows) -> float` per model,
+    optionally split by YOLO variant.
+    """
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
 
-    metrics = {m: compute_metrics(groups[m]) for m in models}
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
 
-    precisions = [metrics[m]['precision'] * 100 for m in models]
-    recalls = [metrics[m]['recall'] * 100 for m in models]
-    f1s = [metrics[m]['f1'] * 100 for m in models]
-
-    fig, ax = plt.subplots(figsize=(11, 5))
+    fig, ax = plt.subplots(figsize=(11, 5) if compare_yolo else (10, 5))
     x = np.arange(len(models))
-    width = 0.25
 
-    ax.bar(x - width, precisions, width, label='Precision', color='#2196F3')
-    ax.bar(x, recalls, width, label='Recall', color='#4CAF50')
-    ax.bar(x + width, f1s, width, label='F1', color='#FF9800')
+    if compare_yolo:
+        width = 0.35
+        for offset, label, groups, hatch in [
+            (-width / 2, 'no YOLO', groups_noyolo, ''),
+            (width / 2, 'with YOLO', groups_yolo, hatch_pattern_for_yolo()),
+        ]:
+            values = [metric_fn(groups.get(m, [])) for m in models]
+            colors = [get_color(m) for m in models]
+            ax.bar(x + offset, values, width, label=label,
+                   color=colors, hatch=hatch, edgecolor='black', linewidth=0.5)
+            if show_value_labels:
+                for i, v in enumerate(values):
+                    ax.text(i + offset, v, value_fmt.format(v),
+                            ha='center', va='bottom', fontsize=7)
+    else:
+        width = 0.5
+        values = [metric_fn(groups_noyolo.get(m, [])) for m in models]
+        colors = [get_color(m) for m in models]
+        ax.bar(x, values, width, color=colors)
+        if show_value_labels:
+            for i, v in enumerate(values):
+                ax.text(i, v, value_fmt.format(v),
+                        ha='center', va='bottom', fontsize=9)
+
+    ax.set_ylabel(ylabel)
+    if compare_yolo:
+        title = title + ' (no YOLO vs. with YOLO)'
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=25, ha='right')
+    if ylim:
+        ax.set_ylim(*ylim)
+    if compare_yolo:
+        ax.legend(loc='lower right')
+
+    save_chart(fig, output_dir, filename)
+
+
+def chart_precision_recall_f1(rows_noyolo, rows_yolo, output_dir, compare_yolo):
+    """Grouped bar chart: precision, recall, F1 per model.
+
+    In compare-yolo mode, shows precision/recall/F1 for both variants.
+    """
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
+
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
+
+    fig, ax = plt.subplots(figsize=(13, 5) if compare_yolo else (11, 5))
+    x = np.arange(len(models))
+
+    if compare_yolo:
+        width = 0.13
+        positions = [-2.5 * width, -1.5 * width, -0.5 * width,
+                     0.5 * width, 1.5 * width, 2.5 * width]
+        m_noyolo = {m: compute_metrics(groups_noyolo.get(m, [])) for m in models}
+        m_yolo = {m: compute_metrics(groups_yolo.get(m, [])) for m in models}
+
+        ax.bar(x + positions[0], [m_noyolo[m]['precision'] * 100 for m in models],
+               width, label='Precision (no YOLO)', color='#2196F3',
+               edgecolor='black', linewidth=0.5)
+        ax.bar(x + positions[1], [m_noyolo[m]['recall'] * 100 for m in models],
+               width, label='Recall (no YOLO)', color='#4CAF50',
+               edgecolor='black', linewidth=0.5)
+        ax.bar(x + positions[2], [m_noyolo[m]['f1'] * 100 for m in models],
+               width, label='F1 (no YOLO)', color='#FF9800',
+               edgecolor='black', linewidth=0.5)
+        ax.bar(x + positions[3], [m_yolo[m]['precision'] * 100 for m in models],
+               width, label='Precision (with YOLO)', color='#2196F3',
+               hatch=hatch_pattern_for_yolo(), edgecolor='black', linewidth=0.5)
+        ax.bar(x + positions[4], [m_yolo[m]['recall'] * 100 for m in models],
+               width, label='Recall (with YOLO)', color='#4CAF50',
+               hatch=hatch_pattern_for_yolo(), edgecolor='black', linewidth=0.5)
+        ax.bar(x + positions[5], [m_yolo[m]['f1'] * 100 for m in models],
+               width, label='F1 (with YOLO)', color='#FF9800',
+               hatch=hatch_pattern_for_yolo(), edgecolor='black', linewidth=0.5)
+    else:
+        width = 0.25
+        metrics = {m: compute_metrics(groups_noyolo[m]) for m in models}
+        precisions = [metrics[m]['precision'] * 100 for m in models]
+        recalls = [metrics[m]['recall'] * 100 for m in models]
+        f1s = [metrics[m]['f1'] * 100 for m in models]
+        ax.bar(x - width, precisions, width, label='Precision', color='#2196F3')
+        ax.bar(x, recalls, width, label='Recall', color='#4CAF50')
+        ax.bar(x + width, f1s, width, label='F1', color='#FF9800')
+
+        for i, m in enumerate(models):
+            ax.text(i - width, precisions[i] + 1, f'{precisions[i]:.0f}',
+                    ha='center', va='bottom', fontsize=8)
+            ax.text(i, recalls[i] + 1, f'{recalls[i]:.0f}',
+                    ha='center', va='bottom', fontsize=8)
+            ax.text(i + width, f1s[i] + 1, f'{f1s[i]:.0f}',
+                    ha='center', va='bottom', fontsize=8)
 
     ax.set_ylabel('Score (%)')
-    ax.set_title('Precision, Recall, and F1 by Model\n(confident predictions only; positive class = fire)')
+    title = 'Precision, Recall, and F1 by Model (positive class = fire)'
+    if compare_yolo:
+        title = ('Precision, Recall, and F1 by Model — no YOLO vs. with YOLO\n'
+                 '(positive class = fire)')
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.set_ylim(0, 110)
-    ax.legend(loc='lower right')
-
-    for i in range(len(models)):
-        ax.text(i - width, precisions[i] + 1, f'{precisions[i]:.0f}',
-                ha='center', va='bottom', fontsize=8)
-        ax.text(i, recalls[i] + 1, f'{recalls[i]:.0f}',
-                ha='center', va='bottom', fontsize=8)
-        ax.text(i + width, f1s[i] + 1, f'{f1s[i]:.0f}',
-                ha='center', va='bottom', fontsize=8)
+    ax.legend(loc='lower right', fontsize=7 if compare_yolo else 9, ncol=2 if compare_yolo else 1)
 
     save_chart(fig, output_dir, 'precision_recall_f1.png')
 
 
-def chart_mcc(rows, output_dir):
-    """Bar chart: Matthews Correlation Coefficient per model (confident predictions only)."""
-    groups = group_by_model(rows)
+def chart_mcc(rows_noyolo, rows_yolo, output_dir, compare_yolo):
+    """Bar chart: Matthews Correlation Coefficient per model."""
+    _grouped_bar_chart(
+        metric_fn=lambda rows: compute_metrics(rows)['mcc'] if rows else 0,
+        rows_noyolo=rows_noyolo,
+        rows_yolo=rows_yolo,
+        output_dir=output_dir,
+        compare_yolo=compare_yolo,
+        filename='mcc.png',
+        ylabel='MCC',
+        title=('Matthews Correlation Coefficient by Model\n'
+               '(range: -1 to +1, higher is better, 0 = random)'),
+        value_fmt='{:.2f}',
+        ylim=(-1.05, 1.05),
+    )
+
+
+def chart_confusion(rows_noyolo, rows_yolo, output_dir, compare_yolo):
+    """TP, TN, FP, FN counts per model.
+
+    In compare-yolo mode, two charts side by side — one per variant.
+    """
+    if compare_yolo:
+        groups_noyolo = group_by_model(rows_noyolo)
+        groups_yolo = group_by_model(rows_yolo)
+        models = sorted(set(list(groups_noyolo.keys()) + list(groups_yolo.keys())))
+
+        fig, axes = plt.subplots(1, 2, figsize=(20, 5), sharey=True)
+        for ax, (groups, variant) in zip(
+            axes,
+            [(groups_noyolo, 'no YOLO'), (groups_yolo, 'with YOLO')],
+        ):
+            metrics = {m: compute_metrics(groups.get(m, [])) for m in models}
+            x = np.arange(len(models))
+            width = 0.2
+
+            tps = [metrics[m]['tp'] for m in models]
+            tns = [metrics[m]['tn'] for m in models]
+            fps = [metrics[m]['fp'] for m in models]
+            fns = [metrics[m]['fn'] for m in models]
+
+            ax.bar(x - 1.5 * width, tps, width, label='TP (correct fire)',
+                   color=CORRECT_COLOR)
+            ax.bar(x - 0.5 * width, tns, width, label='TN (correct no-fire)',
+                   color='#81C784')
+            ax.bar(x + 0.5 * width, fps, width, label='FP (false alarm)',
+                   color='#FFC107')
+            ax.bar(x + 1.5 * width, fns, width, label='FN (missed fire)',
+                   color=INCORRECT_COLOR)
+
+            ax.set_title(f'Prediction Outcomes — {variant}')
+            ax.set_xticks(x)
+            ax.set_xticklabels(models, rotation=25, ha='right')
+            ax.set_ylabel('Count')
+
+        axes[0].legend(loc='upper right', fontsize=8)
+        save_chart(fig, output_dir, 'confusion_matrix.png')
+        return
+
+    groups = group_by_model(rows_noyolo)
     models = sorted(groups.keys())
-
-    mccs = [compute_metrics(groups[m])['mcc'] for m in models]
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(models))
-    bars = ax.bar(x, mccs, 0.5, color=[get_color(m) for m in models])
-
-    ax.axhline(y=0, color='black', linewidth=0.5)
-    ax.set_ylabel('MCC')
-    ax.set_title('Matthews Correlation Coefficient by Model\n'
-                 '(confident predictions only; range: -1 to +1, higher is better, 0 = random)')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=25, ha='right')
-    ax.set_ylim(-1.05, 1.05)
-
-    for bar, mcc in zip(bars, mccs):
-        y_offset = 0.03 if mcc >= 0 else -0.08
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + y_offset,
-                f'{mcc:.2f}', ha='center', va='bottom' if mcc >= 0 else 'top', fontsize=9)
-
-    save_chart(fig, output_dir, 'mcc.png')
-
-
-def chart_confusion(rows, output_dir):
-    """TP, FP, TN, FN, and ambiguous counts per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
-
     metrics = {m: compute_metrics(groups[m]) for m in models}
 
     tps = [metrics[m]['tp'] for m in models]
     fps = [metrics[m]['fp'] for m in models]
     tns = [metrics[m]['tn'] for m in models]
     fns = [metrics[m]['fn'] for m in models]
-    ambs = [metrics[m]['ambiguous'] for m in models]
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(11, 5))
     x = np.arange(len(models))
-    width = 0.16
+    width = 0.2
 
-    ax.bar(x - 2 * width, tps, width, label='TP (correct fire)', color=CORRECT_COLOR)
-    ax.bar(x - width, tns, width, label='TN (correct no-fire)', color='#81C784')
-    ax.bar(x, fps, width, label='FP (false alarm)', color='#FFC107')
-    ax.bar(x + width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
-    ax.bar(x + 2 * width, ambs, width, label='Ambiguous', color=AMBIGUOUS_COLOR)
+    ax.bar(x - 1.5 * width, tps, width, label='TP (correct fire)', color=CORRECT_COLOR)
+    ax.bar(x - 0.5 * width, tns, width, label='TN (correct no-fire)', color='#81C784')
+    ax.bar(x + 0.5 * width, fps, width, label='FP (false alarm)', color='#FFC107')
+    ax.bar(x + 1.5 * width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
 
     ax.set_ylabel('Count')
-    ax.set_title('Prediction Outcomes by Model\n'
-                 '(TP/TN/FP/FN on confident predictions; ambiguous shown separately)')
+    ax.set_title('Prediction Outcomes by Model')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.legend(loc='upper right', fontsize=8)
@@ -314,14 +434,49 @@ def chart_confusion(rows, output_dir):
     save_chart(fig, output_dir, 'confusion_matrix.png')
 
 
-def chart_response_length(rows, output_dir):
+def chart_response_length(rows_noyolo, rows_yolo, output_dir, compare_yolo):
     """Box plot: word count distribution per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
+
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
+
+        fig, ax = plt.subplots(figsize=(13, 5))
+        positions = []
+        data = []
+        labels = []
+        colors = []
+        hatches = []
+
+        spacing = 1.0
+        for i, model in enumerate(models):
+            base = i * spacing * 2
+            positions.extend([base, base + 0.7])
+            data.append([int(r['word_count']) for r in groups_noyolo.get(model, [])])
+            data.append([int(r['word_count']) for r in groups_yolo.get(model, [])])
+            labels.extend([f'{model}\nno YOLO', f'{model}\nwith YOLO'])
+            colors.extend([get_color(model), get_color(model)])
+            hatches.extend(['', hatch_pattern_for_yolo()])
+
+        bp = ax.boxplot(data, positions=positions, widths=0.5, patch_artist=True)
+        for patch, color, hatch in zip(bp['boxes'], colors, hatches):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+            if hatch:
+                patch.set_hatch(hatch)
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=8)
+        ax.set_ylabel('Word Count')
+        ax.set_title('Response Length by Model (no YOLO vs. with YOLO)')
+
+        save_chart(fig, output_dir, 'response_length.png')
+        return
 
     data = []
     for model in models:
-        words = [int(r['word_count']) for r in groups[model]]
+        words = [int(r['word_count']) for r in groups_noyolo[model]]
         data.append(words)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -340,66 +495,86 @@ def chart_response_length(rows, output_dir):
 
 # ── Performance Charts ───────────────────────────────────────────────
 
-def chart_tokens_per_sec(rows, output_dir):
-    """Bar chart with error bars: median tokens/sec per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
-
-    medians = []
-    stds = []
-    for model in models:
-        vals = [float(r['tokens_per_sec']) for r in groups[model]]
-        medians.append(np.median(vals))
-        stds.append(np.std(vals))
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(models))
-    bars = ax.bar(x, medians, 0.5, yerr=stds, capsize=4,
-                  color=[get_color(m) for m in models])
-
-    ax.set_ylabel('Tokens/sec')
-    ax.set_title('Generation Speed by Model (median ± std)')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=25, ha='right')
-
-    for bar, med in zip(bars, medians):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
-                f'{med:.1f}', ha='center', va='bottom', fontsize=9)
-
-    save_chart(fig, output_dir, 'tokens_per_sec.png')
+def chart_tokens_per_sec(rows_noyolo, rows_yolo, output_dir, compare_yolo):
+    """Bar chart: median tokens/sec per model."""
+    _grouped_bar_chart(
+        metric_fn=lambda rows: float(np.median([float(r['tokens_per_sec']) for r in rows])) if rows else 0,
+        rows_noyolo=rows_noyolo,
+        rows_yolo=rows_yolo,
+        output_dir=output_dir,
+        compare_yolo=compare_yolo,
+        filename='tokens_per_sec.png',
+        ylabel='Tokens/sec',
+        title='Generation Speed by Model (median)',
+        value_fmt='{:.1f}',
+    )
 
 
-def chart_inference_breakdown(rows, output_dir):
+def chart_inference_breakdown(rows_noyolo, rows_yolo, output_dir, compare_yolo):
     """Stacked bar: prompt eval vs generation vs overhead per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
 
-    prompt_evals = []
-    eval_times = []
-    overheads = []
-
-    for model in models:
-        prompt = np.median([float(r['prompt_eval_duration_s']) for r in groups[model]])
-        gen = np.median([float(r['eval_duration_s']) for r in groups[model]])
-        total = np.median([float(r['total_duration_s']) for r in groups[model]])
+    def medians(rows):
+        if not rows:
+            return 0, 0, 0
+        prompt = np.median([float(r['prompt_eval_duration_s']) for r in rows])
+        gen = np.median([float(r['eval_duration_s']) for r in rows])
+        total = np.median([float(r['total_duration_s']) for r in rows])
         overhead = max(0, total - prompt - gen)
+        return prompt, gen, overhead
 
-        prompt_evals.append(prompt)
-        eval_times.append(gen)
-        overheads.append(overhead)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(11, 5) if compare_yolo else (10, 5))
     x = np.arange(len(models))
-    width = 0.5
 
-    ax.bar(x, prompt_evals, width, label='Image/Prompt Processing', color='#2196F3')
-    ax.bar(x, eval_times, width, bottom=prompt_evals, label='Text Generation', color='#4CAF50')
-    ax.bar(x, overheads, width,
-           bottom=[p + e for p, e in zip(prompt_evals, eval_times)],
-           label='Ollama Overhead', color='#BDBDBD')
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
+        width = 0.35
+        for offset, label, groups, hatch in [
+            (-width / 2, 'no YOLO', groups_noyolo, ''),
+            (width / 2, 'with YOLO', groups_yolo, hatch_pattern_for_yolo()),
+        ]:
+            prompts, gens, overheads = [], [], []
+            for m in models:
+                p, g, o = medians(groups.get(m, []))
+                prompts.append(p)
+                gens.append(g)
+                overheads.append(o)
+
+            ax.bar(x + offset, prompts, width, color='#2196F3',
+                   hatch=hatch, edgecolor='black', linewidth=0.5,
+                   label='Image/Prompt Processing' if offset < 0 else None)
+            ax.bar(x + offset, gens, width, bottom=prompts, color='#4CAF50',
+                   hatch=hatch, edgecolor='black', linewidth=0.5,
+                   label='Text Generation' if offset < 0 else None)
+            ax.bar(x + offset, overheads, width,
+                   bottom=[p + g for p, g in zip(prompts, gens)],
+                   color='#BDBDBD', hatch=hatch, edgecolor='black', linewidth=0.5,
+                   label='Ollama Overhead' if offset < 0 else None)
+
+            for i in range(len(models)):
+                ax.text(i + offset, -0.5, label, ha='center', va='top',
+                        fontsize=7, color='gray')
+    else:
+        width = 0.5
+        prompts, gens, overheads = [], [], []
+        for m in models:
+            p, g, o = medians(groups_noyolo[m])
+            prompts.append(p)
+            gens.append(g)
+            overheads.append(o)
+
+        ax.bar(x, prompts, width, label='Image/Prompt Processing', color='#2196F3')
+        ax.bar(x, gens, width, bottom=prompts, label='Text Generation', color='#4CAF50')
+        ax.bar(x, overheads, width,
+               bottom=[p + g for p, g in zip(prompts, gens)],
+               label='Ollama Overhead', color='#BDBDBD')
 
     ax.set_ylabel('Time (seconds)')
-    ax.set_title('Inference Time Breakdown by Model (median)')
+    title = 'Inference Time Breakdown by Model (median)'
+    if compare_yolo:
+        title += ' — no YOLO vs. with YOLO'
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.legend()
@@ -407,59 +582,69 @@ def chart_inference_breakdown(rows, output_dir):
     save_chart(fig, output_dir, 'inference_breakdown.png')
 
 
-def chart_total_inference(rows, output_dir):
+def chart_total_inference(rows_noyolo, rows_yolo, output_dir, compare_yolo):
     """Bar chart: median total inference time per model."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
-
-    medians = []
-    stds = []
-    for model in models:
-        vals = [float(r['total_duration_s']) for r in groups[model]]
-        medians.append(np.median(vals))
-        stds.append(np.std(vals))
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(models))
-    bars = ax.bar(x, medians, 0.5, yerr=stds, capsize=4,
-                  color=[get_color(m) for m in models])
-
-    ax.set_ylabel('Time (seconds)')
-    ax.set_title('Total Inference Time by Model (median ± std)')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=25, ha='right')
-
-    for bar, med in zip(bars, medians):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
-                f'{med:.1f}s', ha='center', va='bottom', fontsize=9)
-
-    save_chart(fig, output_dir, 'total_inference_time.png')
+    _grouped_bar_chart(
+        metric_fn=lambda rows: float(np.median([float(r['total_duration_s']) for r in rows])) if rows else 0,
+        rows_noyolo=rows_noyolo,
+        rows_yolo=rows_yolo,
+        output_dir=output_dir,
+        compare_yolo=compare_yolo,
+        filename='total_inference_time.png',
+        ylabel='Time (seconds)',
+        title='Total LLM Inference Time by Model (median)',
+        value_fmt='{:.1f}s',
+    )
 
 
-def chart_memory_usage(rows, output_dir):
+def chart_memory_usage(rows_noyolo, rows_yolo, output_dir, compare_yolo):
     """Bar chart: median runtime memory vs model disk size."""
-    groups = group_by_model(rows)
-    models = sorted(groups.keys())
+    groups_noyolo = group_by_model(rows_noyolo)
+    models = sorted(groups_noyolo.keys())
 
-    medians = []
-    model_sizes = []
-    for model in models:
-        vals = [float(r['memory_usage_gb']) for r in groups[model] if r['memory_usage_gb']]
-        medians.append(np.median(vals) if vals else 0)
-        size = groups[model][0].get('model_size_gb', '')
-        model_sizes.append(float(size) if size else 0)
+    def median_mem(rows):
+        vals = [float(r['memory_usage_gb']) for r in rows if r['memory_usage_gb']]
+        return np.median(vals) if vals else 0
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    def model_size(rows):
+        if not rows:
+            return 0
+        size = rows[0].get('model_size_gb', '')
+        return float(size) if size else 0
+
+    fig, ax = plt.subplots(figsize=(11, 5) if compare_yolo else (10, 5))
     x = np.arange(len(models))
-    width = 0.35
 
-    ax.bar(x - width/2, model_sizes, width, label='Model Size (disk)', color='#BDBDBD')
-    ax.bar(x + width/2, medians, width, label='RSS Memory (runtime)',
-           color='#FF9800')
+    if compare_yolo:
+        groups_yolo = group_by_model(rows_yolo)
+        width = 0.22
+        sizes = [model_size(groups_noyolo[m]) for m in models]
+        ax.bar(x - 1.5 * width, sizes, width, label='Model Size (disk)',
+               color='#BDBDBD')
+
+        mem_noyolo = [median_mem(groups_noyolo.get(m, [])) for m in models]
+        mem_yolo = [median_mem(groups_yolo.get(m, [])) for m in models]
+
+        ax.bar(x - 0.5 * width, mem_noyolo, width, label='RSS (no YOLO)',
+               color='#FF9800', edgecolor='black', linewidth=0.5)
+        ax.bar(x + 0.5 * width, mem_yolo, width, label='RSS (with YOLO)',
+               color='#FF9800', hatch=hatch_pattern_for_yolo(),
+               edgecolor='black', linewidth=0.5)
+    else:
+        width = 0.35
+        sizes = [model_size(groups_noyolo[m]) for m in models]
+        mems = [median_mem(groups_noyolo[m]) for m in models]
+        ax.bar(x - width / 2, sizes, width, label='Model Size (disk)',
+               color='#BDBDBD')
+        ax.bar(x + width / 2, mems, width, label='RSS Memory (runtime)',
+               color='#FF9800')
 
     ax.axhline(y=16, color='red', linestyle='--', alpha=0.5, label='16GB RAM limit')
     ax.set_ylabel('GB')
-    ax.set_title('Model Size vs Runtime Memory')
+    title = 'Model Size vs Runtime Memory'
+    if compare_yolo:
+        title += ' (no YOLO vs. with YOLO)'
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
     ax.legend()
@@ -507,36 +692,48 @@ def chart_model_sizes(output_dir, models=None):
 
 # ── Summary Table ────────────────────────────────────────────────────
 
-def print_summary(accuracy_rows, performance_rows):
-    """Print a summary table to stdout."""
-    acc_groups = group_by_model(accuracy_rows) if accuracy_rows else {}
-    perf_groups = group_by_model(performance_rows) if performance_rows else {}
+def print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, compare_yolo):
+    """Print a summary table to stdout. Paired rows when compare_yolo is True."""
+    acc_groups_noyolo = group_by_model(acc_noyolo) if acc_noyolo else {}
+    perf_groups_noyolo = group_by_model(perf_noyolo) if perf_noyolo else {}
+    acc_groups_yolo = group_by_model(acc_yolo) if (compare_yolo and acc_yolo) else {}
+    perf_groups_yolo = group_by_model(perf_yolo) if (compare_yolo and perf_yolo) else {}
 
-    all_models = sorted(set(list(acc_groups.keys()) + list(perf_groups.keys())))
+    all_models = sorted(set(
+        list(acc_groups_noyolo.keys())
+        + list(perf_groups_noyolo.keys())
+        + list(acc_groups_yolo.keys())
+        + list(perf_groups_yolo.keys())
+    ))
 
-    header = (
-        f"{'Model':<20} "
-        f"{'Raw':>6} {'Conf':>6} {'Amb':>6} "
-        f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
-        f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
-    )
+    if compare_yolo:
+        header = (
+            f"{'Model':<20} {'YOLO':<6} "
+            f"{'Acc':>6} "
+            f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
+            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
+        )
+    else:
+        header = (
+            f"{'Model':<20} "
+            f"{'Acc':>6} "
+            f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
+            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
+        )
     print()
     print(header)
     print('─' * len(header))
 
-    for model in all_models:
+    def row_for(model, acc_groups, perf_groups, yolo_label=None):
         if model in acc_groups:
             m = compute_metrics(acc_groups[model])
-            raw_str = f"{m['raw_accuracy']*100:.0f}%"
-            conf_str = f"{m['confident_accuracy']*100:.0f}%"
-            amb_str = f"{m['ambiguous_rate']*100:.0f}%"
+            acc_str = f"{m['accuracy']*100:.0f}%"
             prec_str = f"{m['precision']*100:.0f}%"
             rec_str = f"{m['recall']*100:.0f}%"
             f1_str = f"{m['f1']*100:.0f}%"
             mcc_str = f"{m['mcc']:.2f}"
         else:
-            raw_str = conf_str = amb_str = "—"
-            prec_str = rec_str = f1_str = mcc_str = "—"
+            acc_str = prec_str = rec_str = f1_str = mcc_str = "—"
 
         if model in perf_groups:
             tok = np.median([float(r['tokens_per_sec']) for r in perf_groups[model]])
@@ -549,62 +746,126 @@ def print_summary(accuracy_rows, performance_rows):
         else:
             tok_str = total_str = mem_str = "—"
 
-        print(
+        if yolo_label is not None:
+            return (
+                f"{model:<20} {yolo_label:<6} "
+                f"{acc_str:>6} "
+                f"{prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} "
+                f"{tok_str:>8} {total_str:>10} {mem_str:>8}"
+            )
+        return (
             f"{model:<20} "
-            f"{raw_str:>6} {conf_str:>6} {amb_str:>6} "
+            f"{acc_str:>6} "
             f"{prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} "
             f"{tok_str:>8} {total_str:>10} {mem_str:>8}"
         )
 
+    for model in all_models:
+        if compare_yolo:
+            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo, 'no'))
+            print(row_for(model, acc_groups_yolo, perf_groups_yolo, 'yes'))
+        else:
+            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo))
+
     print()
-    print("  Raw  = raw accuracy (ambiguous counted as incorrect)")
-    print("  Conf = confident-prediction accuracy (ambiguous excluded)")
-    print("  Amb  = share of predictions that were ambiguous/uncertain")
-    print("  Prec/Rec/F1/MCC computed on confident predictions only.")
+    print("  Acc       = classification accuracy")
+    print("  Prec/Rec/F1/MCC computed with fire as the positive class.")
+    if compare_yolo:
+        print("  YOLO column indicates whether YOLO preprocessing was applied to the input.")
     print()
+
+
+# ── Validation ───────────────────────────────────────────────────────
+
+def validate_compare_yolo(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo):
+    """
+    For --compare-yolo, ensure that if a result type (accuracy or performance)
+    has any data at all, both YOLO and no-YOLO variants are present. The
+    comparison is only meaningful when both sides exist.
+
+    Exits with an error message if validation fails.
+    """
+    issues = []
+
+    has_acc_noyolo = bool(acc_noyolo)
+    has_acc_yolo = bool(acc_yolo)
+    has_perf_noyolo = bool(perf_noyolo)
+    has_perf_yolo = bool(perf_yolo)
+
+    if (has_acc_noyolo or has_acc_yolo) and not (has_acc_noyolo and has_acc_yolo):
+        missing = 'YOLO' if has_acc_noyolo else 'no-YOLO'
+        issues.append(f"  Accuracy: {missing} CSVs are missing.")
+
+    if (has_perf_noyolo or has_perf_yolo) and not (has_perf_noyolo and has_perf_yolo):
+        missing = 'YOLO' if has_perf_noyolo else 'no-YOLO'
+        issues.append(f"  Performance: {missing} CSVs are missing.")
+
+    if not (has_acc_noyolo or has_acc_yolo or has_perf_noyolo or has_perf_yolo):
+        issues.append("  No CSV files found in either accuracy or performance directory.")
+
+    if issues:
+        print("Cannot run --compare-yolo: comparison requires both no-YOLO and "
+              "YOLO results to be present.")
+        for issue in issues:
+            print(issue)
+        print("\nGenerate the missing runs and try again, or run without "
+              "--compare-yolo for the standard view.")
+        sys.exit(1)
 
 
 # ── Main ─────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description='Analyze benchmark results')
-    parser.add_argument('--accuracy-dir', default='results/accuracy', help='Accuracy CSV directory')
-    parser.add_argument('--performance-dir', default='results/performance', help='Performance CSV directory')
-    parser.add_argument('--output', default='charts', help='Output directory for PNGs')
+    parser.add_argument('--accuracy-dir', default='results/accuracy',
+                        help='Accuracy CSV directory')
+    parser.add_argument('--performance-dir', default='results/performance',
+                        help='Performance CSV directory')
+    parser.add_argument('--output', default='charts',
+                        help='Output directory for PNGs')
+    parser.add_argument('--compare-yolo', action='store_true',
+                        help='Compare no-YOLO vs YOLO runs side by side. '
+                             'Requires both CSV types to be present.')
     args = parser.parse_args()
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    accuracy_rows = load_csvs(args.accuracy_dir)
-    performance_rows = load_csvs(args.performance_dir)
+    acc_noyolo, acc_yolo = load_csvs(args.accuracy_dir, compare_yolo=args.compare_yolo)
+    perf_noyolo, perf_yolo = load_csvs(args.performance_dir, compare_yolo=args.compare_yolo)
 
-    print(f"Loaded {len(accuracy_rows)} accuracy rows, {len(performance_rows)} performance rows")
+    if args.compare_yolo:
+        validate_compare_yolo(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo)
+
+    print(f"Loaded {len(acc_noyolo)} accuracy rows (no YOLO), "
+          f"{len(acc_yolo)} accuracy rows (with YOLO)")
+    print(f"Loaded {len(perf_noyolo)} performance rows (no YOLO), "
+          f"{len(perf_yolo)} performance rows (with YOLO)")
 
     # Always generate model size chart
     print("\nGenerating model size chart...")
     all_models = set()
-    for r in accuracy_rows + performance_rows:
+    for r in acc_noyolo + acc_yolo + perf_noyolo + perf_yolo:
         all_models.add(r['model_name'])
     chart_model_sizes(output_dir, list(all_models) if all_models else None)
 
-    if accuracy_rows:
+    if acc_noyolo or acc_yolo:
         print("\nGenerating accuracy charts...")
-        chart_accuracy(accuracy_rows, output_dir)
-        chart_precision_recall_f1(accuracy_rows, output_dir)
-        chart_mcc(accuracy_rows, output_dir)
-        chart_confusion(accuracy_rows, output_dir)
-        chart_response_length(accuracy_rows, output_dir)
+        chart_accuracy(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
+        chart_precision_recall_f1(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
+        chart_mcc(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
+        chart_confusion(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
+        chart_response_length(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
 
-    if performance_rows:
+    if perf_noyolo or perf_yolo:
         print("\nGenerating performance charts...")
-        chart_tokens_per_sec(performance_rows, output_dir)
-        chart_inference_breakdown(performance_rows, output_dir)
-        chart_total_inference(performance_rows, output_dir)
-        chart_memory_usage(performance_rows, output_dir)
+        chart_tokens_per_sec(perf_noyolo, perf_yolo, output_dir, args.compare_yolo)
+        chart_inference_breakdown(perf_noyolo, perf_yolo, output_dir, args.compare_yolo)
+        chart_total_inference(perf_noyolo, perf_yolo, output_dir, args.compare_yolo)
+        chart_memory_usage(perf_noyolo, perf_yolo, output_dir, args.compare_yolo)
 
-    if accuracy_rows or performance_rows:
-        print_summary(accuracy_rows, performance_rows)
+    if acc_noyolo or acc_yolo or perf_noyolo or perf_yolo:
+        print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, args.compare_yolo)
 
     print(f"Done. Charts saved to {output_dir}/")
 
