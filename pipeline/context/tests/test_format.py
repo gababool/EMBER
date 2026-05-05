@@ -25,6 +25,7 @@ SAMPLE_CONTEXT = {
         {
             "name": "Delsjön",
             "source_type": "lake",
+            "supply_category": "heavy",
             "distance_m": 450.0,
             "bearing": "E",
             "area_m2": 1370000.0,
@@ -69,6 +70,13 @@ SAMPLE_CONTEXT = {
             "bearing": "E",
         }
     ],
+    "assets_at_risk": {
+        "buildings_within_radius": 3,
+        "has_permanent_structures": True,
+        "power_lines_present": False,
+        "protected_area": None,
+        "assets_radius_m": 2000.0,
+    },
     "wind": None,
     "extraction_metadata": {
         "extracted_at": "2026-05-04T13:00:00+02:00",
@@ -77,6 +85,7 @@ SAMPLE_CONTEXT = {
         "water_source_radius_m": 5000.0,
         "track_radius_m": 2000.0,
         "named_feature_radius_m": 5000.0,
+        "assets_radius_m": 2000.0,
     },
 }
 
