@@ -57,5 +57,5 @@ See `examples/sample_context.json`.
 ## Run tests
 
 ```bash
-uv run pytest tests/context -v
+uv run pytest pipeline/context/tests -v
 ```
