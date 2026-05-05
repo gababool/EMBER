@@ -22,6 +22,17 @@ Coordinate projection:
     national projected coordinate system where 1 unit = 1 metre. Results
     are converted back to WGS84 bearings and metre distances for the schema.
 
+Region lookup:
+    Swedish municipality and county boundaries are stored as multipolygon
+    relations in OSM. Geofabrik extracts clip the member ways at the extract
+    boundary, so osmium cannot assemble complete area geometries from them.
+    Instead, region lookup uses a two-pass approach: collect relation names
+    and member way IDs in pass 1, collect way node coordinates in pass 2,
+    then build convex hull polygons per relation for point-in-polygon lookup.
+    Convex hulls are a deliberate approximation — sufficient for municipality-
+    level containment checks, where boundaries are large relative to the
+    search area.
+
 Pre-computation approach:
     The .pbf is loaded once per process into in-memory GeoDataFrames.
     For the expected usage pattern (5-10 scenario extractions per run),
@@ -29,14 +40,11 @@ Pre-computation approach:
     cached at module level after the first call to extract_context().
     At inference time, scenario JSONs are loaded directly without touching
     the .pbf at all.
-
-This script was developed with Claude
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import math
 import sys
 from datetime import datetime, timezone
@@ -45,9 +53,7 @@ from typing import Any
 
 import geopandas as gpd
 import osmium
-import osmium.filter
-from shapely.geometry import Point, MultiPolygon
-from shapely.ops import unary_union
+from shapely.geometry import MultiPoint, Point
 
 from pipeline.context.schemas import (
     CompassBearing,
@@ -95,8 +101,6 @@ PAVED_ROAD_CLASSES = {
 }
 
 # Saltwater tags to exclude from water sources.
-# OSM marks seas and oceans with natural=water + water=sea/ocean,
-# or place=sea, or natural=coastline.
 SALTWATER_WATER_TAGS = {"sea", "ocean", "bay"}
 
 # OSM water tags mapped to WaterSourceType.
@@ -134,17 +138,11 @@ NAMED_FEATURE_TYPE_MAP: dict[str, NamedFeatureType] = {
 
 # ── Module-level cache ────────────────────────────────────────────────────────
 
-# GeoDataFrames loaded from the .pbf. Populated lazily on first call to
-# extract_context(). Each GDF is reprojected to SWEREF99 TM for spatial ops.
 _cache: dict[str, Any] = {}
 _pbf_path: Path | None = None
 
 
-# ── OSM handlers ─────────────────────────────────────────────────────────────
-#
-# osmium works by passing a handler object over the .pbf file. Each handler
-# collects one category of feature into a list of dicts, which is later
-# converted into a GeoDataFrame.
+# ── OSM handlers ──────────────────────────────────────────────────────────────
 
 class _WaterHandler(osmium.SimpleHandler):
     """Collect freshwater polygon and line features."""
@@ -163,8 +161,6 @@ class _WaterHandler(osmium.SimpleHandler):
         is_water = natural_tag == "water" or waterway_tag in ("riverbank",)
         if not is_water:
             return
-
-        # Exclude saltwater.
         if water_tag in SALTWATER_WATER_TAGS:
             return
         if tags.get("place") == "sea":
@@ -296,38 +292,6 @@ class _LandCoverHandler(osmium.SimpleHandler):
         })
 
 
-class _RegionHandler(osmium.SimpleHandler):
-    """Collect administrative boundary polygons.
-
-    Admin boundaries in OSM are stored as multipolygon relations, which
-    require osmium's AreaManager to assemble before the area() callback
-    fires. Applied via osmium.apply() with AreaManager in _load_pbf.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self.features: list[dict] = []
-        self._wkb = osmium.geom.WKBFactory()
-
-    def area(self, a):
-        tags = dict(a.tags)
-        if tags.get("boundary") != "administrative":
-            return
-        admin_level = tags.get("admin_level", "")
-        if admin_level not in ("4", "7"):
-            return
-        try:
-            wkb = self._wkb.create_multipolygon(a)
-            geom = _load_wkb(wkb)
-        except Exception:
-            return
-        self.features.append({
-            "name": tags.get("name"),
-            "admin_level": admin_level,
-            "geometry": geom,
-        })
-
-
 class _NamedFeatureHandler(osmium.SimpleHandler):
     """Collect named natural features (peaks, ridges, valleys, etc.)."""
 
@@ -362,7 +326,6 @@ class _NamedFeatureHandler(osmium.SimpleHandler):
         name = tags.get("name")
         if not name:
             return
-        # Named forests as area features.
         if natural not in ("wood",):
             return
         try:
@@ -378,7 +341,60 @@ class _NamedFeatureHandler(osmium.SimpleHandler):
         })
 
 
-# ── Geometry helpers ──────────────────────────────────────────────────────────
+# ── Region handlers (two-pass, no area assembly) ───────────────────────────────
+
+class _RelationCollector(osmium.SimpleHandler):
+    """Pass 1: collect admin relation metadata and member way IDs.
+
+    Administrative boundaries in OSM are multipolygon relations. Geofabrik
+    extracts clip their member ways at the extract boundary, preventing osmium
+    from assembling complete area geometries. We therefore collect the relation
+    names and member way IDs here, then reconstruct approximate polygons from
+    the way node coordinates in a second pass.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.relations: dict[int, dict] = {}
+
+    def relation(self, r):
+        tags = dict(r.tags)
+        if tags.get("boundary") != "administrative":
+            return
+        level = tags.get("admin_level", "")
+        if level not in ("4", "7"):
+            return
+        name = tags.get("name")
+        if not name:
+            return
+        way_ids = {m.ref for m in r.members if m.type == "w"}
+        self.relations[r.id] = {
+            "name": name,
+            "admin_level": level,
+            "way_ids": way_ids,
+        }
+
+
+class _BoundaryWayCollector(osmium.SimpleHandler):
+    """Pass 2: collect node coordinates for boundary member ways."""
+
+    def __init__(self, target_way_ids: set[int]):
+        super().__init__()
+        self.target_way_ids = target_way_ids
+        self.way_nodes: dict[int, list[tuple[float, float]]] = {}
+
+    def way(self, w):
+        if w.id not in self.target_way_ids:
+            return
+        try:
+            coords = [(n.lon, n.lat) for n in w.nodes if n.location.valid()]
+        except Exception:
+            return
+        if len(coords) >= 2:
+            self.way_nodes[w.id] = coords
+
+
+# ── Geometry helpers ───────────────────────────────────────────────────────────
 
 def _load_wkb(wkb_hex: str):
     """Parse a WKB hex string from osmium into a Shapely geometry."""
@@ -403,6 +419,44 @@ def _to_gdf(features: list[dict], crs: str = WGS84) -> gpd.GeoDataFrame:
     return gdf.to_crs(SWEREF99_TM)
 
 
+def _build_region_polygons(
+    relations: dict,
+    way_nodes: dict,
+) -> list[dict]:
+    """Build convex hull polygons for admin boundaries from way node coordinates.
+
+    Since Geofabrik extracts clip boundary ways at the extract edge, complete
+    closed rings cannot always be formed. We collect all node coordinates for
+    each relation's member ways and compute a convex hull. This is a deliberate
+    approximation: convex hulls are always slightly larger than the real polygon,
+    but the error is negligible for point-in-polygon checks at municipality or
+    county scale.
+    """
+    features = []
+    for rel_id, rel in relations.items():
+        all_coords: list[tuple[float, float]] = []
+        for way_id in rel["way_ids"]:
+            all_coords.extend(way_nodes.get(way_id, []))
+
+        if len(all_coords) < 3:
+            continue
+
+        try:
+            hull = MultiPoint(all_coords).convex_hull
+            if hull.is_empty or hull.geom_type not in ("Polygon", "MultiPolygon"):
+                continue
+        except Exception:
+            continue
+
+        features.append({
+            "name": rel["name"],
+            "admin_level": rel["admin_level"],
+            "geometry": hull,
+        })
+
+    return features
+
+
 # ── Utility functions ─────────────────────────────────────────────────────────
 
 def _degrees_to_compass(degrees: float) -> CompassBearing:
@@ -418,8 +472,8 @@ def _compute_bearing(from_geom, to_geom) -> CompassBearing:
     Geometries must be in a projected CRS (SWEREF99 TM) so that coordinate
     differences correspond to north/east offsets in metres.
     """
-    from_pt = from_geom.centroid if not from_geom.geom_type == "Point" else from_geom
-    to_pt = to_geom.centroid if not to_geom.geom_type == "Point" else to_geom
+    from_pt = from_geom.centroid if from_geom.geom_type != "Point" else from_geom
+    to_pt = to_geom.centroid if to_geom.geom_type != "Point" else to_geom
 
     dx = to_pt.x - from_pt.x   # east offset in metres
     dy = to_pt.y - from_pt.y   # north offset in metres
@@ -446,10 +500,10 @@ def _is_vehicle_accessible(
     """Derive vehicle accessibility for a fire truck from OSM tags.
 
     Rules:
-    - Paved road classes (motorway–service, unclassified, residential):
+    - Paved road classes (motorway through service, unclassified, residential):
       always True regardless of surface.
     - track with tracktype grade1 or grade2: True.
-    - track with tracktype grade3–grade5: False.
+    - track with tracktype grade3-grade5: False.
     - track without tracktype but with a solid surface tag: True.
     - track without tracktype and without surface: False (conservative).
     - path and unknown: always False.
@@ -461,7 +515,6 @@ def _is_vehicle_accessible(
             return True
         if tracktype in ("grade3", "grade4", "grade5"):
             return False
-        # No tracktype: fall back to surface.
         solid_surfaces = {
             "asphalt", "concrete", "paved", "compacted", "gravel",
             "fine_gravel", "paving_stones",
@@ -479,8 +532,8 @@ def _classify_land_cover(
 ) -> LandCoverType | None:
     """Map OSM landuse/natural tags to a LandCoverType.
 
-    Returns None if the tags don't match any known land-cover category,
-    which causes the area to be skipped during loading.
+    Returns None if the tags don't match any known category, causing the
+    area to be skipped during loading.
     """
     if natural == "water":
         return "water"
@@ -555,23 +608,34 @@ def _load_pbf(pbf_path: Path) -> None:
     land_cover_handler = _LandCoverHandler()
     land_cover_handler.apply_file(pbf_str, locations=True, idx="flex_mem")
 
-    region_handler = _RegionHandler()
-    osmium.apply(
-        osmium.io.Reader(pbf_str, osmium.osm.osm_entity_bits.ALL),
-        osmium.NodeLocationsForWays(osmium.index.create_map("flex_mem")),
-        osmium.area.AreaManager(),
-        region_handler,
-    )
-
     named_feature_handler = _NamedFeatureHandler()
     named_feature_handler.apply_file(pbf_str, locations=True, idx="flex_mem")
+
+    # Region loading: two-pass approach without area assembly.
+    # Pass 1: collect relation names and member way IDs.
+    relation_collector = _RelationCollector()
+    relation_collector.apply_file(pbf_str)
+
+    # Pass 2: collect node coordinates for boundary ways.
+    all_way_ids: set[int] = set()
+    for rel in relation_collector.relations.values():
+        all_way_ids.update(rel["way_ids"])
+
+    way_collector = _BoundaryWayCollector(all_way_ids)
+    way_collector.apply_file(pbf_str, locations=True, idx="flex_mem")
+
+    # Build convex hull polygons per relation from collected node coordinates.
+    region_features = _build_region_polygons(
+        relation_collector.relations,
+        way_collector.way_nodes,
+    )
 
     _cache = {
         "water": _to_gdf(water_handler.features),
         "roads": _to_gdf(road_handler.features),
         "settlements": _to_gdf(settlement_handler.features),
         "land_cover": _to_gdf(land_cover_handler.features),
-        "regions": _to_gdf(region_handler.features),
+        "regions": _to_gdf(region_features),
         "named_features": _to_gdf(named_feature_handler.features),
     }
     _pbf_path = pbf_path
@@ -589,9 +653,9 @@ def _ensure_loaded(pbf_path: Path) -> None:
 def _query_region(point_gdf: gpd.GeoDataFrame) -> Region:
     """Look up the administrative region containing the observation point.
 
-    Performs point-in-polygon against Swedish municipality (admin_level=7)
-    and county (admin_level=4) boundaries. Falls back to 'Unknown region'
-    if no boundary contains the point (e.g. point is outside the extract).
+    Performs point-in-polygon against convex hull approximations of Swedish
+    municipality (admin_level=7) and county (admin_level=4) boundaries.
+    Falls back to 'Unknown region' if no boundary contains the point.
     """
     regions_gdf = _cache["regions"]
     if regions_gdf.empty:
@@ -655,10 +719,10 @@ def _query_water_sources(
 ) -> list[WaterSource]:
     """Find nearby freshwater sources within radius_m of the observation point.
 
-    Saltwater features are already excluded during loading. For polygon water
-    bodies, area is computed in SWEREF99 TM (square metres). For each water
-    source, the distance to the nearest vehicle-accessible road is computed
-    to indicate operational accessibility.
+    Saltwater features are excluded during loading. For polygon water bodies,
+    area is computed in SWEREF99 TM (square metres). For each water source,
+    the distance to the nearest vehicle-accessible road is computed to indicate
+    operational accessibility.
 
     Results are sorted by distance and capped at MAX_WATER_SOURCES.
     """
@@ -669,7 +733,6 @@ def _query_water_sources(
 
     point = point_gdf.geometry.iloc[0]
 
-    # Filter to within radius.
     water_gdf = water_gdf.copy()
     water_gdf["distance_m"] = water_gdf.geometry.distance(point)
     nearby = water_gdf[water_gdf["distance_m"] <= radius_m].copy()
@@ -678,7 +741,6 @@ def _query_water_sources(
     if nearby.empty:
         return []
 
-    # Vehicle-accessible roads for accessibility check.
     accessible_roads = (
         roads_gdf[roads_gdf["vehicle_accessible"] == True].copy()  # noqa: E712
         if not roads_gdf.empty else gpd.GeoDataFrame()
@@ -688,26 +750,21 @@ def _query_water_sources(
     for _, row in nearby.iterrows():
         geom = row["geometry"]
 
-        # Area for polygons only.
         area_m2: float | None = None
         if row.get("is_polygon", False):
             area_m2 = float(geom.area)
 
-        # Nearest accessible road distance.
         nearest_road_dist: float | None = None
         if not accessible_roads.empty:
-            road_centroid = geom.centroid
-            dists = accessible_roads.geometry.distance(road_centroid)
+            dists = accessible_roads.geometry.distance(geom.centroid)
             if not dists.empty:
                 nearest_road_dist = float(dists.min())
-
-        bearing = _compute_bearing(point, geom.centroid)
 
         results.append(WaterSource(
             name=_nan_to_none(row.get("name")),
             source_type=row["source_type"],
             distance_m=float(row["distance_m"]),
-            bearing=bearing,
+            bearing=_compute_bearing(point, geom.centroid),
             area_m2=area_m2,
             nearest_road_distance_m=nearest_road_dist,
         ))
@@ -722,7 +779,7 @@ def _query_roads(
     """Find roads within radius_m of the observation point.
 
     Returns a Roads object with:
-    - primary_access: the closest vehicle-accessible road.
+    - primary_access: the closest vehicle-accessible non-track road.
     - nearby_tracks: up to MAX_TRACKS closest track features.
 
     Tracks are listed separately because they have different operational
@@ -741,7 +798,6 @@ def _query_roads(
     if nearby.empty:
         return Roads()
 
-    # Primary access: nearest vehicle-accessible non-track road.
     paved = nearby[
         (nearby["vehicle_accessible"] == True) &  # noqa: E712
         (nearby["road_class"] != "track")
@@ -760,7 +816,6 @@ def _query_roads(
             bearing=_compute_bearing(point, row["geometry"].centroid),
         )
 
-    # Nearby tracks.
     tracks = nearby[nearby["road_class"] == "track"].sort_values("distance_m").head(MAX_TRACKS)
     nearby_tracks: list[Road] = []
     for _, row in tracks.iterrows():
@@ -816,8 +871,6 @@ def _query_named_features(
     """Find nearby named natural features within radius_m.
 
     Results are sorted by distance, capped at MAX_NAMED_FEATURES.
-    Named forests already captured in land_cover are included here too
-    when they carry a distinct name, since that name aids LLM reasoning.
     """
     features_gdf = _cache["named_features"]
     if features_gdf.empty:
@@ -939,14 +992,17 @@ def main() -> None:
         f.write(context.model_dump_json(indent=2))
 
     print(f"Context written to {args.output}")
-    print(f"  Region:       {context.region.name}")
-    print(f"  Land cover:   {context.land_cover}")
-    print(f"  Settlements:  {len(context.settlements)}")
-    print(f"  Water sources:{len(context.water_sources)}")
+    print(f"  Region:        {context.region.name}"
+          + (f", {context.region.admin_area}" if context.region.admin_area else ""))
+    print(f"  Land cover:    {context.land_cover}")
+    print(f"  Settlements:   {len(context.settlements)}")
+    print(f"  Water sources: {len(context.water_sources)}")
     print(f"  Named features:{len(context.named_features)}")
     primary = context.roads.primary_access
-    print(f"  Primary road: {primary.road_class if primary else 'none'} "
-          f"({primary.distance_m:.0f}m)" if primary else "  Primary road: none")
+    if primary:
+        print(f"  Primary road:  {primary.road_class} ({primary.distance_m:.0f}m {primary.bearing})")
+    else:
+        print("  Primary road:  none within search radius")
 
 
 if __name__ == "__main__":
