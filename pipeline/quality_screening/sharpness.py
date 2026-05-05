@@ -7,8 +7,10 @@ import numpy as np
 
 from pipeline.quality_screening._shared import (
     to_grayscale_uint8,
+    validate_fraction,
     validate_non_negative_int,
     validate_non_negative_number,
+    validate_percentile,
 )
 
 
@@ -22,18 +24,6 @@ class SharpnessResult(TypedDict):
     texture_threshold: float
     sharpness_threshold: float
     sharpness_percentile: float
-
-
-def _validate_fraction(name: str, value: float) -> None:
-    validate_non_negative_number(name, value)
-    if value > 1.0:
-        raise ValueError(f"{name} must be between 0.0 and 1.0.")
-
-
-def _validate_percentile(name: str, value: float) -> None:
-    validate_non_negative_number(name, value)
-    if value > 100.0:
-        raise ValueError(f"{name} must be between 0.0 and 100.0.")
 
 
 def _iter_tiles(
@@ -102,9 +92,9 @@ def check_sharpness(
     validate_non_negative_number("min_sharpness", min_sharpness)
     validate_non_negative_number("min_texture", min_texture)
     validate_non_negative_int("tile_size", tile_size)
-    _validate_fraction("min_valid_tile_fraction", min_valid_tile_fraction)
-    _validate_fraction("min_sharp_tile_fraction", min_sharp_tile_fraction)
-    _validate_percentile("sharpness_percentile", sharpness_percentile)
+    validate_fraction("min_valid_tile_fraction", min_valid_tile_fraction)
+    validate_fraction("min_sharp_tile_fraction", min_sharp_tile_fraction)
+    validate_percentile("sharpness_percentile", sharpness_percentile)
 
     if tile_size == 0:
         raise ValueError("tile_size must be greater than 0.")
