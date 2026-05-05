@@ -96,6 +96,15 @@ def run_llm_inference(
     model_tag = MODELS[model_name]
     image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
+
+    if operational_context is None and context_file is not None:
+        context_path = resolve_path(context_file)
+        if context_path.exists():
+            import json
+            from pipeline.context.schemas import OperationalContext
+            data = json.loads(context_path.read_text(encoding="utf-8"))
+            operational_context = OperationalContext(**data)
+
     user_content = build_user_content(additional_context, operational_context)
 
     messages = [
