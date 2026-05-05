@@ -1,19 +1,23 @@
 """Schemas for structured operational wildfire context.
 
-The OperationalContext model defines the structured context passed from GIS/context
-extraction into prompt formatting and LLM inference.
+The OperationalContext model defines the structured context passed from
+GIS/context extraction into prompt formatting and LLM inference.
 
 Unit conventions:
 - Coordinates use WGS84 decimal degrees.
 - Distances use metres.
+- Areas use square metres.
 - Elevation uses metres above mean sea level.
 - Slope uses degrees.
 - Wind speed uses metres per second.
 
 Important:
 - This module only defines and validates the shape of the data.
-- It does not perform GIS extraction, nearest-road lookup, land-cover lookup,
-  terrain analysis, or prompt formatting.
+- It does not perform GIS extraction, accessibility computation,
+  land-cover lookup, terrain analysis, or prompt formatting.
+- The `extraction_metadata` field is included in the JSON for
+  reproducibility but is intentionally excluded by `format_context`
+  from the prompt-ready text block sent to the LLM.
 """
 
 from __future__ import annotations
@@ -70,7 +74,6 @@ WaterSourceType = Literal[
     "stream",
     "reservoir",
     "pond",
-    "sea",
     "wetland",
     "unknown",
 ]
@@ -81,6 +84,7 @@ RoadClass = Literal[
     "primary",
     "secondary",
     "tertiary",
+    "unclassified",
     "residential",
     "service",
     "track",
@@ -93,8 +97,19 @@ SettlementType = Literal[
     "town",
     "village",
     "hamlet",
+    "suburb",
     "isolated_dwelling",
+    "farm",
     "unknown",
+]
+
+NamedFeatureType = Literal[
+    "peak",
+    "ridge",
+    "valley",
+    "forest",
+    "island",
+    "other",
 ]
 
 
@@ -148,26 +163,22 @@ class Region(StrictBaseModel):
         ),
     )
 
-    country_code: str | None = Field(
-        default=None,
-        pattern=r"^[A-Z]{2}$",
-        description=(
-            "Optional ISO 3166-1 alpha-2 country code, for example 'SE'. "
-            "Unit: none."
-        ),
-    )
-
     admin_area: str | None = Field(
         default=None,
         description=(
-            "Optional larger administrative area, such as county, state, or province. "
-            "Unit: none."
+            "Optional larger administrative area, such as county, state, or "
+            "province. Unit: none."
         ),
     )
 
 
 class Terrain(StrictBaseModel):
-    """Terrain properties at or near the observation point."""
+    """Terrain properties at or near the observation point.
+
+    The entire Terrain object is optional in OperationalContext; if elevation
+    data is unavailable, the parent field is set to None rather than
+    populating Terrain with placeholder values.
+    """
 
     elevation_m: float | None = Field(
         default=None,
@@ -206,8 +217,12 @@ class Terrain(StrictBaseModel):
     )
 
 
-class NearestWaterSource(StrictBaseModel):
-    """Nearest known water source relative to the observation point."""
+class WaterSource(StrictBaseModel):
+    """A single nearby water source usable for firefighting operations.
+
+    Saltwater (sea, ocean) is excluded by extraction since it is unusable
+    for fire suppression.
+    """
 
     name: str | None = Field(
         default=None,
@@ -216,7 +231,10 @@ class NearestWaterSource(StrictBaseModel):
 
     source_type: WaterSourceType = Field(
         ...,
-        description="Type of nearest water source. Unit: categorical label.",
+        description=(
+            "Type of water source. Saltwater is excluded from extraction. "
+            "Unit: categorical label."
+        ),
     )
 
     distance_m: float = Field(
@@ -224,21 +242,42 @@ class NearestWaterSource(StrictBaseModel):
         ge=0,
         description=(
             "Shortest horizontal distance from the observation point to the "
-            "nearest water-source geometry. Unit: metres."
+            "nearest geometry of this water source. Unit: metres."
         ),
     )
 
     bearing: CompassBearing | None = Field(
         default=None,
         description=(
-            "Compass direction from the observation point toward the water source. "
-            "Use None if unavailable. Unit: categorical compass bearing."
+            "Compass direction from the observation point toward the water "
+            "source. Use None if unavailable. Unit: categorical compass bearing."
+        ),
+    )
+
+    area_m2: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Surface area of the water body when it is a polygon feature "
+            "(lake, reservoir, pond, wetland). None for line features such "
+            "as rivers and streams. Unit: square metres."
+        ),
+    )
+
+    nearest_road_distance_m: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Distance from this water source to the nearest vehicle-accessible "
+            "road. A water source far from any road is unusable in practice "
+            "regardless of its size. Use None if no accessible road is found "
+            "within the search radius. Unit: metres."
         ),
     )
 
 
-class NearestRoad(StrictBaseModel):
-    """Nearest known road or access route relative to the observation point."""
+class Road(StrictBaseModel):
+    """A single road or access route relative to the observation point."""
 
     name: str | None = Field(
         default=None,
@@ -247,7 +286,40 @@ class NearestRoad(StrictBaseModel):
 
     road_class: RoadClass = Field(
         ...,
-        description="Class of nearest road or access route. Unit: categorical label.",
+        description=(
+            "Raw OSM road class. Unit: categorical label."
+        ),
+    )
+
+    surface: str | None = Field(
+        default=None,
+        description=(
+            "Surface type from OSM `surface=*` tag (e.g. 'asphalt', 'paved', "
+            "'unpaved', 'gravel', 'dirt'). None when the tag is absent. "
+            "Unit: none."
+        ),
+    )
+
+    tracktype: str | None = Field(
+        default=None,
+        description=(
+            "OSM `tracktype=*` value for forest tracks, ranging from 'grade1' "
+            "(solid, all-weather drivable) to 'grade5' (soft, often impassable). "
+            "Only meaningful when road_class is 'track'. None otherwise. "
+            "Unit: none."
+        ),
+    )
+
+    vehicle_accessible: bool = Field(
+        ...,
+        description=(
+            "Whether a typical fire response vehicle can drive on this road. "
+            "Computed by extraction from road_class, surface, and tracktype: "
+            "True for motorway through residential and service; True for "
+            "tracks with tracktype grade1 or grade2; False for tracks with "
+            "grade3 or higher; False for path, footway, and unknown classes. "
+            "Unit: boolean."
+        ),
     )
 
     distance_m: float = Field(
@@ -268,8 +340,34 @@ class NearestRoad(StrictBaseModel):
     )
 
 
-class NearestSettlement(StrictBaseModel):
-    """Nearest known settlement relative to the observation point."""
+class Roads(StrictBaseModel):
+    """Road context relative to the observation point.
+
+    Distinguishes the primary vehicle-accessible road (most operationally
+    relevant for fire response logistics) from a list of nearby tracks
+    that may be relevant for forward access or escape routes.
+    """
+
+    primary_access: Road | None = Field(
+        default=None,
+        description=(
+            "The closest vehicle-accessible road. None if no accessible road "
+            "is found within the search radius."
+        ),
+    )
+
+    nearby_tracks: list[Road] = Field(
+        default_factory=list,
+        description=(
+            "Nearby roads classified as tracks (typically forest roads). "
+            "May be vehicle-accessible or not depending on tracktype. Empty "
+            "list if no tracks are within the search radius."
+        ),
+    )
+
+
+class Settlement(StrictBaseModel):
+    """A single nearby settlement relative to the observation point."""
 
     name: str | None = Field(
         default=None,
@@ -278,7 +376,7 @@ class NearestSettlement(StrictBaseModel):
 
     settlement_type: SettlementType = Field(
         ...,
-        description="Type of nearest settlement. Unit: categorical label.",
+        description="Type of settlement. Unit: categorical label.",
     )
 
     distance_m: float = Field(
@@ -286,25 +384,62 @@ class NearestSettlement(StrictBaseModel):
         ge=0,
         description=(
             "Shortest horizontal distance from the observation point to the "
-            "nearest settlement geometry or centroid. Unit: metres."
+            "settlement geometry or centroid. Unit: metres."
         ),
     )
 
     bearing: CompassBearing | None = Field(
         default=None,
         description=(
-            "Compass direction from the observation point toward the settlement. "
+            "Compass direction from the observation point toward the "
+            "settlement. Use None if unavailable. Unit: categorical compass "
+            "bearing."
+        ),
+    )
+
+
+class NamedFeature(StrictBaseModel):
+    """A named natural feature near the observation point.
+
+    Captures named hills, ridges, valleys, named forests, named islands,
+    or other notable named landmarks present in OSM. Coverage is sparse
+    in OSM, so this list will frequently be empty.
+    """
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        description="Name of the feature. Unit: none.",
+    )
+
+    feature_type: NamedFeatureType = Field(
+        ...,
+        description=(
+            "Category of the named feature. Use 'other' for named features "
+            "that do not fit a more specific category. Unit: categorical label."
+        ),
+    )
+
+    distance_m: float = Field(
+        ...,
+        ge=0,
+        description=(
+            "Shortest horizontal distance from the observation point to the "
+            "feature. Unit: metres."
+        ),
+    )
+
+    bearing: CompassBearing | None = Field(
+        default=None,
+        description=(
+            "Compass direction from the observation point toward the feature. "
             "Use None if unavailable. Unit: categorical compass bearing."
         ),
     )
 
 
 class Wind(StrictBaseModel):
-    """Optional wind conditions near the observation point.
-
-    Wind is optional right now because weather/wind integration is an optional
-    feature that will only be implemented if there is enough time.
-    """
+    """Wind conditions near the observation point."""
 
     speed_m_s: float = Field(
         ...,
@@ -315,28 +450,70 @@ class Wind(StrictBaseModel):
         ),
     )
 
-    gust_m_s: float | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Optional wind gust speed near the observation point. "
-            "Use None if unavailable. Unit: metres per second."
-        ),
-    )
-
     direction_from: CompassBearing = Field(
         ...,
         description=(
-            "Meteorological wind direction, meaning the direction the wind blows from, "
-            "not the direction it blows toward. Unit: categorical compass bearing."
+            "Meteorological wind direction, meaning the direction the wind "
+            "blows from, not the direction it blows toward. "
+            "Unit: categorical compass bearing."
         ),
     )
 
-    observed_at: datetime | None = Field(
-        default=None,
+
+class ExtractionMetadata(StrictBaseModel):
+    """Provenance information about how this context was produced.
+
+    This data is included in the on-disk JSON for reproducibility but is
+    intentionally excluded from the prompt-ready text block sent to the
+    LLM. The formatter is responsible for omitting it.
+    """
+
+    extracted_at: datetime = Field(
+        ...,
         description=(
-            "Timestamp for the wind observation. Prefer timezone-aware ISO 8601 "
-            "datetime values. Use None if unavailable. Unit: datetime."
+            "Timestamp at which extraction was run. Prefer timezone-aware "
+            "ISO 8601 datetime values. Unit: datetime."
+        ),
+    )
+
+    osm_dataset: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Identifier for the OSM dataset used (e.g. file name and "
+            "Geofabrik snapshot date). Unit: none."
+        ),
+    )
+
+    settlement_radius_m: float = Field(
+        ...,
+        gt=0,
+        description=(
+            "Search radius used for nearby settlements. Unit: metres."
+        ),
+    )
+
+    water_source_radius_m: float = Field(
+        ...,
+        gt=0,
+        description=(
+            "Search radius used for nearby water sources. Unit: metres."
+        ),
+    )
+
+    track_radius_m: float = Field(
+        ...,
+        gt=0,
+        description=(
+            "Search radius used for nearby tracks. Unit: metres."
+        ),
+    )
+
+    named_feature_radius_m: float = Field(
+        ...,
+        gt=0,
+        description=(
+            "Search radius used for named natural features. Unit: metres."
         ),
     )
 
@@ -344,23 +521,27 @@ class Wind(StrictBaseModel):
 class OperationalContext(StrictBaseModel):
     """Structured operational context for wildfire decision support.
 
-    This model is the contract between GIS/context extraction, prompt formatting,
-    and LLM inference.
+    This model is the contract between GIS/context extraction, prompt
+    formatting, and LLM inference.
     """
 
-    schema_version: Literal["1.0"] = Field(
-        default="1.0",
+    schema_version: Literal["2.0"] = Field(
+        default="2.0",
         description="Version of the operational context schema. Unit: none.",
     )
 
     coordinates: Coordinates = Field(
         ...,
-        description="Observation coordinates. Units documented in Coordinates.",
+        description=(
+            "Observation coordinates. Units documented in Coordinates."
+        ),
     )
 
     region: Region = Field(
         ...,
-        description="Administrative or operational region. Units documented in Region.",
+        description=(
+            "Administrative or operational region. Units documented in Region."
+        ),
     )
 
     land_cover: LandCoverType = Field(
@@ -371,46 +552,65 @@ class OperationalContext(StrictBaseModel):
         ),
     )
 
-    terrain: Terrain = Field(
-        ...,
+    terrain: Terrain | None = Field(
+        default=None,
         description=(
-            "Terrain context at or near the observation point. "
+            "Terrain context at or near the observation point. Optional: "
+            "set to None when elevation data is unavailable. "
             "Units documented in Terrain."
         ),
     )
 
-    nearest_water_source: NearestWaterSource = Field(
-        ...,
+    water_sources: list[WaterSource] = Field(
+        default_factory=list,
         description=(
-            "Nearest known water source relative to the observation point. "
-            "Units documented in NearestWaterSource."
+            "Nearby water sources usable for firefighting, sorted by "
+            "operational relevance. Saltwater is excluded. Empty list if "
+            "no usable water sources are within the search radius. "
+            "Units documented in WaterSource."
         ),
     )
 
-    nearest_road: NearestRoad = Field(
+    roads: Roads = Field(
         ...,
         description=(
-            "Nearest known road or access route relative to the observation point. "
-            "Units documented in NearestRoad."
+            "Road context relative to the observation point. "
+            "Units documented in Roads."
         ),
     )
 
-    nearest_settlement: NearestSettlement = Field(
-        ...,
+    settlements: list[Settlement] = Field(
+        default_factory=list,
         description=(
-            "Nearest known settlement relative to the observation point. "
-            "Units documented in NearestSettlement."
+            "Nearby settlements sorted by distance. Empty list if no "
+            "settlements are within the search radius. "
+            "Units documented in Settlement."
         ),
     )
 
-    # Wind is intentionally optional for now. It is included in the schema so the
-    # interface is ready if weather/wind support is added later, but current GIS
-    # context extraction does not need to provide it.
+    named_features: list[NamedFeature] = Field(
+        default_factory=list,
+        description=(
+            "Optional list of named natural features near the observation "
+            "point (named peaks, ridges, valleys, etc.). Frequently empty "
+            "due to sparse OSM coverage; handled gracefully when empty. "
+            "Units documented in NamedFeature."
+        ),
+    )
+
     wind: Wind | None = Field(
         default=None,
         description=(
-            "Optional wind context near the observation point. "
-            "Use None if wind integration is not available. "
-            "Units documented in Wind."
+            "Optional wind context near the observation point. Use None if "
+            "wind integration is not available. Units documented in Wind."
+        ),
+    )
+
+    extraction_metadata: ExtractionMetadata = Field(
+        ...,
+        description=(
+            "Provenance and parameter information about the extraction run. "
+            "Included in JSON for reproducibility; the formatter excludes "
+            "this from the prompt-ready text sent to the LLM."
         ),
     )
