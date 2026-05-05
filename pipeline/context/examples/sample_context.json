@@ -1,12 +1,11 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "coordinates": {
     "latitude": 57.7089,
     "longitude": 11.9746
   },
   "region": {
     "name": "Gothenburg Municipality",
-    "country_code": "SE",
     "admin_area": "Västra Götaland County"
   },
   "land_cover": "mixed_forest",
@@ -16,23 +15,61 @@
     "slope_steepness": "steep",
     "aspect": "SW"
   },
-  "nearest_water_source": {
-    "name": "Delsjön",
-    "source_type": "lake",
-    "distance_m": 450.0,
-    "bearing": "E"
+  "water_sources": [
+    {
+      "name": "Delsjön",
+      "source_type": "lake",
+      "distance_m": 450.0,
+      "bearing": "E",
+      "area_m2": 1370000.0,
+      "nearest_road_distance_m": 120.0
+    }
+  ],
+  "roads": {
+    "primary_access": {
+      "name": "Road 40",
+      "road_class": "primary",
+      "surface": "asphalt",
+      "tracktype": null,
+      "vehicle_accessible": true,
+      "distance_m": 320.0,
+      "bearing": "NW"
+    },
+    "nearby_tracks": [
+      {
+        "name": "Forest track",
+        "road_class": "track",
+        "surface": "gravel",
+        "tracktype": "grade2",
+        "vehicle_accessible": true,
+        "distance_m": 180.0,
+        "bearing": "N"
+      }
+    ]
   },
-  "nearest_road": {
-    "name": "Road 40",
-    "road_class": "primary",
-    "distance_m": 320.0,
-    "bearing": "NW"
-  },
-  "nearest_settlement": {
-    "name": "Gothenburg",
-    "settlement_type": "city",
-    "distance_m": 3000.0,
-    "bearing": "W"
-  },
-  "wind": null
+  "settlements": [
+    {
+      "name": "Gothenburg",
+      "settlement_type": "city",
+      "distance_m": 3000.0,
+      "bearing": "W"
+    }
+  ],
+  "named_features": [
+    {
+      "name": "Delsjöområdet",
+      "feature_type": "forest",
+      "distance_m": 250.0,
+      "bearing": "E"
+    }
+  ],
+  "wind": null,
+  "extraction_metadata": {
+    "extracted_at": "2026-05-04T13:00:00+02:00",
+    "osm_dataset": "sweden-latest.osm.pbf",
+    "settlement_radius_m": 10000.0,
+    "water_source_radius_m": 5000.0,
+    "track_radius_m": 2000.0,
+    "named_feature_radius_m": 5000.0
+  }
 }
