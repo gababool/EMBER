@@ -97,14 +97,30 @@ def test_format_context_matches_documented_template():
 
     expected = "\n".join(
         [
-            "Operational context:",
-            "- Location: Gothenburg Municipality, Västra Götaland County (57.7089, 11.9746)",
-            "- Land cover: mixed forest",
-            "- Terrain: 82 m elevation, steep slope (32%), aspect SW",
-            "- Water: lake Delsjön, 0.45 km E, road 0.12 km away",
-            "- Road: primary road Road 40, 0.32 km NW, accessible yes",
-            "- Settlement: city Gothenburg, 3.00 km W",
-            "- Wind: unavailable",
+            "OPERATIONAL CONTEXT",
+            "Location: Gothenburg Municipality, Västra Götaland County",
+            "Land cover: mixed forest",
+            "Terrain: 82 m elevation, steep slope (32%), SW-facing",
+            "",
+            "Water sources (1 within 5 km):",
+            "  - heavy supply: lake Delsjön, 0.5 km E, road access 0.1 km",
+            "",
+            "Road access:",
+            "  Primary: primary road Road 40, 0.3 km NW",
+            "  Track: track road Forest track, 0.2 km N, accessible",
+            "",
+            "Settlements (1 within 10 km):",
+            "  - city Gothenburg, 3.0 km W",
+            "",
+            "Assets at risk (within 2.0 km):",
+            "  Buildings: 3 (including permanent structures)",
+            "  Power lines: none mapped",
+            "  Protected area: none",
+            "",
+            "Named features:",
+            "  - forest Delsjöområdet, 0.2 km E",
+            "",
+            "Wind: unavailable",
         ]
     )
 
@@ -128,6 +144,7 @@ def test_format_context_handles_missing_optional_fields():
     context_data["terrain"] = None
     context_data["water_sources"] = []
     context_data["roads"]["primary_access"] = None
+    context_data["roads"]["nearby_tracks"] = []
     context_data["settlements"] = []
     context_data["named_features"] = []
     context_data["wind"] = None
@@ -136,12 +153,13 @@ def test_format_context_handles_missing_optional_fields():
 
     formatted = format_context(context)
 
-    assert "- Terrain: unavailable" in formatted
-    assert "- Water: unavailable" in formatted
-    assert "- Road: unavailable" in formatted
-    assert "- Settlement: unavailable" in formatted
-    assert "- Wind: unavailable" in formatted
-    assert "unknown admin area" in formatted
+    assert "Terrain: unavailable" in formatted
+    assert "Water sources (none within 5 km)" in formatted
+    assert "Primary: none within search radius" in formatted
+    assert "Tracks: none nearby" in formatted
+    assert "Settlements (none within 10 km)" in formatted
+    assert "Wind: unavailable" in formatted
+    assert "unknown county" in formatted
     assert "None" not in formatted
 
 
@@ -150,10 +168,11 @@ def test_format_context_includes_inline_units():
 
     formatted = format_context(context)
 
-    assert "0.45 km" in formatted
-    assert "0.12 km" in formatted
-    assert "0.32 km" in formatted
-    assert "3.00 km" in formatted
+    assert "0.5 km" in formatted
+    assert "0.1 km" in formatted
+    assert "0.3 km" in formatted
+    assert "3.0 km" in formatted
+    assert "2.0 km" in formatted
     assert "32%" in formatted
     assert "82 m elevation" in formatted
 
@@ -169,7 +188,7 @@ def test_format_context_formats_optional_wind_when_available():
 
     formatted = format_context(context)
 
-    assert "- Wind: 5.0 m/s from SW" in formatted
+    assert "Wind: 5.0 m/s from SW" in formatted
 
 
 def test_format_context_excludes_extraction_metadata():
