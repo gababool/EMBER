@@ -30,7 +30,7 @@ try:
     from ui.components.history_strip import HistoryStrip
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
-    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -45,7 +45,7 @@ except ImportError:
     from components.history_strip import HistoryStrip
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
-    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
 
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
@@ -93,7 +93,13 @@ class PipelineDashboard(QWidget):
         for model_tag in BENCHMARK_MODEL_TAGS:
             self.model_select.addItem(model_tag, model_tag)
 
+        self.prompt_select = ModelComboBox(theme)
+        self.prompt_select.setMinimumWidth(140)
+        for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
+            self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
+
         header_layout.addWidget(title_block, 1)
+        header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
         header_layout.addWidget(self.start_button)
 
@@ -174,6 +180,7 @@ class PipelineDashboard(QWidget):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
         self.model_select.setEnabled(False)
+        self.prompt_select.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
         self._start_current_run_record()
@@ -203,11 +210,15 @@ class PipelineDashboard(QWidget):
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
         self.model_select.setEnabled(True)
+        self.prompt_select.setEnabled(True)
         self.start_button.setText("Test Image")
         self._save_current_run_to_history()
 
     def selected_llm_model(self) -> str:
         return self.model_select.currentData()
+
+    def selected_prompt_file(self) -> str:
+        return self.prompt_select.currentData()
 
     def set_selected_image(self, image_path: str):
         if self.current_run is None:
@@ -345,6 +356,7 @@ class PipelineDashboard(QWidget):
             }}
         """)
         self.model_select.apply_theme(theme)
+        self.prompt_select.apply_theme(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
             panel.apply_theme(theme)

@@ -66,7 +66,8 @@ class MainWindow(QMainWindow):
 
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
-            llm_model=self.dashboard.selected_llm_model()
+            llm_model=self.dashboard.selected_llm_model(),
+            prompt_file=self.dashboard.selected_prompt_file(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
