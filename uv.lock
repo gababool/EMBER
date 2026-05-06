@@ -67,6 +67,15 @@ wheels = [
 ]
 
 [[package]]
+name = "appdirs"
+version = "1.4.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/d8/05696357e0311f5b5c316d7b95f46c669dd9c15aaeecbb48c7d0aeb88c40/appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41", size = 13470, upload-time = "2020-05-11T07:59:51.037Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/00/2344469e2084fb287c2e0b57b72910309874c3245463acd6cf5e3db69324/appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128", size = 9566, upload-time = "2020-05-11T07:59:49.499Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -161,6 +170,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/81/e1/56027a71e31b02ddc53c7d65b01e68edf64dea2932122fe7746a516f75d5/dill-0.4.1.tar.gz", hash = "sha256:423092df4182177d4d8ba8290c8a5b640c66ab35ec7da59ccfa00f6fa3eea5fa", size = 187315, upload-time = "2026-01-19T02:36:56.85Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/77/dc8c558f7593132cf8fefec57c4f60c83b16941c574ac5f619abb3ae7933/dill-0.4.1-py3-none-any.whl", hash = "sha256:1e1ce33e978ae97fcfcff5638477032b801c46c7c65cf717f95fbc2248f79a9d", size = 120019, upload-time = "2026-01-19T02:36:55.663Z" },
+]
+
+[[package]]
+name = "elevation"
+version = "1.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "appdirs", marker = "sys_platform == 'darwin'" },
+    { name = "click", marker = "sys_platform == 'darwin'" },
+    { name = "fasteners", marker = "sys_platform == 'darwin'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/1c/c69f52e3a5bc6bbab8d66a850e2fc7652d37d44baaa29cfe78245fba78da/elevation-1.1.3.tar.gz", hash = "sha256:be27446562e7964f7d8fa78c4829dbbb8ac43df405ad09be8c49633adb8f4877", size = 27311, upload-time = "2021-04-08T10:07:47.742Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/c1/ee55b817ef71bbb339ec3ad5c7e265b24e27968336468f46b1a7cb821681/elevation-1.1.3-py3-none-any.whl", hash = "sha256:bd66975626b05c1a74332816966ec744ecbe38eddf784b28ed4bb84e42df0bd4", size = 16965, upload-time = "2021-04-08T10:27:05.867Z" },
+]
+
+[[package]]
+name = "fasteners"
+version = "0.20"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/18/7881a99ba5244bfc82f06017316ffe93217dbbbcfa52b887caa1d4f2a6d3/fasteners-0.20.tar.gz", hash = "sha256:55dce8792a41b56f727ba6e123fcaee77fd87e638a6863cec00007bfea84c8d8", size = 25087, upload-time = "2025-08-11T10:19:37.785Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/ac/e5d886f892666d2d1e5cb8c1a41146e1d79ae8896477b1153a21711d3b44/fasteners-0.20-py3-none-any.whl", hash = "sha256:9422c40d1e350e4259f509fb2e608d6bc43c0136f79a00db1b49046029d0b3b7", size = 18702, upload-time = "2025-08-11T10:19:35.716Z" },
 ]
 
 [[package]]
@@ -1218,6 +1250,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "accelerate", marker = "sys_platform == 'darwin'" },
     { name = "dill", marker = "sys_platform == 'darwin'" },
+    { name = "elevation", marker = "sys_platform == 'darwin'" },
     { name = "geopandas", marker = "sys_platform == 'darwin'" },
     { name = "huggingface-hub", marker = "sys_platform == 'darwin'" },
     { name = "kaggle", marker = "sys_platform == 'darwin'" },
@@ -1258,6 +1291,7 @@ dev = [
 requires-dist = [
     { name = "accelerate", specifier = ">=1.13.0" },
     { name = "dill", specifier = ">=0.4.1" },
+    { name = "elevation", specifier = ">=1.1.3" },
     { name = "geopandas", specifier = ">=1.1.3" },
     { name = "huggingface-hub", extras = ["cli"], specifier = ">=1.9.2" },
     { name = "kaggle", specifier = ">=2.0.1" },
