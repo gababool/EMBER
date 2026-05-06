@@ -58,6 +58,7 @@ class PipelineDashboard(QWidget):
         self.expected_label = None
         self.current_run = None
         self.run_history = []
+        self.last_image_path = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -84,6 +85,12 @@ class PipelineDashboard(QWidget):
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
 
+        self.rerun_button = QPushButton("Re-run")
+        self.rerun_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.rerun_button.setCursor(Qt.PointingHandCursor)
+        self.rerun_button.setFixedHeight(40)
+        self.rerun_button.setEnabled(False)
+
         self.start_button = QPushButton("Test Image")
         self.start_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.start_button.setCursor(Qt.PointingHandCursor)
@@ -109,6 +116,7 @@ class PipelineDashboard(QWidget):
         header_layout.addWidget(self.skip_quality_button)
         header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
+        header_layout.addWidget(self.rerun_button)
         header_layout.addWidget(self.start_button)
 
         self.grid = QGridLayout()
@@ -187,6 +195,7 @@ class PipelineDashboard(QWidget):
     def reset_demo(self):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
+        self.rerun_button.setEnabled(False)
         self.model_select.setEnabled(False)
         self.prompt_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
@@ -220,6 +229,7 @@ class PipelineDashboard(QWidget):
 
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
+        self.rerun_button.setEnabled(self.last_image_path is not None)
         self.model_select.setEnabled(True)
         self.prompt_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
@@ -236,6 +246,9 @@ class PipelineDashboard(QWidget):
     def skip_quality_screening(self) -> bool:
         return self.skip_quality_button.isChecked()
 
+    def selected_rerun_image(self) -> str | None:
+        return self.last_image_path
+
     def _on_skip_quality_toggled(self, checked: bool):
         self.skip_quality_button.setText("Quality: OFF" if checked else "Quality: ON")
         self._style_skip_quality_button(self.theme)
@@ -246,6 +259,7 @@ class PipelineDashboard(QWidget):
             self._reset_stage_views()
 
         path = Path(image_path)
+        self.last_image_path = str(path)
         label = path.parent.name
         self.expected_label = label
         if self.current_run is not None:
@@ -375,6 +389,25 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.accent_cyan};
             }}
         """)
+        self.rerun_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_orange};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
         self.model_select.apply_theme(theme)
         self.prompt_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
@@ -445,6 +478,8 @@ class PipelineDashboard(QWidget):
         self.current_run = None
         run_record = self.run_history[index]
         image_path = Path(run_record.get("image_path", ""))
+        self.last_image_path = str(image_path) if run_record.get("image_path") else self.last_image_path
+        self.rerun_button.setEnabled(self.last_image_path is not None)
         expected_label = run_record.get("expected_label")
         self.expected_label = expected_label
         self.subtitle_label.setText(

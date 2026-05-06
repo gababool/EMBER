@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard = PipelineDashboard(self.theme)
         self.dashboard.start_button.clicked.connect(self.start_demo)
+        self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
         self.main_layout.addWidget(self.dashboard, 1)
 
         # Example updates
@@ -69,6 +70,33 @@ class MainWindow(QMainWindow):
             llm_model=self.dashboard.selected_llm_model(),
             prompt_file=self.dashboard.selected_prompt_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+        )
+        self.pipeline_worker.moveToThread(self.pipeline_thread)
+
+        self.pipeline_thread.started.connect(self.pipeline_worker.run)
+        self.pipeline_worker.image_selected.connect(self.dashboard.set_selected_image)
+        self.pipeline_worker.event_received.connect(self.dashboard.handle_pipeline_event)
+        self.pipeline_worker.failed.connect(self.dashboard.set_pipeline_error)
+        self.pipeline_worker.finished.connect(self.pipeline_thread.quit)
+        self.pipeline_worker.finished.connect(self.pipeline_worker.deleteLater)
+        self.pipeline_thread.finished.connect(self.pipeline_thread.deleteLater)
+        self.pipeline_thread.finished.connect(self._demo_finished)
+        self.pipeline_thread.start()
+
+    def rerun_demo(self):
+        image_path = self.dashboard.selected_rerun_image()
+        if self.pipeline_thread is not None or image_path is None:
+            return
+
+        self.dashboard.reset_demo()
+        self.top_bar.set_mode("RUNNING DEMO")
+
+        self.pipeline_thread = QThread(self)
+        self.pipeline_worker = PipelineWorker(
+            llm_model=self.dashboard.selected_llm_model(),
+            prompt_file=self.dashboard.selected_prompt_file(),
+            skip_quality_screening=self.dashboard.skip_quality_screening(),
+            fixed_image_path=image_path,
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
