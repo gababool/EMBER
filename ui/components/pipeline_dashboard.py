@@ -98,7 +98,15 @@ class PipelineDashboard(QWidget):
         for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
             self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
 
+        self.skip_quality_button = QPushButton("Quality: ON")
+        self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.skip_quality_button.setCursor(Qt.PointingHandCursor)
+        self.skip_quality_button.setFixedHeight(40)
+        self.skip_quality_button.setCheckable(True)
+        self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
+
         header_layout.addWidget(title_block, 1)
+        header_layout.addWidget(self.skip_quality_button)
         header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
         header_layout.addWidget(self.start_button)
@@ -181,6 +189,7 @@ class PipelineDashboard(QWidget):
         self.start_button.setEnabled(False)
         self.model_select.setEnabled(False)
         self.prompt_select.setEnabled(False)
+        self.skip_quality_button.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
         self._start_current_run_record()
@@ -199,6 +208,8 @@ class PipelineDashboard(QWidget):
         }
 
     def _reset_stage_views(self):
+        skip_quality = self.skip_quality_button.isChecked()
+        self.quality_panel.setVisible(not skip_quality)
         for row in self.quality_rows:
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
@@ -211,7 +222,9 @@ class PipelineDashboard(QWidget):
         self.start_button.setEnabled(True)
         self.model_select.setEnabled(True)
         self.prompt_select.setEnabled(True)
+        self.skip_quality_button.setEnabled(True)
         self.start_button.setText("Test Image")
+        self.quality_panel.setVisible(True)
         self._save_current_run_to_history()
 
     def selected_llm_model(self) -> str:
@@ -219,6 +232,13 @@ class PipelineDashboard(QWidget):
 
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
+
+    def skip_quality_screening(self) -> bool:
+        return self.skip_quality_button.isChecked()
+
+    def _on_skip_quality_toggled(self, checked: bool):
+        self.skip_quality_button.setText("Quality: OFF" if checked else "Quality: ON")
+        self._style_skip_quality_button(self.theme)
 
     def set_selected_image(self, image_path: str):
         if self.current_run is None:
@@ -357,6 +377,7 @@ class PipelineDashboard(QWidget):
         """)
         self.model_select.apply_theme(theme)
         self.prompt_select.apply_theme(theme)
+        self._style_skip_quality_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
             panel.apply_theme(theme)
@@ -497,6 +518,28 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result") or {}
         parsed = reasoning_result.get("parsed", {})
         return parsed.get("classification", "pending")
+
+    def _style_skip_quality_button(self, theme: Theme):
+        checked = self.skip_quality_button.isChecked()
+        border_color = theme.danger if checked else theme.border
+        text_color = theme.danger if checked else theme.text_primary
+        self.skip_quality_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {text_color};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.danger};
+                color: {theme.danger};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
 
     @staticmethod
     def _label_style(color: str) -> str:

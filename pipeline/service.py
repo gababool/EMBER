@@ -230,15 +230,15 @@ def create_default_pipeline(
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
     context_file: str | Path | None = None,
+    skip_quality_screening: bool = False,
 ) -> PipelineRunner:
-    return PipelineRunner(
-        stages=[
-            QualityScreeningStage(),
-            ObjectDetectionStage(model_name=yolo_model),
-            LLMReasoningStage(
-                model_name=llm_model,
-                prompt_file=prompt_file,
-                context_file=context_file,
-            ),
-        ]
-    )
+    stages = []
+    if not skip_quality_screening:
+        stages.append(QualityScreeningStage())
+    stages.append(ObjectDetectionStage(model_name=yolo_model))
+    stages.append(LLMReasoningStage(
+        model_name=llm_model,
+        prompt_file=prompt_file,
+        context_file=context_file,
+    ))
+    return PipelineRunner(stages=stages)

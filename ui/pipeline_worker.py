@@ -33,6 +33,7 @@ class PipelineWorker(QObject):
         yolo_model: str = "best",
         llm_model: str = "ministral",
         prompt_file: str | None = None,
+        skip_quality_screening: bool = False,
         max_quality_retries: int = 20,
         parent=None,
     ):
@@ -41,13 +42,18 @@ class PipelineWorker(QObject):
         self.yolo_model = yolo_model
         self.llm_model = llm_model
         self.prompt_file = prompt_file
+        self.skip_quality_screening = skip_quality_screening
         self.max_quality_retries = max_quality_retries
 
     @Slot()
     def run(self):
         try:
             tried_paths = set()
-            kwargs = dict(yolo_model=self.yolo_model, llm_model=self.llm_model)
+            kwargs = dict(
+                yolo_model=self.yolo_model,
+                llm_model=self.llm_model,
+                skip_quality_screening=self.skip_quality_screening,
+            )
             if self.prompt_file:
                 kwargs["prompt_file"] = self.prompt_file
             runner = create_default_pipeline(**kwargs)

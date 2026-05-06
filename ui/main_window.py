@@ -68,6 +68,7 @@ class MainWindow(QMainWindow):
         self.pipeline_worker = PipelineWorker(
             llm_model=self.dashboard.selected_llm_model(),
             prompt_file=self.dashboard.selected_prompt_file(),
+            skip_quality_screening=self.dashboard.skip_quality_screening(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
