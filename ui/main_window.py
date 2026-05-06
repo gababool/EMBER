@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
             label_filter=self.dashboard.selected_image_filter(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
@@ -99,6 +100,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
             fixed_image_path=image_path,
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
@@ -127,6 +129,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
             fixed_image_path=image_path,
             label_filter=self.dashboard.selected_image_filter(),
         )

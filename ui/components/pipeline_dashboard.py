@@ -130,6 +130,13 @@ class PipelineDashboard(QWidget):
         self.pick_button.setFixedHeight(40)
         self.pick_button.clicked.connect(self._open_image_picker)
 
+        self.annotation_button = QPushButton("Annotation: ON")
+        self.annotation_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.annotation_button.setCursor(Qt.PointingHandCursor)
+        self.annotation_button.setFixedHeight(40)
+        self.annotation_button.setCheckable(True)
+        self.annotation_button.toggled.connect(self._on_annotation_toggled)
+
         self.skip_quality_button = QPushButton("Quality: ON")
         self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.skip_quality_button.setCursor(Qt.PointingHandCursor)
@@ -141,6 +148,7 @@ class PipelineDashboard(QWidget):
         header_layout.addWidget(self.image_filter_select)
         header_layout.addWidget(self.pick_button)
         header_layout.addWidget(self.skip_quality_button)
+        header_layout.addWidget(self.annotation_button)
         header_layout.addWidget(self.context_select)
         header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
@@ -227,6 +235,7 @@ class PipelineDashboard(QWidget):
         self.pick_button.setEnabled(False)
         self.model_select.setEnabled(False)
         self.prompt_select.setEnabled(False)
+        self.annotation_button.setEnabled(False)
         self.context_select.setEnabled(False)
         self.image_filter_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
@@ -264,6 +273,7 @@ class PipelineDashboard(QWidget):
         self.pick_button.setEnabled(True)
         self.model_select.setEnabled(True)
         self.prompt_select.setEnabled(True)
+        self.annotation_button.setEnabled(True)
         self.context_select.setEnabled(True)
         self.image_filter_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
@@ -281,6 +291,13 @@ class PipelineDashboard(QWidget):
         if not self.context_select.isVisible():
             return None
         return self.context_select.currentData()
+
+    def use_annotation(self) -> bool:
+        return not self.annotation_button.isChecked()
+
+    def _on_annotation_toggled(self, checked: bool):
+        self.annotation_button.setText("Annotation: OFF" if checked else "Annotation: ON")
+        self._style_annotation_button(self.theme)
 
     def _on_prompt_changed(self, _index: int):
         stem = Path(self.prompt_select.currentData() or "").stem
@@ -488,6 +505,7 @@ class PipelineDashboard(QWidget):
         self.prompt_select.apply_theme(theme)
         self.context_select.apply_theme(theme)
         self.image_filter_select.apply_theme(theme)
+        self._style_annotation_button(theme)
         self._style_skip_quality_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
@@ -631,6 +649,22 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result") or {}
         parsed = reasoning_result.get("parsed", {})
         return parsed.get("classification", "pending")
+
+    def _style_annotation_button(self, theme: Theme):
+        checked = self.annotation_button.isChecked()
+        border_color = theme.danger if checked else theme.border
+        text_color = theme.danger if checked else theme.text_primary
+        self.annotation_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {text_color};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{ border-color: {theme.danger}; color: {theme.danger}; }}
+            QPushButton:disabled {{ color: {theme.text_muted}; border-color: {theme.border}; }}
+        """)
 
     def _style_skip_quality_button(self, theme: Theme):
         checked = self.skip_quality_button.isChecked()
