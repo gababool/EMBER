@@ -1,0 +1,189 @@
+{
+  "schema_version": "2.0",
+  "coordinates": {
+    "latitude": 59.835408,
+    "longitude": 16.194227
+  },
+  "region": {
+    "name": "Sala kommun",
+    "admin_area": null
+  },
+  "land_cover": "forest",
+  "terrain": null,
+  "water_sources": [
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 296.52197463427717,
+      "bearing": "W",
+      "area_m2": null,
+      "nearest_road_distance_m": 1.7486721929152829
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 325.54314758676725,
+      "bearing": "W",
+      "area_m2": null,
+      "nearest_road_distance_m": 40.38859077421266
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 238.83865544999642,
+      "bearing": "S",
+      "area_m2": null,
+      "nearest_road_distance_m": 274.72905876687804
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 300.08473677090717,
+      "bearing": "NW",
+      "area_m2": null,
+      "nearest_road_distance_m": 300.0700875614647
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 495.47320511628334,
+      "bearing": "NW",
+      "area_m2": null,
+      "nearest_road_distance_m": 162.76350777721314
+    }
+  ],
+  "roads": {
+    "primary_access": {
+      "name": "Bergtorpsvägen",
+      "road_class": "unclassified",
+      "surface": "gravel",
+      "tracktype": null,
+      "vehicle_accessible": true,
+      "max_weight_tonnes": null,
+      "has_bridge": false,
+      "distance_m": 1605.8396566981783,
+      "bearing": "W"
+    },
+    "nearby_tracks": [
+      {
+        "name": "Trapphällsmossen SÖ",
+        "road_class": "track",
+        "surface": "gravel",
+        "tracktype": "grade2",
+        "vehicle_accessible": true,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 7.26548857844984,
+        "bearing": "W"
+      },
+      {
+        "name": "Lilla Gräsgårdsvägen",
+        "road_class": "track",
+        "surface": "gravel",
+        "tracktype": "grade2",
+        "vehicle_accessible": true,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 346.3834094497725,
+        "bearing": "W"
+      },
+      {
+        "name": "Urskogsvägen",
+        "road_class": "track",
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 379.8766797256627,
+        "bearing": "SW"
+      }
+    ]
+  },
+  "settlements": [
+    {
+      "name": "Rabo",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2737.9034862321296,
+      "bearing": "SW"
+    },
+    {
+      "name": "Seglingsberg",
+      "settlement_type": "village",
+      "distance_m": 2901.788867106042,
+      "bearing": "SW"
+    },
+    {
+      "name": "Färmansbo",
+      "settlement_type": "hamlet",
+      "distance_m": 3117.6583559866317,
+      "bearing": "SW"
+    },
+    {
+      "name": "Norra Kilbäcken",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3634.3957532935106,
+      "bearing": "S"
+    },
+    {
+      "name": "Öjesjön",
+      "settlement_type": "hamlet",
+      "distance_m": 3722.2674156907315,
+      "bearing": "NE"
+    }
+  ],
+  "assets_at_risk": {
+    "buildings_within_radius": 0,
+    "has_permanent_structures": false,
+    "power_lines_present": false,
+    "protected_area": "Hälleskogsbrännans naturreservat",
+    "assets_radius_m": 2000.0
+  },
+  "named_features": [
+    {
+      "name": "Fermansbo urskog",
+      "feature_type": "forest",
+      "distance_m": 502.48022293854,
+      "bearing": "SE"
+    },
+    {
+      "name": "Fågelmossberget",
+      "feature_type": "peak",
+      "distance_m": 1461.0792439574427,
+      "bearing": "S"
+    },
+    {
+      "name": "Fräksmossberget",
+      "feature_type": "peak",
+      "distance_m": 2306.7162674533133,
+      "bearing": "SE"
+    },
+    {
+      "name": "Källberget",
+      "feature_type": "peak",
+      "distance_m": 2687.8338375031904,
+      "bearing": "SW"
+    },
+    {
+      "name": "Valbergen",
+      "feature_type": "peak",
+      "distance_m": 3524.390707887107,
+      "bearing": "NW"
+    }
+  ],
+  "wind": null,
+  "extraction_metadata": {
+    "extracted_at": "2026-05-06T09:31:37.987383Z",
+    "osm_dataset": "scenario_02-50km.osm.pbf",
+    "settlement_radius_m": 20000.0,
+    "water_source_radius_m": 10000.0,
+    "track_radius_m": 5000.0,
+    "named_feature_radius_m": 10000.0,
+    "assets_radius_m": 2000.0
+  }
+}
