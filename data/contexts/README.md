@@ -23,7 +23,6 @@ data/gis/osm/sweden-latest.osm.pbf
 Run all commands from the repository root:
 
 ```bash
-cd "/Users/robin.carlander/Wildfire BSC Thesis"
 mkdir -p data/gis/osm
 mkdir -p data/contexts
 ```
