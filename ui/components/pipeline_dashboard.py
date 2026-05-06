@@ -203,7 +203,7 @@ class PipelineDashboard(QWidget):
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
         self.model_select.setEnabled(True)
-        self.start_button.setText("Start Demo")
+        self.start_button.setText("Test Image")
         self._save_current_run_to_history()
 
     def selected_llm_model(self) -> str:
@@ -301,12 +301,21 @@ class PipelineDashboard(QWidget):
         classification = parsed.get("classification", "unknown")
         reasoning = parsed.get("reasoning", "")
         recommendation = parsed.get("recommendation", "")
+        situation_brief = parsed.get("situation_brief") or ""
+        tactical_priority = parsed.get("tactical_priority") or ""
         self.classification_badge.set_classification(classification)
         self.correctness_badge.set_prediction(classification)
-        self.reasoning_text.setPlainText(
-            f"Reasoning:\n{reasoning}\n\n"
-            f"Recommendation:\n{recommendation}"
-        )
+
+        parts = []
+        if situation_brief:
+            parts.append(f"Situation Brief:\n{situation_brief}")
+        if reasoning:
+            parts.append(f"Reasoning:\n{reasoning}")
+        if tactical_priority:
+            parts.append(f"Tactical Priority:\n{tactical_priority}")
+        if recommendation:
+            parts.append(f"Recommendation:\n{recommendation}")
+        self.reasoning_text.setPlainText("\n\n".join(parts) if parts else "No reasoning returned.")
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
