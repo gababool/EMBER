@@ -3,9 +3,10 @@ import shutil
 import tempfile
 import uuid
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -31,6 +32,7 @@ try:
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from ui.pipeline_worker import DEMO_DATASET_DIR
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -46,12 +48,17 @@ except ImportError:
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from pipeline_worker import DEMO_DATASET_DIR
 
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
+CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
+CONTEXT_PROMPTS = {"c2v2prompt", "c2v3prompt", "c2v4prompt"}
 
 
 class PipelineDashboard(QWidget):
+    image_picked = Signal(str)
+
     def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
         super().__init__(parent)
         self.theme = theme
@@ -104,11 +111,24 @@ class PipelineDashboard(QWidget):
         self.prompt_select.setMinimumWidth(140)
         for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
             self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
+        self.prompt_select.currentIndexChanged.connect(self._on_prompt_changed)
+
+        self.context_select = ModelComboBox(theme)
+        self.context_select.setMinimumWidth(160)
+        for ctx_path in sorted(CONTEXTS_DIR.glob("*.json")):
+            self.context_select.addItem(ctx_path.stem, str(ctx_path))
+        self.context_select.setVisible(False)
 
         self.image_filter_select = ModelComboBox(theme)
         self.image_filter_select.setMinimumWidth(110)
-        for label, data in [("Any", None), ("Fire", "fire"), ("No Fire", "nofire")]:
+        for label, data in [("Any", ""), ("Fire", "fire"), ("No Fire", "nofire")]:
             self.image_filter_select.addItem(label, data)
+
+        self.pick_button = QPushButton("Pick Image")
+        self.pick_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.pick_button.setCursor(Qt.PointingHandCursor)
+        self.pick_button.setFixedHeight(40)
+        self.pick_button.clicked.connect(self._open_image_picker)
 
         self.skip_quality_button = QPushButton("Quality: ON")
         self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
@@ -119,7 +139,9 @@ class PipelineDashboard(QWidget):
 
         header_layout.addWidget(title_block, 1)
         header_layout.addWidget(self.image_filter_select)
+        header_layout.addWidget(self.pick_button)
         header_layout.addWidget(self.skip_quality_button)
+        header_layout.addWidget(self.context_select)
         header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
         header_layout.addWidget(self.rerun_button)
@@ -202,8 +224,10 @@ class PipelineDashboard(QWidget):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
         self.rerun_button.setEnabled(False)
+        self.pick_button.setEnabled(False)
         self.model_select.setEnabled(False)
         self.prompt_select.setEnabled(False)
+        self.context_select.setEnabled(False)
         self.image_filter_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
         self.start_button.setText("Running")
@@ -237,8 +261,10 @@ class PipelineDashboard(QWidget):
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
         self.rerun_button.setEnabled(self.last_image_path is not None)
+        self.pick_button.setEnabled(True)
         self.model_select.setEnabled(True)
         self.prompt_select.setEnabled(True)
+        self.context_select.setEnabled(True)
         self.image_filter_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
         self.start_button.setText("Test Image")
@@ -251,14 +277,34 @@ class PipelineDashboard(QWidget):
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
 
+    def selected_context_file(self) -> str | None:
+        if not self.context_select.isVisible():
+            return None
+        return self.context_select.currentData()
+
+    def _on_prompt_changed(self, _index: int):
+        stem = Path(self.prompt_select.currentData() or "").stem
+        self.context_select.setVisible(stem in CONTEXT_PROMPTS)
+
     def selected_image_filter(self) -> str | None:
-        return self.image_filter_select.currentData()
+        data = self.image_filter_select.currentData()
+        return data or None
 
     def skip_quality_screening(self) -> bool:
         return self.skip_quality_button.isChecked()
 
     def selected_rerun_image(self) -> str | None:
         return self.last_image_path
+
+    def _open_image_picker(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Pick Image",
+            str(DEMO_DATASET_DIR),
+            "Images (*.jpg *.jpeg *.png)",
+        )
+        if path:
+            self.image_picked.emit(path)
 
     def _on_skip_quality_toggled(self, checked: bool):
         self.skip_quality_button.setText("Quality: OFF" if checked else "Quality: ON")
@@ -400,6 +446,25 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.accent_cyan};
             }}
         """)
+        self.pick_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
         self.rerun_button.setStyleSheet(f"""
             QPushButton {{
                 color: {theme.text_primary};
@@ -421,6 +486,7 @@ class PipelineDashboard(QWidget):
         """)
         self.model_select.apply_theme(theme)
         self.prompt_select.apply_theme(theme)
+        self.context_select.apply_theme(theme)
         self.image_filter_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
 

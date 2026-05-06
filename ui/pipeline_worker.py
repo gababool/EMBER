@@ -33,6 +33,7 @@ class PipelineWorker(QObject):
         yolo_model: str = "best",
         llm_model: str = "ministral",
         prompt_file: str | None = None,
+        context_file: str | None = None,
         skip_quality_screening: bool = False,
         fixed_image_path: str | None = None,
         label_filter: str | None = None,
@@ -44,6 +45,7 @@ class PipelineWorker(QObject):
         self.yolo_model = yolo_model
         self.llm_model = llm_model
         self.prompt_file = prompt_file
+        self.context_file = context_file
         self.skip_quality_screening = skip_quality_screening
         self.fixed_image_path = Path(fixed_image_path) if fixed_image_path else None
         self.label_filter = label_filter
@@ -60,6 +62,8 @@ class PipelineWorker(QObject):
             )
             if self.prompt_file:
                 kwargs["prompt_file"] = self.prompt_file
+            if self.context_file:
+                kwargs["context_file"] = self.context_file
             runner = create_default_pipeline(**kwargs)
 
             if self.fixed_image_path is not None:
