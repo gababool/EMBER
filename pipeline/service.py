@@ -229,11 +229,16 @@ def create_default_pipeline(
     yolo_model: str = "best",
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
+    context_file: str | Path | None = None,
 ) -> PipelineRunner:
     return PipelineRunner(
         stages=[
             QualityScreeningStage(),
             ObjectDetectionStage(model_name=yolo_model),
-            LLMReasoningStage(model_name=llm_model, prompt_file=prompt_file),
+            LLMReasoningStage(
+                model_name=llm_model,
+                prompt_file=prompt_file,
+                context_file=context_file,
+            ),
         ]
     )
