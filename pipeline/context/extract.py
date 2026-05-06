@@ -1,10 +1,9 @@
 """GIS extraction for structured operational wildfire context.
 
-Reads a local OpenStreetMap .pbf file and extracts geographic features
-for a given coordinate pair, producing a fully populated OperationalContext.
-
-All spatial operations are performed offline against the pre-loaded .pbf.
-No network access is required at runtime.
+Reads a local OpenStreetMap .pbf file and an optional SRTM elevation raster,
+extracting geographic features for a given coordinate pair and producing a
+fully populated OperationalContext. All operations run offline against
+pre-loaded local data.
 
 Usage (CLI):
     uv run python -m pipeline.context.extract \\
@@ -14,27 +13,25 @@ Usage (CLI):
     uv run python -m pipeline.context.extract \\
         --lat 59.8 --lon 16.1 \\
         --pbf data/gis/osm/vastmanland-50km.osm.pbf \\
+        --dem data/gis/elevation/vastmanland.tif \\
         --output data/contexts/scenario_01.json
 
-Coordinate projection:
-    OSM data is stored in WGS84 (lat/lon degrees). All distance and area
-    calculations are performed in SWEREF99 TM (EPSG:3006), the Swedish
-    national projected coordinate system where 1 unit = 1 metre.
+    # Disable terrain extraction
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 --dem none \\
+        --output data/contexts/scenario_01.json
 
-Region lookup:
-    Swedish municipality and county boundaries are stored as multipolygon
-    relations in OSM. Geofabrik extracts clip member ways at the extract
-    boundary, preventing osmium from assembling complete area geometries.
-    Region lookup instead uses a two-pass approach: collect relation names
-    and member way IDs in pass 1, collect way node coordinates in pass 2,
-    then build convex hull polygons per relation for point-in-polygon lookup.
-    Convex hulls are a deliberate approximation sufficient for municipality-
-    level containment checks.
-
-Pre-computation approach:
-    The .pbf is loaded once per process into in-memory GeoDataFrames.
-    Cached GeoDataFrames are reused for subsequent calls. At inference time,
-    scenario JSONs are loaded directly without touching the .pbf.
+Design notes:
+    - OSM features are projected to SWEREF99 TM (EPSG:3006) for distance and
+      area calculations (1 unit = 1 metre), then results are returned in WGS84.
+    - Admin boundaries are assembled via convex hull from relation member way
+      nodes — a deliberate approximation since Geofabrik extracts clip boundary
+      ways at the extract edge, preventing full area assembly.
+    - Terrain (elevation, slope, aspect) is derived from SRTM 30m raster data
+      using a 3×3 finite difference window centred on the observation point.
+    - The .pbf and raster are loaded once per process and cached in memory.
+      Scenario JSONs are loaded directly at inference time without re-reading
+      the source files.
 """
 
 from __future__ import annotations
@@ -647,7 +644,7 @@ def _nan_to_none(val):
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
-def _load_pbf(pbf_path: Path) -> None:
+def _load_pbf(pbf_path: Path, dem_path: Path | None = None) -> None:
     """Load all feature categories from the .pbf into module-level cache."""
     global _cache, _pbf_path
 
@@ -706,21 +703,23 @@ def _load_pbf(pbf_path: Path) -> None:
         "protected_areas": _to_gdf(assets_handler.protected_areas),
     }
 
-    dem_path = DEFAULT_DEM
-    if dem_path.exists():
+    if dem_path and dem_path.exists():
         _cache["dem"] = rasterio.open(str(dem_path))
         print(f"Elevation raster loaded from {dem_path}")
     else:
         _cache["dem"] = None
-        print(f"Elevation raster not found at {dem_path}, terrain will be None")
+        if dem_path:
+            print(f"Elevation raster not found at {dem_path}, terrain will be None")
+        else:
+            print("No elevation raster specified, terrain will be None")
 
     _pbf_path = pbf_path
     print("OSM data loaded.")
 
 
-def _ensure_loaded(pbf_path: Path) -> None:
+def _ensure_loaded(pbf_path: Path, dem_path: Path | None) -> None:
     if not _cache or _pbf_path != pbf_path:
-        _load_pbf(pbf_path)
+        _load_pbf(pbf_path, dem_path)
 
 
 # ── Query functions ───────────────────────────────────────────────────────────
@@ -1134,6 +1133,7 @@ def extract_context(
     lat: float,
     lon: float,
     pbf_path: Path = DEFAULT_PBF,
+    dem_path: Path | None = DEFAULT_DEM,
 ) -> OperationalContext:
     """Extract a fully populated OperationalContext for the given coordinates.
 
@@ -1149,7 +1149,7 @@ def extract_context(
     Returns:
         A fully validated OperationalContext.
     """
-    _ensure_loaded(pbf_path)
+    _ensure_loaded(pbf_path, dem_path)
 
     point_gdf = _make_point_gdf(lat, lon)
 
@@ -1202,6 +1202,13 @@ def main() -> None:
         help=f"Path to .osm.pbf file (default: {DEFAULT_PBF})",
     )
     parser.add_argument(
+    "--dem",
+    type=Path,
+    default=DEFAULT_DEM,
+    help=f"Path to SRTM elevation GeoTIFF (default: {DEFAULT_DEM}). "
+         f"Pass --dem none to disable terrain extraction.",
+    )   
+    parser.add_argument(
         "--output", type=Path, required=True,
         help="Output path for the JSON file (e.g. data/contexts/scenario_01.json)",
     )
@@ -1211,7 +1218,8 @@ def main() -> None:
         print(f"Error: .pbf file not found: {args.pbf}", file=sys.stderr)
         sys.exit(1)
 
-    context = extract_context(lat=args.lat, lon=args.lon, pbf_path=args.pbf)
+    dem_path = None if str(args.dem).lower() == "none" else args.dem
+    context = extract_context(lat=args.lat, lon=args.lon, pbf_path=args.pbf, dem_path=dem_path)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
