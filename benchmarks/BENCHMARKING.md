@@ -1,6 +1,6 @@
 # Benchmarking
 
-Benchmarks multimodal LLMs on wildfire detection images using Ollama, with optional YOLO preprocessing. The benchmark invokes the LLM with Ollama's structured-output feature, enforcing JSON output matching the pipeline's schema (`classification`, `reasoning`, `recommendation`).
+Benchmarks multimodal LLMs on wildfire detection images using Ollama, with optional YOLO preprocessing and GIS context. The benchmark invokes the LLM with Ollama's structured-output feature, enforcing JSON output matching the pipeline's Cycle 2 schema (`classification`, `reasoning`, `recommendation`, `situation_brief`, `tactical_priority`).
 
 ## Prerequisites
 
@@ -8,6 +8,7 @@ Benchmarks multimodal LLMs on wildfire detection images using Ollama, with optio
 - Models pulled (e.g. `ollama pull ministral-3:3b`)
 - `uv add ollama pydantic matplotlib`
 - For YOLO preprocessing: `ultralytics` and `opencv-python` (installed as part of the object detection module)
+- For GIS context: scenario JSON files under `data/contexts/` (generated with `pipeline.context.extract`)
 
 ## Models
 
@@ -28,15 +29,13 @@ Images are expected in a directory with `fire/` and `nofire/` subfolders (ground
 
 ## Prompts
 
-The benchmark loads a system prompt from a text file. The default points to the canonical Cycle 1 prompt:
+The benchmark loads a system prompt from a text file. The default points to the canonical Cycle 2 prompt:
 
 ```
-pipeline/llm/prompts/c1v1prompt.txt
+pipeline/llm/prompts/c2v4prompt.txt
 ```
 
-To evaluate alternative prompts, override the default with `--system-prompt`. The system prompt is the only instructional text sent to the model; the user message carries the image alone.
-
-The prompt must instruct the model to return JSON matching the schema fields `classification`, `reasoning`, `recommendation`, with `classification` being one of `fire_detected`, `no_fire_detected`, or `uncertain`. Ollama's structured-output enforcement guarantees schema-valid JSON at the API level, but the prompt still needs to describe the task so the model populates the fields meaningfully.
+Override with `--system-prompt`. The prompt must instruct the model to return JSON matching the Cycle 2 schema fields. `classification` must be one of `fire_detected` or `no_fire_detected` — `uncertain` is not a valid output. Ollama's structured-output enforcement guarantees schema-valid JSON at the API level.
 
 ## Quick Test
 
@@ -49,30 +48,43 @@ uv run python quick_test.py ../dataset/wildfire-dataset/the_wildfire_dataset_2n_
 
 ## Benchmarking
 
-Two modes, both accept `--dry-run` to preview, `--seed` for reproducible sampling, `--system-prompt` to override the default prompt, and `--with-yolo` to enable YOLO preprocessing before LLM inference.
+Two modes: `accuracy` and `performance`. Both accept `--dry-run` to preview, `--seed` for reproducible sampling, `--system-prompt` to override the default prompt, `--with-yolo` to enable YOLO preprocessing, and `--with-context` to enable GIS context.
 
 ### Accuracy
 
 All (or sampled) images, no cooldown. Measures classification correctness.
 
 ```bash
-# All images in the dataset, default three models, default prompt
+# All images, default models, no YOLO, no context (Cycle 1 equivalent)
 uv run python run_benchmark.py accuracy --images ../dataset
 
-# Random balanced sample of 100 images
+# Balanced sample of 100 images
 uv run python run_benchmark.py accuracy --images ../dataset --num-images 100
-
-# Specific models only (any from the models table above)
-uv run python run_benchmark.py accuracy --images ../dataset --models ministral-3:8b qwen3-vl:8b
-
-# Override system prompt
-uv run python run_benchmark.py accuracy --images ../dataset --system-prompt ../pipeline/llm/prompts/c1v2prompt.txt
 
 # With YOLO preprocessing
 uv run python run_benchmark.py accuracy --images ../dataset --with-yolo
+
+# With GIS context (uses scenario_01/scenario_01.json by default)
+uv run python run_benchmark.py accuracy --images ../dataset --with-context
+
+# Full Cycle 2: YOLO + context
+uv run python run_benchmark.py accuracy --images ../dataset --with-yolo --with-context
+
+# Different scenario
+uv run python run_benchmark.py accuracy --images ../dataset --with-context \
+    --scenario scenario_02/scenario_02.json
+
+# Specific models only
+uv run python run_benchmark.py accuracy --images ../dataset --models ministral-3:3b qwen3-vl:4b
 ```
 
-Results → `results/accuracy/accuracy_{model}.csv`. Existing files are not overwritten — delete them manually to rerun.
+Results → `results/accuracy/accuracy_{model}_{yolo_tag}_{context_tag}.csv`.
+
+CSV filename tags:
+- `_noyolo` / `_yolo` — whether YOLO preprocessing was used
+- `_ctx` — whether GIS context was enabled (absent when context is off)
+
+Existing files are not overwritten — delete them manually to rerun.
 
 ### Performance
 
@@ -85,33 +97,83 @@ uv run python run_benchmark.py performance --images ../dataset
 # Larger sample, longer cooldowns for fanless machines
 uv run python run_benchmark.py performance --images ../dataset --num-images 5 --cooldown 0 --model-cooldown 180
 
-# With YOLO preprocessing
-uv run python run_benchmark.py performance --images ../dataset --with-yolo
+# Full Cycle 2: YOLO + context
+uv run python run_benchmark.py performance --images ../dataset --with-yolo --with-context
 ```
 
 Each run produces two files per model:
 
-- `results/performance/performance_{model}_{timestamp}.csv` — per-inference measurements
-- `results/performance/performance_{model}_{timestamp}.json` — companion file with hardware specs (chip, RAM, OS, Python, Ollama version), the run configuration, and the prompt file used
+- `results/performance/performance_{model}_{yolo_tag}_{context_tag}_{timestamp}.csv` — per-inference measurements
+- `results/performance/performance_{model}_{yolo_tag}_{context_tag}_{timestamp}.json` — companion file with hardware specs, run configuration, and prompt file used
 
-Run CSVs are timestamped so multiple runs accumulate for better statistics. The JSON companion allows comparing results across different laptops.
+Run CSVs are timestamped so multiple runs accumulate for better statistics.
 
 ### YOLO Preprocessing
 
-When `--with-yolo` is set, each image is passed through the YOLO object detection stage before reaching the LLM. The annotated image (with bounding boxes for fire/smoke) becomes the LLM input. `--yolo-model` selects which weights to use (default: `best`).
+When `--with-yolo` is set, each image passes through the YOLO object detection stage before reaching the LLM. The annotated image (bounding boxes for fire/smoke) becomes the LLM input. `--yolo-model` selects which weights to use (default: `best`).
 
-YOLO timing and detection count are logged as separate CSV columns (`yolo_duration_s`, `yolo_detection_count`) so YOLO cost does not get lumped into LLM timing metrics. This allows analysis of whether YOLO preprocessing affects LLM inference time, accuracy, or both.
+YOLO timing and detection count are logged as separate CSV columns (`yolo_duration_s`, `yolo_detection_count`) so YOLO cost is not lumped into LLM timing metrics.
+
+### GIS Context
+
+When `--with-context` is set, a pre-computed scenario JSON is loaded, formatted, and passed to the LLM alongside the image. A single scenario is used for all images in a run so that context is not a variable between images.
+
+Scenario JSONs are generated with the context extraction pipeline:
+
+```bash
+uv run python -m pipeline.context.extract \
+    --lat 59.8 --lon 16.1 \
+    --output data/contexts/scenario_01/scenario_01.json
+```
+
+The `context_enabled` and `context_scenario` columns in the CSV record whether context was active and which scenario was used.
+
+### Scenario Evaluation
+
+A separate script evaluates all models against hand-picked scenario image+context pairings. Unlike the accuracy benchmark (many images, one scenario), this runs one image per scenario to support qualitative analysis and stakeholder interviews.
+
+Scenario folder structure:
+
+```
+data/contexts/
+    scenario_01/
+        scenario_01.json
+        scenario_01.jpg
+    scenario_02/
+        scenario_02.json
+        scenario_02.png
+```
+
+```bash
+# Dry run
+uv run python run_scenario_eval.py --dry-run
+
+# All scenarios, no YOLO
+uv run python run_scenario_eval.py
+
+# All scenarios, with YOLO
+uv run python run_scenario_eval.py --with-yolo
+
+# Specific scenarios only
+uv run python run_scenario_eval.py --scenarios scenario_01 scenario_03
+```
+
+Results → `results/scenarios/scenario_eval_{yolo_tag}_{timestamp}.csv` (combined, one row per model×scenario) + companion JSON with run metadata and hardware specs.
 
 ### Invalid Output Handling
 
-The benchmark validates each LLM response against the schema. If a model returns output that fails validation (very rare with Ollama's `format` enforcement, but possible), the benchmark logs an error for that image and continues to the next. No partial row is written to the CSV.
+The benchmark validates each LLM response against the schema. If a model returns output that fails validation, the benchmark logs an error for that image and continues. No partial row is written to the CSV.
 
 ## Analysis
 
 Generates PNG charts from benchmark CSVs:
 
 ```bash
+# Default: no-YOLO CSVs only
 uv run python analyze.py
+
+# Compare no-YOLO vs YOLO side by side
+uv run python analyze.py --compare-yolo
 ```
 
 Output → `charts/`
@@ -129,7 +191,7 @@ Output → `charts/`
 | `total_inference_time.png` | performance | Total inference time per model |
 | `memory_usage.png` | performance | Disk size vs runtime memory |
 
-Also prints a summary table with accuracy, precision, recall, F1, MCC, tokens/sec, total inference time, and memory usage.
+Also prints a summary table with accuracy, precision, recall, F1, MCC, tokens/sec, total inference time, and memory usage. In `--compare-yolo` mode the table shows paired rows (no YOLO / with YOLO) per model.
 
 ## Directory Structure
 
@@ -142,15 +204,17 @@ benchmarks/
 │   ├── logger.py
 │   └── metrics.py
 ├── run_benchmark.py
+├── run_scenario_eval.py
 ├── quick_test.py
 ├── analyze.py
-├── results/          # gitignored
+├── results/               # gitignored
 │   ├── accuracy/
-│   └── performance/
-└── charts/           # gitignored
+│   ├── performance/
+│   └── scenarios/
+└── charts/                # gitignored
 ```
 
-The system prompt file lives under `pipeline/llm/prompts/` and is shared between the pipeline and the benchmark.
+Scenario data lives under `data/contexts/` in the repo root (gitignored for large files). The system prompt file lives under `pipeline/llm/prompts/` and is shared between the pipeline and the benchmark.
 
 ## Platform Notes
 
