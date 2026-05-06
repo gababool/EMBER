@@ -45,6 +45,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import rasterio
+from rasterio.transform import rowcol
+import numpy as np
 
 import geopandas as gpd
 import osmium
@@ -73,6 +76,7 @@ from pipeline.context.schemas import (
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 DEFAULT_PBF = Path("data/gis/osm/vastmanland-50km.osm.pbf")
+DEFAULT_DEM = Path("data/gis/elevation/vastmanland.tif")
 
 SWEREF99_TM = "EPSG:3006"
 WGS84 = "EPSG:4326"
@@ -701,6 +705,15 @@ def _load_pbf(pbf_path: Path) -> None:
         "power_lines": _to_gdf(assets_handler.power_lines),
         "protected_areas": _to_gdf(assets_handler.protected_areas),
     }
+
+    dem_path = DEFAULT_DEM
+    if dem_path.exists():
+        _cache["dem"] = rasterio.open(str(dem_path))
+        print(f"Elevation raster loaded from {dem_path}")
+    else:
+        _cache["dem"] = None
+        print(f"Elevation raster not found at {dem_path}, terrain will be None")
+
     _pbf_path = pbf_path
     print("OSM data loaded.")
 
@@ -1029,6 +1042,94 @@ def _query_assets_at_risk(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _query_terrain(point_gdf: gpd.GeoDataFrame) -> "Terrain | None":
+    """Compute terrain properties at the observation point from the SRTM raster.
+
+    Elevation is read directly from the raster at the point location.
+    Slope and aspect are computed from a 3x3 neighbourhood window using
+    finite differences. The raster is in WGS84 so the window uses the
+    point's lat/lon directly.
+
+    Returns None if the raster is not loaded or the point falls outside
+    the raster bounds.
+    """
+    from pipeline.context.schemas import Terrain, SlopeSteepness
+
+    dem = _cache.get("dem")
+    if dem is None:
+        return None
+
+    # Get point coordinates in WGS84 (raster CRS).
+    # point_gdf is in SWEREF99 TM so reproject back to WGS84 for raster lookup.
+    point_wgs84 = point_gdf.to_crs("EPSG:4326").geometry.iloc[0]
+    lon, lat = point_wgs84.x, point_wgs84.y
+
+    # Check bounds.
+    bounds = dem.bounds
+    if not (bounds.left <= lon <= bounds.right and bounds.bottom <= lat <= bounds.top):
+        return None
+
+    try:
+        # Read a 3x3 window centred on the point.
+        row, col = rowcol(dem.transform, lon, lat)
+        row, col = int(row), int(col)
+
+        # Pad by 1 to get the 3x3 neighbourhood.
+        window = rasterio.windows.Window(col - 1, row - 1, 3, 3)
+        data = dem.read(1, window=window).astype(float)
+
+        if data.shape != (3, 3):
+            return None
+
+        # Replace nodata values.
+        nodata = dem.nodata
+        if nodata is not None:
+            data[data == nodata] = np.nan
+
+        elevation_m = float(data[1, 1])
+        if np.isnan(elevation_m):
+            return None
+
+        # Finite difference gradient for slope and aspect.
+        # Cell size in metres: at ~60°N, 1 degree lon ≈ 55km, 1 degree lat ≈ 111km.
+        res_deg = dem.res[0]  # degrees per pixel
+        dx_m = res_deg * 111_320 * math.cos(math.radians(lat))  # east-west cell size
+        dy_m = res_deg * 111_320                                  # north-south cell size
+
+        # dz/dx and dz/dy using central differences on the 3x3 window.
+        dzdx = (data[1, 2] - data[1, 0]) / (2 * dx_m)
+        dzdy = (data[0, 1] - data[2, 1]) / (2 * dy_m)
+
+        slope_rad = math.atan(math.sqrt(dzdx**2 + dzdy**2))
+        slope_degrees = math.degrees(slope_rad)
+
+        # Aspect: direction the slope faces (0=N, clockwise).
+        aspect_rad = math.atan2(dzdx, dzdy)
+        aspect_deg = (math.degrees(aspect_rad) + 360) % 360
+        aspect = _degrees_to_compass(aspect_deg)
+
+        # Slope steepness thresholds (degrees).
+        if slope_degrees < 2:
+            steepness = "flat"
+        elif slope_degrees < 8:
+            steepness = "gentle"
+        elif slope_degrees < 16:
+            steepness = "moderate"
+        elif slope_degrees < 25:
+            steepness = "steep"
+        else:
+            steepness = "very_steep"
+
+        return Terrain(
+            elevation_m=round(elevation_m, 1),
+            slope_degrees=round(slope_degrees, 1),
+            slope_steepness=steepness,
+            aspect=aspect if aspect != "flat" else "flat",
+        )
+
+    except Exception:
+        return None
+
 def extract_context(
     lat: float,
     lon: float,
@@ -1074,7 +1175,7 @@ def extract_context(
         coordinates=Coordinates(latitude=lat, longitude=lon),
         region=region,
         land_cover=land_cover,
-        terrain=None,
+        terrain=_query_terrain(point_gdf),
         water_sources=water_sources,
         roads=roads,
         settlements=settlements,
