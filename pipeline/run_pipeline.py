@@ -1,15 +1,31 @@
-# To run from the repo root:
-# uv run python -m pipeline.run_pipeline pipeline/object_detection/test_image.jpg --yolo-model best --llm-model ministral
+'''
+To run:
+
+uv run python -m pipeline.run_pipeline pipeline/llm/image.png \
+    --yolo-model best \
+    --llm-model ministral \
+    --prompt-file pipeline/llm/prompts/c2v4prompt.txt \
+    --context-json data/contexts/example_scenario.json
+    
+'''
 
 import argparse
 import json
 from pathlib import Path
-
 from pipeline.service import create_default_pipeline
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_PROMPT = SCRIPT_DIR / "pipeline" / "llm" / "prompts" / "c2v4prompt.txt"
 
-def run_pipeline(image_path: str, yolo_model: str, llm_model: str):
-    runner = create_default_pipeline(yolo_model=yolo_model, llm_model=llm_model)
+
+def run_pipeline(image_path: str, yolo_model: str, llm_model: str,
+prompt_file: str, context_json: str | None = None):
+    runner = create_default_pipeline(
+        yolo_model=yolo_model,
+        llm_model=llm_model,
+        prompt_file=prompt_file,
+        context_file=context_json,
+    )
     stage_results = []
 
     for event in runner.iter_events(image_path):
@@ -59,6 +75,8 @@ if __name__ == "__main__":
     parser.add_argument("image_path")
     parser.add_argument("--yolo-model", default="best")
     parser.add_argument("--llm-model", default="ministral")
+    parser.add_argument("--prompt-file", default=str(DEFAULT_PROMPT))
+    parser.add_argument("--context-json", default=None)
     args = parser.parse_args()
-
-    run_pipeline(args.image_path, args.yolo_model, args.llm_model)
+    run_pipeline(args.image_path, args.yolo_model, args.llm_model,
+                 args.prompt_file, args.context_json)

@@ -1,0 +1,189 @@
+{
+  "schema_version": "2.0",
+  "coordinates": {
+    "latitude": 59.8,
+    "longitude": 16.1
+  },
+  "region": {
+    "name": "Surahammars kommun",
+    "admin_area": "Västmanlands län"
+  },
+  "land_cover": "wetland",
+  "terrain": null,
+  "water_sources": [
+    {
+      "name": "Stora Acktjärnen",
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 202.12638880214192,
+      "bearing": "W",
+      "area_m2": 56087.641147446244,
+      "nearest_road_distance_m": 734.5530413622375
+    },
+    {
+      "name": "Mellersta Acktjärnen",
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 367.27604222973184,
+      "bearing": "NE",
+      "area_m2": 35802.235529242316,
+      "nearest_road_distance_m": 796.6179984852669
+    },
+    {
+      "name": "Lilla Acktjärnen",
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 692.9381085300138,
+      "bearing": "NE",
+      "area_m2": 7392.339016300314,
+      "nearest_road_distance_m": 1092.1139165185546
+    },
+    {
+      "name": "Ulvramen",
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 1806.5100207422977,
+      "bearing": "W",
+      "area_m2": 336330.88503124734,
+      "nearest_road_distance_m": 944.2659476138924
+    },
+    {
+      "name": "Grotten",
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 2315.7944507750844,
+      "bearing": "S",
+      "area_m2": 207879.83985332173,
+      "nearest_road_distance_m": 485.0182979973463
+    }
+  ],
+  "roads": {
+    "primary_access": {
+      "name": "Skogsmursvägen",
+      "road_class": "unclassified",
+      "surface": "unpaved",
+      "tracktype": null,
+      "vehicle_accessible": true,
+      "max_weight_tonnes": null,
+      "has_bridge": false,
+      "distance_m": 973.0580841514105,
+      "bearing": "SW"
+    },
+    "nearby_tracks": [
+      {
+        "name": "Rulltorpsvägen",
+        "road_class": "track",
+        "surface": "fine_gravel",
+        "tracktype": null,
+        "vehicle_accessible": true,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 537.9057067777733,
+        "bearing": "SE"
+      },
+      {
+        "name": "Acktjärnsvägen",
+        "road_class": "track",
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 715.9868373013602,
+        "bearing": "NW"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 1410.5779562888833,
+        "bearing": "SW"
+      }
+    ]
+  },
+  "settlements": [
+    {
+      "name": "Sandtorp",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1446.5792533675124,
+      "bearing": "W"
+    },
+    {
+      "name": "Muren",
+      "settlement_type": "hamlet",
+      "distance_m": 1453.1816709796844,
+      "bearing": "SW"
+    },
+    {
+      "name": "Nytorp",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2049.87131906251,
+      "bearing": "E"
+    },
+    {
+      "name": "Åsen",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2164.4214471536734,
+      "bearing": "W"
+    },
+    {
+      "name": "Seglingbo",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2369.687860355415,
+      "bearing": "NE"
+    }
+  ],
+  "assets_at_risk": {
+    "buildings_within_radius": 0,
+    "has_permanent_structures": false,
+    "power_lines_present": false,
+    "protected_area": "Acktjärnsåsarna",
+    "assets_radius_m": 2000.0
+  },
+  "named_features": [
+    {
+      "name": "Källberget",
+      "feature_type": "peak",
+      "distance_m": 3923.3128173246823,
+      "bearing": "NE"
+    },
+    {
+      "name": "Fermansbo urskog",
+      "feature_type": "forest",
+      "distance_m": 5058.543880281391,
+      "bearing": "NE"
+    },
+    {
+      "name": "Fågelmossberget",
+      "feature_type": "peak",
+      "distance_m": 5763.971022443047,
+      "bearing": "NE"
+    },
+    {
+      "name": "Höjdamaja",
+      "feature_type": "peak",
+      "distance_m": 6066.902006440265,
+      "bearing": "W"
+    },
+    {
+      "name": "Valbergen",
+      "feature_type": "peak",
+      "distance_m": 6509.055686431261,
+      "bearing": "N"
+    }
+  ],
+  "wind": null,
+  "extraction_metadata": {
+    "extracted_at": "2026-05-05T09:54:28.493022Z",
+    "osm_dataset": "vastmanland-50km.osm.pbf",
+    "settlement_radius_m": 20000.0,
+    "water_source_radius_m": 10000.0,
+    "track_radius_m": 5000.0,
+    "named_feature_radius_m": 10000.0,
+    "assets_radius_m": 2000.0
+  }
+}

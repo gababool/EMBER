@@ -7,6 +7,9 @@ from typing import Literal
 import ollama
 from pydantic import BaseModel, ValidationError
 
+from pipeline.context.format import format_context
+from pipeline.context.schemas import OperationalContext
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 DEFAULT_PROMPT_FILE = PROMPTS_DIR / "c1v1prompt.txt"
@@ -31,6 +34,8 @@ class LLMInferenceResult(BaseModel):
     classification: Literal["fire_detected", "no_fire_detected"]
     reasoning: str
     recommendation: str
+    situation_brief: str | None = None
+    tactical_priority: str | None = None
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()
@@ -62,16 +67,16 @@ def load_image(image_path: str) -> str:
         return base64.b64encode(f.read()).decode("utf-8")
 
 
-def build_user_content(additional_context: str | None = None) -> str:
-    """
-    Keep user content minimal and context-only.
-
-    All task instructions should live in the system prompt file.
-    This function only formats optional extra context.
-    """
+def build_user_content(
+    additional_context: str | None = None,
+    operational_context: OperationalContext | None = None,
+) -> str:
+    parts = []
+    if operational_context is not None:
+        parts.append(format_context(operational_context))
     if additional_context and additional_context.strip():
-        return f"Additional operational context:\n{additional_context.strip()}"
-    return ""
+        parts.append(f"Additional operational context:\n{additional_context.strip()}")
+    return "\n\n".join(parts)
 
 
 def run_llm_inference(
@@ -81,6 +86,7 @@ def run_llm_inference(
     prompt_file: str,
     additional_context: str | None = None,
     context_file: str | None = None,
+    operational_context: OperationalContext | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -90,7 +96,16 @@ def run_llm_inference(
     model_tag = MODELS[model_name]
     image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
-    user_content = build_user_content(additional_context)
+
+    if operational_context is None and context_file is not None:
+        context_path = resolve_path(context_file)
+        if context_path.exists():
+            import json
+            from pipeline.context.schemas import OperationalContext
+            data = json.loads(context_path.read_text(encoding="utf-8"))
+            operational_context = OperationalContext(**data)
+
+    user_content = build_user_content(additional_context, operational_context)
 
     messages = [
         {
@@ -164,6 +179,10 @@ def parse_args() -> argparse.Namespace:
         help="Optional path to additional context text.",
     )
     parser.add_argument(
+        "--context-json",
+        help="Optional path to an OperationalContext JSON file (formatted automatically).",
+    )
+    parser.add_argument(
         "--output-json",
         help=(
             "Optional path to save the result as JSON. "
@@ -181,10 +200,17 @@ def main() -> None:
 
     additional_context = None
     context_path = None
+    operational_context = None
 
     if args.context_file:
         context_path = resolve_path(args.context_file)
         additional_context = load_context(str(context_path))
+
+    if args.context_json:
+        json_path = resolve_path(args.context_json)
+        operational_context = OperationalContext.model_validate_json(
+            json_path.read_text(encoding="utf-8")
+        )
 
     model_names = list(MODELS.keys()) if args.model == "all" else [args.model]
 
@@ -198,6 +224,7 @@ def main() -> None:
             prompt_file=str(prompt_path),
             additional_context=additional_context,
             context_file=str(context_path) if context_path else None,
+            operational_context=operational_context,
         )
 
         print(json.dumps(result["parsed"], indent=2))
