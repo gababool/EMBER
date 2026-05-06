@@ -105,6 +105,11 @@ class PipelineDashboard(QWidget):
         for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
             self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
 
+        self.image_filter_select = ModelComboBox(theme)
+        self.image_filter_select.setMinimumWidth(110)
+        for label, data in [("Any", None), ("Fire", "fire"), ("No Fire", "nofire")]:
+            self.image_filter_select.addItem(label, data)
+
         self.skip_quality_button = QPushButton("Quality: ON")
         self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.skip_quality_button.setCursor(Qt.PointingHandCursor)
@@ -113,6 +118,7 @@ class PipelineDashboard(QWidget):
         self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
 
         header_layout.addWidget(title_block, 1)
+        header_layout.addWidget(self.image_filter_select)
         header_layout.addWidget(self.skip_quality_button)
         header_layout.addWidget(self.prompt_select)
         header_layout.addWidget(self.model_select)
@@ -198,6 +204,7 @@ class PipelineDashboard(QWidget):
         self.rerun_button.setEnabled(False)
         self.model_select.setEnabled(False)
         self.prompt_select.setEnabled(False)
+        self.image_filter_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
@@ -232,6 +239,7 @@ class PipelineDashboard(QWidget):
         self.rerun_button.setEnabled(self.last_image_path is not None)
         self.model_select.setEnabled(True)
         self.prompt_select.setEnabled(True)
+        self.image_filter_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
         self.start_button.setText("Test Image")
         self.quality_panel.setVisible(True)
@@ -242,6 +250,9 @@ class PipelineDashboard(QWidget):
 
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
+
+    def selected_image_filter(self) -> str | None:
+        return self.image_filter_select.currentData()
 
     def skip_quality_screening(self) -> bool:
         return self.skip_quality_button.isChecked()
@@ -410,6 +421,7 @@ class PipelineDashboard(QWidget):
         """)
         self.model_select.apply_theme(theme)
         self.prompt_select.apply_theme(theme)
+        self.image_filter_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):

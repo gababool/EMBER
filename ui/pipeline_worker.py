@@ -35,6 +35,7 @@ class PipelineWorker(QObject):
         prompt_file: str | None = None,
         skip_quality_screening: bool = False,
         fixed_image_path: str | None = None,
+        label_filter: str | None = None,
         max_quality_retries: int = 20,
         parent=None,
     ):
@@ -45,6 +46,7 @@ class PipelineWorker(QObject):
         self.prompt_file = prompt_file
         self.skip_quality_screening = skip_quality_screening
         self.fixed_image_path = Path(fixed_image_path) if fixed_image_path else None
+        self.label_filter = label_filter
         self.max_quality_retries = max_quality_retries
 
     @Slot()
@@ -66,7 +68,7 @@ class PipelineWorker(QObject):
                     self.event_received.emit(event)
             else:
                 for _attempt in range(self.max_quality_retries):
-                    image_path = self._choose_random_image(exclude=tried_paths)
+                    image_path = self._choose_random_image(exclude=tried_paths, label_filter=self.label_filter)
                     tried_paths.add(image_path)
                     self.image_selected.emit(str(image_path))
 
@@ -91,7 +93,7 @@ class PipelineWorker(QObject):
         finally:
             self.finished.emit()
 
-    def _choose_random_image(self, exclude: set[Path] | None = None) -> Path:
+    def _choose_random_image(self, exclude: set[Path] | None = None, label_filter: str | None = None) -> Path:
         if not self.dataset_dir.exists():
             raise FileNotFoundError(f"Demo dataset not found: {self.dataset_dir}")
 
@@ -103,6 +105,7 @@ class PipelineWorker(QObject):
                 path.is_file()
                 and path.suffix.lower() in IMAGE_SUFFIXES
                 and path not in exclude
+                and (label_filter is None or path.parent.name == label_filter)
             )
         ]
         if not image_paths:

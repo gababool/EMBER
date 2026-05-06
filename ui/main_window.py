@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
             llm_model=self.dashboard.selected_llm_model(),
             prompt_file=self.dashboard.selected_prompt_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            label_filter=self.dashboard.selected_image_filter(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
@@ -97,6 +98,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
             fixed_image_path=image_path,
+            label_filter=self.dashboard.selected_image_filter(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
