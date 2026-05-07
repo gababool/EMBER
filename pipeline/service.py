@@ -4,6 +4,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
+from pipeline.object_detection.detections import (
+    format_detection_context,
+    resolve_yolo_input_mode,
+)
 from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 
 
@@ -89,10 +93,19 @@ class ObjectDetectionStage:
     name = "object_detection"
     label = "Object Detection"
 
-    def __init__(self, model_name: str = "best", show: bool = False, use_annotation: bool = True):
+    def __init__(
+        self,
+        model_name: str = "best",
+        show: bool = False,
+        yolo_input_mode: str | None = None,
+        use_annotation: bool | None = None,
+    ):
         self.model_name = model_name
         self.show = show
-        self.use_annotation = use_annotation
+        self.yolo_input_mode = resolve_yolo_input_mode(
+            yolo_input_mode,
+            use_annotation=use_annotation,
+        )
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.object_detection.run import run as run_detection
@@ -108,7 +121,7 @@ class ObjectDetectionStage:
                 "error": "Object detection did not return a result.",
             }
 
-        if self.use_annotation:
+        if self.yolo_input_mode == "annotated_image":
             annotated_image_path = Path(
                 result.get(
                     "annotated_image_path",
@@ -122,6 +135,7 @@ class ObjectDetectionStage:
             annotated_image_path = context.image_path
 
         result["annotated_image_path"] = str(annotated_image_path)
+        result["yolo_input_mode"] = self.yolo_input_mode
         context.set_output(self.name, result)
         context.set_output("annotated_image_path", annotated_image_path)
 
@@ -146,30 +160,45 @@ class LLMReasoningStage:
         prompt_file: str | Path = DEFAULT_PROMPT_FILE,
         additional_context: str | None = None,
         context_file: str | Path | None = None,
-        use_annotation: bool = True,
+        yolo_input_mode: str | None = None,
+        use_annotation: bool | None = None,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
         self.additional_context = additional_context
         self.context_file = Path(context_file) if context_file else None
-        self.use_annotation = use_annotation
+        self.yolo_input_mode = resolve_yolo_input_mode(
+            yolo_input_mode,
+            use_annotation=use_annotation,
+        )
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.llm.inference import load_system_prompt, run_llm_inference
 
-        if self.use_annotation:
+        if self.yolo_input_mode == "annotated_image":
             image_path = context.get_output("annotated_image_path", context.image_path)
+            additional_context = self.additional_context
         else:
             image_path = context.image_path
+            detection_result = context.get_output("object_detection", {})
+            detection_context = format_detection_context(
+                detection_result,
+                self.yolo_input_mode,
+            )
+            additional_context = _join_context_blocks(
+                self.additional_context,
+                detection_context,
+            )
         system_prompt = load_system_prompt(str(self.prompt_file))
         result = run_llm_inference(
             model_name=self.model_name,
             image_path=str(image_path),
             system_prompt=system_prompt,
             prompt_file=str(self.prompt_file),
-            additional_context=self.additional_context,
+            additional_context=additional_context,
             context_file=str(self.context_file) if self.context_file else None,
         )
+        result["yolo_input_mode"] = self.yolo_input_mode
         context.set_output(self.name, result)
 
         return PipelineStageResult(
@@ -240,16 +269,31 @@ def create_default_pipeline(
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
     context_file: str | Path | None = None,
     skip_quality_screening: bool = False,
-    use_annotation: bool = True,
+    yolo_input_mode: str | None = None,
+    use_annotation: bool | None = None,
 ) -> PipelineRunner:
+    resolved_yolo_input_mode = resolve_yolo_input_mode(
+        yolo_input_mode,
+        use_annotation=use_annotation,
+    )
     stages = []
     if not skip_quality_screening:
         stages.append(QualityScreeningStage())
-    stages.append(ObjectDetectionStage(model_name=yolo_model, use_annotation=use_annotation))
+    stages.append(
+        ObjectDetectionStage(
+            model_name=yolo_model,
+            yolo_input_mode=resolved_yolo_input_mode,
+        )
+    )
     stages.append(LLMReasoningStage(
         model_name=llm_model,
         prompt_file=prompt_file,
         context_file=context_file,
-        use_annotation=use_annotation,
+        yolo_input_mode=resolved_yolo_input_mode,
     ))
     return PipelineRunner(stages=stages)
+
+
+def _join_context_blocks(*blocks: str | None) -> str | None:
+    joined = "\n\n".join(block.strip() for block in blocks if block and block.strip())
+    return joined or None
