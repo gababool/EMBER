@@ -73,7 +73,7 @@ ALL_MODELS = [
     'gemma4:e4b',
 ]
 
-DEFAULT_PROMPT_FILE_NAME = 'c2v4prompt.txt'
+DEFAULT_PROMPT_FILE_NAME = 'c2v5prompt.txt'
 DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PROMPT_FILE_NAME
 
 DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'
