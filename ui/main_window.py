@@ -51,10 +51,6 @@ class MainWindow(QMainWindow):
         self.dashboard.image_picked.connect(self.run_picked_image)
         self.main_layout.addWidget(self.dashboard, 1)
 
-        # Example updates
-        self.top_bar.set_version("V.0.3.1")
-        self.top_bar.set_wind("5m/s nw")
-        self.top_bar.set_mode("OFFLINE MODE")
         self.apply_theme(self.theme)
 
         self.pipeline_thread = None
@@ -68,7 +64,6 @@ class MainWindow(QMainWindow):
             return
 
         self.dashboard.reset_demo()
-        self.top_bar.set_mode("RUNNING DEMO")
 
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
@@ -96,7 +91,6 @@ class MainWindow(QMainWindow):
             return
 
         self.dashboard.reset_demo()
-        self.top_bar.set_mode("RUNNING DEMO")
 
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
@@ -125,7 +119,6 @@ class MainWindow(QMainWindow):
             return
 
         self.dashboard.reset_demo()
-        self.top_bar.set_mode("RUNNING DEMO")
 
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
@@ -151,7 +144,6 @@ class MainWindow(QMainWindow):
 
     def _demo_finished(self):
         self.dashboard.set_demo_finished()
-        self.top_bar.set_mode("OFFLINE MODE")
         self.pipeline_thread = None
         self.pipeline_worker = None
 
