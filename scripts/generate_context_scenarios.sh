@@ -3,6 +3,7 @@ set -euo pipefail
 
 readonly DEFAULT_SOURCE_PBF="data/gis/osm/sweden-latest.osm.pbf"
 readonly OSM_DIR="data/gis/osm"
+readonly ELEVATION_DIR="data/gis/elevation"
 readonly CONTEXT_DIR="data/contexts"
 
 source_pbf="$DEFAULT_SOURCE_PBF"
@@ -25,8 +26,8 @@ Options:
   --input FILE       Source Sweden OSM PBF file.
                      Default: data/gis/osm/sweden-latest.osm.pbf
   --scenario NN      Run only one scenario, for example 01 or 7.
-  --extract-only     Only create data/gis/osm/scenario_XX-50km.osm.pbf files.
-  --generate-only    Only generate data/contexts/scenario_XX.json files.
+  --extract-only     Only create OSM and elevation files.
+  --generate-only    Only generate context JSON files (requires existing OSM/DEM).
   --validate-only    Only validate existing JSON files and run context tests.
   --mock-wind        Add deterministic semi-random regional wind to generated JSON.
   --benchmark-wind   Add the same mocked wind to every generated JSON (SW, 6.5 m/s).
@@ -37,6 +38,7 @@ Examples:
   scripts/generate_context_scenarios.sh
   scripts/generate_context_scenarios.sh --scenario 03
   scripts/generate_context_scenarios.sh --generate-only --skip-tests
+  scripts/generate_context_scenarios.sh --extract-only
 USAGE
 }
 
@@ -84,6 +86,11 @@ normalize_scenario_id() {
     echo "Invalid scenario id: $raw_id" >&2
     exit 1
   fi
+}
+
+# Convert "west,south,east,north" (osmium format) to "west south east north" (eio format).
+bbox_to_eio() {
+  echo "$1" | tr ',' ' '
 }
 
 while [[ $# -gt 0 ]]; do
@@ -147,20 +154,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Scenario definitions: id|name|bbox (west,south,east,north)|lat|lon
+#
+# Scenario selection rationale:
+#   01 — Wetland forest, protected area, lakes nearby but limited road access
+#   02 — Wildland-urban interface, national park edge, buildings, paved roads
+#   03 — Steep forested slope, High Coast, named peaks, remote
+#   04 — Agricultural/rural Skane, dense settlement, good road access, flat
+#   05 — Peat mire, protected area, flat terrain, light supply water only
+#   06 — Remote northern forest, sparse OSM, minimal roads and settlements
+
 readonly SCENARIOS=(
   "01|Acktjarnsasarna, Vastmanland|15.653541,59.575422,16.546459,60.024578|59.8000|16.1000"
-  "02|Halleskogsbrannan, Vastmanland|15.747293,59.610830,16.641161,60.059986|59.835408|16.194227"
-  "03|Tyresta, Stockholm area|17.837176,58.952206,18.713764,59.401362|59.176784|18.275470"
-  "04|Skansberget / Karbole, Ljusdal|14.854897,61.746117,15.810703,62.195273|61.970695|15.332800"
-  "05|Notbergets norra, Ljusdal|14.783927,61.789042,15.741081,62.238198|62.013620|15.262504"
-  "06|Torsburgen, Gotland|18.291195,57.184137,19.125061,57.633293|57.408715|18.708128"
-  "07|Vako myr, Kronoberg/Skane|13.846719,56.275423,14.660499,56.724579|56.500001|14.253609"
+  "02|Tyresta National Park edge, Stockholm|17.790000,58.990000,18.690000,59.400000|59.17372|18.24039"
+  "03|Skuleskogen, High Coast, Vasternorrland|18.000000,62.850000,18.200000,63.050000|62.950035|18.050492"
+  "04|Skane countryside near Hassleholm|13.370000,55.650000,14.270000,56.130000|55.890|13.820"
+  "05|Vako myr, Kronoberg/Skane|13.846719,56.275423,14.660499,56.724579|56.500001|14.253609"
+  "06|Sorsele remote forest, Vasterbotten|16.200000,64.950000,17.200000,65.400000|65.16019|16.70643"
 )
 
-mkdir -p "$OSM_DIR" "$CONTEXT_DIR"
+mkdir -p "$OSM_DIR" "$ELEVATION_DIR" "$CONTEXT_DIR"
+
+# ── Pre-flight checks ─────────────────────────────────────────────────────────
 
 if [[ "$do_extract" -eq 1 ]]; then
   require_command osmium
+  require_command eio
   if [[ ! -f "$source_pbf" ]]; then
     echo "Missing source OSM PBF file: $source_pbf" >&2
     echo "Place sweden-latest.osm.pbf there or pass --input /path/to/file.osm.pbf" >&2
@@ -189,6 +208,8 @@ if [[ "$do_validate" -eq 1 ]]; then
   fi
 fi
 
+# ── Main loop ─────────────────────────────────────────────────────────────────
+
 selected_count=0
 
 for scenario in "${SCENARIOS[@]}"; do
@@ -199,32 +220,60 @@ for scenario in "${SCENARIOS[@]}"; do
   fi
 
   selected_count=$((selected_count + 1))
+
   clipped_pbf="$OSM_DIR/scenario_${id}-50km.osm.pbf"
-  output_json="$CONTEXT_DIR/scenario_${id}.json"
+  dem_file="$ELEVATION_DIR/scenario_${id}.tif"
+  output_json="$CONTEXT_DIR/scenario_${id}/scenario_${id}.json"
+
+  # ── Extract OSM and elevation ───────────────────────────────────────────────
 
   if [[ "$do_extract" -eq 1 ]]; then
-    echo "Extracting scenario ${id}: ${name}"
+    echo ""
+    echo "=== Scenario ${id}: ${name} ==="
+
+    echo "  Clipping OSM extract..."
     osmium extract \
       -b "$bbox" \
       "$source_pbf" \
       -o "$clipped_pbf" \
       --overwrite
+    echo "  OSM extract: ${clipped_pbf}"
+
+    echo "  Downloading SRTM elevation tiles..."
+    eio_bounds="$(bbox_to_eio "$bbox")"
+    # Clean any corrupted cache entries before downloading.
+    eio clean 2>/dev/null || true
+    eio clip -o "$dem_file" --bounds $eio_bounds
+    echo "  Elevation raster: ${dem_file}"
   fi
+
+  # ── Generate context JSON ───────────────────────────────────────────────────
 
   if [[ "$do_generate" -eq 1 ]]; then
     if [[ ! -f "$clipped_pbf" ]]; then
-      echo "Missing clipped OSM PBF file for scenario ${id}: $clipped_pbf" >&2
-      echo "Run without --generate-only first, or create the clipped file manually." >&2
+      echo "Missing clipped OSM PBF for scenario ${id}: $clipped_pbf" >&2
+      echo "Run without --generate-only first." >&2
       exit 1
     fi
 
-    echo "Generating scenario ${id}: ${output_json}"
+    if [[ ! -f "$dem_file" ]]; then
+      echo "  Warning: elevation raster not found for scenario ${id}: $dem_file" >&2
+      echo "  Terrain will be null. Run without --generate-only to download it." >&2
+      dem_arg="--dem none"
+    else
+      dem_arg="--dem $dem_file"
+    fi
+
+    mkdir -p "$CONTEXT_DIR/scenario_${id}"
+    echo "  Generating context JSON: ${output_json}"
+
     if [[ "$mock_wind" -eq 1 ]]; then
       if [[ "$benchmark_wind" -eq 1 ]]; then
         $project_python -m pipeline.context.extract \
           --lat "$lat" \
           --lon "$lon" \
           --pbf "$clipped_pbf" \
+          $dem_arg \
           --output "$output_json" \
           --mock-wind \
           --mock-wind-direction SW \
@@ -234,6 +283,7 @@ for scenario in "${SCENARIOS[@]}"; do
           --lat "$lat" \
           --lon "$lon" \
           --pbf "$clipped_pbf" \
+          $dem_arg \
           --output "$output_json" \
           --mock-wind \
           --mock-wind-key "scenario_${id}"
@@ -243,9 +293,13 @@ for scenario in "${SCENARIOS[@]}"; do
         --lat "$lat" \
         --lon "$lon" \
         --pbf "$clipped_pbf" \
+        $dem_arg \
         --output "$output_json"
     fi
+
+    echo "  Done: ${output_json}"
   fi
+
 done
 
 if [[ "$selected_count" -eq 0 ]]; then
@@ -253,25 +307,49 @@ if [[ "$selected_count" -eq 0 ]]; then
   exit 1
 fi
 
+# ── Validate ──────────────────────────────────────────────────────────────────
+
 if [[ "$do_validate" -eq 1 ]]; then
+  echo ""
+  echo "=== Validating JSON files ==="
+
   if [[ -n "$scenario_filter" ]]; then
-    json_files=("$CONTEXT_DIR/scenario_${scenario_filter}.json")
+    json_files=("$CONTEXT_DIR/scenario_${scenario_filter}/scenario_${scenario_filter}.json")
   else
-    json_files=("$CONTEXT_DIR"/scenario_*.json)
+    json_files=("$CONTEXT_DIR"/scenario_*/scenario_*.json)
   fi
 
-  echo "Validating JSON files"
+  all_valid=1
   for file in "${json_files[@]}"; do
     if [[ ! -f "$file" ]]; then
-      echo "Missing JSON file: $file" >&2
-      exit 1
+      echo "  Missing: $file" >&2
+      all_valid=0
+      continue
     fi
-    $json_python -m json.tool "$file" >/dev/null
-    echo "valid JSON: $file"
+    if $json_python -m json.tool "$file" >/dev/null 2>&1; then
+      # Check terrain is populated (not null).
+      terrain=$(grep -o '"terrain": null' "$file" || true)
+      if [[ -n "$terrain" ]]; then
+        echo "  Warning: terrain is null in $file — was the DEM available?"
+      fi
+      echo "  valid: $file"
+    else
+      echo "  INVALID JSON: $file" >&2
+      all_valid=0
+    fi
   done
 
+  if [[ "$all_valid" -eq 0 ]]; then
+    echo "One or more JSON files failed validation." >&2
+    exit 1
+  fi
+
   if [[ "$run_tests" -eq 1 ]]; then
-    echo "Running context tests"
+    echo ""
+    echo "=== Running context tests ==="
     $context_pytest pipeline/context/tests -v
   fi
 fi
+
+echo ""
+echo "All done."
