@@ -26,7 +26,7 @@ runs/detect
 
 #YOLO Output Result Image
 pipeline/object_detection/results/
-pipeline/object_detection/results/result.jpg
+pipeline/object_detection/results/result.png
 
 # Model weights
 yolov8n.pt

@@ -35,6 +35,24 @@ def validate_non_negative_int(name: str, value: int) -> None:
         raise ValueError(f"{name} must not be negative.")
 
 
+def validate_fraction(name: str, value: float | int) -> None:
+    validate_non_negative_number(name, value)
+    if value > 1.0:
+        raise ValueError(f"{name} must be between 0.0 and 1.0.")
+
+
+def validate_percentile(name: str, value: float | int) -> None:
+    validate_non_negative_number(name, value)
+    if value > 100.0:
+        raise ValueError(f"{name} must be between 0.0 and 100.0.")
+
+
+def validate_uint8_threshold(name: str, value: float | int) -> None:
+    validate_non_negative_number(name, value)
+    if value > 255.0:
+        raise ValueError(f"{name} must be between 0.0 and 255.0.")
+
+
 def validate_min_max(
     min_name: str,
     min_value: float | int,
@@ -104,3 +122,11 @@ def to_grayscale_uint8(image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image_uint8, cv2.COLOR_BGRA2GRAY)
 
     raise ValueError("image must have 1, 3, or 4 channels.")
+
+
+def fraction_at_or_above_threshold(image: np.ndarray, threshold: float | int) -> float:
+    validate_uint8_threshold("threshold", threshold)
+    if image.size == 0:
+        return 0.0
+
+    return float(np.count_nonzero(image >= threshold) / image.size)

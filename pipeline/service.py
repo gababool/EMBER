@@ -90,9 +90,10 @@ class ObjectDetectionStage:
     name = "object_detection"
     label = "Object Detection"
 
-    def __init__(self, model_name: str = "best", show: bool = False):
+    def __init__(self, model_name: str = "best", show: bool = False, use_annotation: bool = True):
         self.model_name = model_name
         self.show = show
+        self.use_annotation = use_annotation
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.object_detection.run import run as run_detection
@@ -108,15 +109,18 @@ class ObjectDetectionStage:
                 "error": "Object detection did not return a result.",
             }
 
-        annotated_image_path = Path(
-            result.get(
-                "annotated_image_path",
-                ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME,
+        if self.use_annotation:
+            annotated_image_path = Path(
+                result.get(
+                    "annotated_image_path",
+                    ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME,
+                )
             )
-        )
-        if result.get("passed") and not annotated_image_path.exists():
-            result["passed"] = False
-            result["error"] = f"Annotated image not found: {annotated_image_path}"
+            if result.get("passed") and not annotated_image_path.exists():
+                result["passed"] = False
+                result["error"] = f"Annotated image not found: {annotated_image_path}"
+        else:
+            annotated_image_path = context.image_path
 
         result["annotated_image_path"] = str(annotated_image_path)
         context.set_output(self.name, result)
@@ -144,17 +148,22 @@ class LLMReasoningStage:
         additional_context: str | None = None,
         context_file: str | Path | None = None,
         operational_context: OperationalContext | None = None,
+        use_annotation: bool = True,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
         self.additional_context = additional_context
         self.context_file = Path(context_file) if context_file else None
         self.operational_context = operational_context
+        self.use_annotation = use_annotation
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.llm.inference import load_system_prompt, run_llm_inference
 
-        image_path = context.get_output("annotated_image_path", context.image_path)
+        if self.use_annotation:
+            image_path = context.get_output("annotated_image_path", context.image_path)
+        else:
+            image_path = context.image_path
         system_prompt = load_system_prompt(str(self.prompt_file))
         result = run_llm_inference(
             model_name=self.model_name,
@@ -235,16 +244,18 @@ def create_default_pipeline(
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
     context_file: str | Path | None = None,
     operational_context: OperationalContext | None = None,
+    skip_quality_screening: bool = False,
+    use_annotation: bool = True,
 ) -> PipelineRunner:
-    return PipelineRunner(
-        stages=[
-            QualityScreeningStage(),
-            ObjectDetectionStage(model_name=yolo_model),
-            LLMReasoningStage(
-                model_name=llm_model,
-                prompt_file=prompt_file,
-                context_file=context_file,
-                operational_context=operational_context,
-            ),
-        ]
-    )
+    stages = []
+    if not skip_quality_screening:
+        stages.append(QualityScreeningStage())
+    stages.append(ObjectDetectionStage(model_name=yolo_model, use_annotation=use_annotation))
+    stages.append(LLMReasoningStage(
+        model_name=llm_model,
+        prompt_file=prompt_file,
+        context_file=context_file,
+        operational_context=operational_context,
+        use_annotation=use_annotation,
+    ))
+    return PipelineRunner(stages=stages)

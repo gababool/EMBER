@@ -9,7 +9,7 @@ from pipeline.context.wind import build_mock_wind
 def _stub_extraction_queries(monkeypatch):
     sample = OperationalContext.model_validate(SAMPLE_CONTEXT)
 
-    monkeypatch.setattr(extract, "_ensure_loaded", lambda pbf_path: None)
+    monkeypatch.setattr(extract, "_ensure_loaded", lambda pbf_path, dem_path=None: None)
     monkeypatch.setattr(extract, "_make_point_gdf", lambda lat, lon: object())
     monkeypatch.setattr(extract, "_query_region", lambda point_gdf: sample.region)
     monkeypatch.setattr(extract, "_query_land_cover", lambda point_gdf: sample.land_cover)

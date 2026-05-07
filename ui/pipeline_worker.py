@@ -40,11 +40,15 @@ class PipelineWorker(QObject):
         dataset_dir: Path = DEMO_DATASET_DIR,
         yolo_model: str = "best",
         llm_model: str = "ministral",
-        prompt_file: Path = DEFAULT_PROMPT_FILE,
-        context_file: Path = DEFAULT_CONTEXT_FILE,
         wind_mode: str = WIND_MODE_NONE,
         wind_direction: CompassBearing = "SW",
         wind_speed_mps: float = 6.5,
+        prompt_file: str | None = None,
+        context_file: str | None = None,
+        skip_quality_screening: bool = False,
+        use_annotation: bool = True,
+        fixed_image_path: str | None = None,
+        label_filter: str | None = None,
         max_quality_retries: int = 20,
         parent=None,
     ):
@@ -52,53 +56,72 @@ class PipelineWorker(QObject):
         self.dataset_dir = Path(dataset_dir)
         self.yolo_model = yolo_model
         self.llm_model = llm_model
-        self.prompt_file = Path(prompt_file)
-        self.context_file = Path(context_file)
         self.wind_mode = wind_mode
         self.wind_direction = wind_direction
         self.wind_speed_mps = wind_speed_mps
+        self.prompt_file = prompt_file
+        self.context_file = context_file
+        self.skip_quality_screening = skip_quality_screening
+        self.use_annotation = use_annotation
+        self.fixed_image_path = Path(fixed_image_path) if fixed_image_path else None
+        self.label_filter = label_filter
         self.max_quality_retries = max_quality_retries
 
     @Slot()
     def run(self):
         try:
             tried_paths = set()
-
-            for _attempt in range(self.max_quality_retries):
-                image_path = self._choose_random_image(exclude=tried_paths)
-                tried_paths.add(image_path)
-                self.image_selected.emit(str(image_path))
-                operational_context = self._build_operational_context(image_path)
-                self.wind_updated.emit(self._wind_status_payload(operational_context))
-                runner = create_default_pipeline(
-                    yolo_model=self.yolo_model,
-                    llm_model=self.llm_model,
-                    prompt_file=self.prompt_file,
-                    operational_context=operational_context,
-                )
-
-                retry_after_quality_failure = False
-                for event in runner.iter_events(image_path):
+            if self.fixed_image_path is not None:
+                self.image_selected.emit(str(self.fixed_image_path))
+                runner = self._build_runner(self.fixed_image_path)
+                for event in runner.iter_events(self.fixed_image_path):
                     self.event_received.emit(event)
-                    result = event.result
-                    if (
-                        result is not None
-                        and result.stage_name == "quality_screening"
-                        and not result.passed
-                    ):
-                        retry_after_quality_failure = True
-                        break
-
-                if not retry_after_quality_failure:
-                    break
             else:
-                self.failed.emit("No image passed quality screening after multiple attempts.")
+                for _attempt in range(self.max_quality_retries):
+                    image_path = self._choose_random_image(exclude=tried_paths, label_filter=self.label_filter)
+                    tried_paths.add(image_path)
+                    self.image_selected.emit(str(image_path))
+                    runner = self._build_runner(image_path)
+
+                    retry_after_quality_failure = False
+                    for event in runner.iter_events(image_path):
+                        self.event_received.emit(event)
+                        result = event.result
+                        if (
+                            result is not None
+                            and result.stage_name == "quality_screening"
+                            and not result.passed
+                        ):
+                            retry_after_quality_failure = True
+                            break
+
+                    if not retry_after_quality_failure:
+                        break
+                else:
+                    self.failed.emit("No image passed quality screening after multiple attempts.")
         except Exception as exc:
             self.failed.emit(str(exc))
         finally:
             self.finished.emit()
 
-    def _choose_random_image(self, exclude: set[Path] | None = None) -> Path:
+    def _build_runner(self, image_path: Path):
+        operational_context = self._build_operational_context(image_path)
+        self.wind_updated.emit(self._wind_status_payload(operational_context))
+
+        kwargs = dict(
+            yolo_model=self.yolo_model,
+            llm_model=self.llm_model,
+            skip_quality_screening=self.skip_quality_screening,
+            use_annotation=self.use_annotation,
+            operational_context=operational_context,
+        )
+        if self.prompt_file:
+            kwargs["prompt_file"] = self.prompt_file
+        if self.context_file:
+            kwargs["context_file"] = self.context_file
+        return create_default_pipeline(**kwargs)
+
+    def _choose_random_image(self, exclude: set[Path] | None = None, label_filter: str | None = None) -> Path:
         if not self.dataset_dir.exists():
             raise FileNotFoundError(f"Demo dataset not found: {self.dataset_dir}")
 
@@ -110,6 +133,7 @@ class PipelineWorker(QObject):
                 path.is_file()
                 and path.suffix.lower() in IMAGE_SUFFIXES
                 and path not in exclude
+                and (label_filter is None or path.parent.name == label_filter)
             )
         ]
         if not image_paths:
@@ -118,15 +142,22 @@ class PipelineWorker(QObject):
         return random.choice(image_paths)
 
     def _build_operational_context(self, image_path: Path) -> OperationalContext | None:
-        if not self.context_file.exists():
+        context_file = Path(self.context_file) if self.context_file else None
+        if context_file is None and self.wind_mode != WIND_MODE_NONE:
+            context_file = DEFAULT_CONTEXT_FILE
+
+        if context_file is None:
+            return None
+
+        if not context_file.exists():
             if self.wind_mode != WIND_MODE_NONE:
                 raise FileNotFoundError(
-                    f"Operational context not found: {self.context_file}"
+                    f"Operational context not found: {context_file}"
                 )
             return None
 
         context = OperationalContext.model_validate_json(
-            self.context_file.read_text(encoding="utf-8")
+            context_file.read_text(encoding="utf-8")
         )
 
         if self.wind_mode == WIND_MODE_NONE:

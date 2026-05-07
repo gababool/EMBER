@@ -1,10 +1,9 @@
 """GIS extraction for structured operational wildfire context.
 
-Reads a local OpenStreetMap .pbf file and extracts geographic features
-for a given coordinate pair, producing a fully populated OperationalContext.
-
-All spatial operations are performed offline against the pre-loaded .pbf.
-No network access is required at runtime.
+Reads a local OpenStreetMap .pbf file and an optional SRTM elevation raster,
+extracting geographic features for a given coordinate pair and producing a
+fully populated OperationalContext. All operations run offline against
+pre-loaded local data.
 
 Usage (CLI):
     uv run python -m pipeline.context.extract \\
@@ -14,6 +13,7 @@ Usage (CLI):
     uv run python -m pipeline.context.extract \\
         --lat 59.8 --lon 16.1 \\
         --pbf data/gis/osm/vastmanland-50km.osm.pbf \\
+        --dem data/gis/elevation/vastmanland.tif \\
         --output data/contexts/scenario_01.json
 
     uv run python -m pipeline.context.extract \\
@@ -31,25 +31,22 @@ Usage (CLI):
         --mock-wind-direction SW \\
         --mock-wind-speed-mps 6.5
 
-Coordinate projection:
-    OSM data is stored in WGS84 (lat/lon degrees). All distance and area
-    calculations are performed in SWEREF99 TM (EPSG:3006), the Swedish
-    national projected coordinate system where 1 unit = 1 metre.
+    # Disable terrain extraction
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 --dem none \\
+        --output data/contexts/scenario_01.json
 
-Region lookup:
-    Swedish municipality and county boundaries are stored as multipolygon
-    relations in OSM. Geofabrik extracts clip member ways at the extract
-    boundary, preventing osmium from assembling complete area geometries.
-    Region lookup instead uses a two-pass approach: collect relation names
-    and member way IDs in pass 1, collect way node coordinates in pass 2,
-    then build convex hull polygons per relation for point-in-polygon lookup.
-    Convex hulls are a deliberate approximation sufficient for municipality-
-    level containment checks.
-
-Pre-computation approach:
-    The .pbf is loaded once per process into in-memory GeoDataFrames.
-    Cached GeoDataFrames are reused for subsequent calls. At inference time,
-    scenario JSONs are loaded directly without touching the .pbf.
+Design notes:
+    - OSM features are projected to SWEREF99 TM (EPSG:3006) for distance and
+      area calculations (1 unit = 1 metre), then results are returned in WGS84.
+    - Admin boundaries are assembled via convex hull from relation member way
+      nodes — a deliberate approximation since Geofabrik extracts clip boundary
+      ways at the extract edge, preventing full area assembly.
+    - Terrain (elevation, slope, aspect) is derived from SRTM 30m raster data
+      using a 3×3 finite difference window centred on the observation point.
+    - The .pbf and raster are loaded once per process and cached in memory.
+      Scenario JSONs are loaded directly at inference time without re-reading
+      the source files.
 """
 
 from __future__ import annotations
@@ -60,6 +57,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import rasterio
+from rasterio.transform import rowcol
+import numpy as np
 
 import geopandas as gpd
 import osmium
@@ -89,6 +89,7 @@ from pipeline.context.wind import MOCK_WIND_DIRECTIONS, build_mock_wind
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 DEFAULT_PBF = Path("data/gis/osm/vastmanland-50km.osm.pbf")
+DEFAULT_DEM = Path("data/gis/elevation/vastmanland.tif")
 
 SWEREF99_TM = "EPSG:3006"
 WGS84 = "EPSG:4326"
@@ -659,7 +660,7 @@ def _nan_to_none(val):
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
-def _load_pbf(pbf_path: Path) -> None:
+def _load_pbf(pbf_path: Path, dem_path: Path | None = None) -> None:
     """Load all feature categories from the .pbf into module-level cache."""
     global _cache, _pbf_path
 
@@ -717,13 +718,24 @@ def _load_pbf(pbf_path: Path) -> None:
         "power_lines": _to_gdf(assets_handler.power_lines),
         "protected_areas": _to_gdf(assets_handler.protected_areas),
     }
+
+    if dem_path and dem_path.exists():
+        _cache["dem"] = rasterio.open(str(dem_path))
+        print(f"Elevation raster loaded from {dem_path}")
+    else:
+        _cache["dem"] = None
+        if dem_path:
+            print(f"Elevation raster not found at {dem_path}, terrain will be None")
+        else:
+            print("No elevation raster specified, terrain will be None")
+
     _pbf_path = pbf_path
     print("OSM data loaded.")
 
 
-def _ensure_loaded(pbf_path: Path) -> None:
+def _ensure_loaded(pbf_path: Path, dem_path: Path | None) -> None:
     if not _cache or _pbf_path != pbf_path:
-        _load_pbf(pbf_path)
+        _load_pbf(pbf_path, dem_path)
 
 
 # ── Query functions ───────────────────────────────────────────────────────────
@@ -1045,10 +1057,99 @@ def _query_assets_at_risk(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _query_terrain(point_gdf: gpd.GeoDataFrame) -> "Terrain | None":
+    """Compute terrain properties at the observation point from the SRTM raster.
+
+    Elevation is read directly from the raster at the point location.
+    Slope and aspect are computed from a 3x3 neighbourhood window using
+    finite differences. The raster is in WGS84 so the window uses the
+    point's lat/lon directly.
+
+    Returns None if the raster is not loaded or the point falls outside
+    the raster bounds.
+    """
+    from pipeline.context.schemas import Terrain, SlopeSteepness
+
+    dem = _cache.get("dem")
+    if dem is None:
+        return None
+
+    # Get point coordinates in WGS84 (raster CRS).
+    # point_gdf is in SWEREF99 TM so reproject back to WGS84 for raster lookup.
+    point_wgs84 = point_gdf.to_crs("EPSG:4326").geometry.iloc[0]
+    lon, lat = point_wgs84.x, point_wgs84.y
+
+    # Check bounds.
+    bounds = dem.bounds
+    if not (bounds.left <= lon <= bounds.right and bounds.bottom <= lat <= bounds.top):
+        return None
+
+    try:
+        # Read a 3x3 window centred on the point.
+        row, col = rowcol(dem.transform, lon, lat)
+        row, col = int(row), int(col)
+
+        # Pad by 1 to get the 3x3 neighbourhood.
+        window = rasterio.windows.Window(col - 1, row - 1, 3, 3)
+        data = dem.read(1, window=window).astype(float)
+
+        if data.shape != (3, 3):
+            return None
+
+        # Replace nodata values.
+        nodata = dem.nodata
+        if nodata is not None:
+            data[data == nodata] = np.nan
+
+        elevation_m = float(data[1, 1])
+        if np.isnan(elevation_m):
+            return None
+
+        # Finite difference gradient for slope and aspect.
+        # Cell size in metres: at ~60°N, 1 degree lon ≈ 55km, 1 degree lat ≈ 111km.
+        res_deg = dem.res[0]  # degrees per pixel
+        dx_m = res_deg * 111_320 * math.cos(math.radians(lat))  # east-west cell size
+        dy_m = res_deg * 111_320                                  # north-south cell size
+
+        # dz/dx and dz/dy using central differences on the 3x3 window.
+        dzdx = (data[1, 2] - data[1, 0]) / (2 * dx_m)
+        dzdy = (data[0, 1] - data[2, 1]) / (2 * dy_m)
+
+        slope_rad = math.atan(math.sqrt(dzdx**2 + dzdy**2))
+        slope_degrees = math.degrees(slope_rad)
+
+        # Aspect: direction the slope faces (0=N, clockwise).
+        aspect_rad = math.atan2(dzdx, dzdy)
+        aspect_deg = (math.degrees(aspect_rad) + 360) % 360
+        aspect = _degrees_to_compass(aspect_deg)
+
+        # Slope steepness thresholds (degrees).
+        if slope_degrees < 2:
+            steepness = "flat"
+        elif slope_degrees < 8:
+            steepness = "gentle"
+        elif slope_degrees < 16:
+            steepness = "moderate"
+        elif slope_degrees < 25:
+            steepness = "steep"
+        else:
+            steepness = "very_steep"
+
+        return Terrain(
+            elevation_m=round(elevation_m, 1),
+            slope_degrees=round(slope_degrees, 1),
+            slope_steepness=steepness,
+            aspect=aspect if aspect != "flat" else "flat",
+        )
+
+    except Exception:
+        return None
+
 def extract_context(
     lat: float,
     lon: float,
     pbf_path: Path = DEFAULT_PBF,
+    dem_path: Path | None = DEFAULT_DEM,
     mock_wind: bool = False,
     mock_wind_key: str | None = None,
     mock_wind_direction: CompassBearing | None = None,
@@ -1064,6 +1165,7 @@ def extract_context(
         lat: Latitude in WGS84 decimal degrees.
         lon: Longitude in WGS84 decimal degrees.
         pbf_path: Path to the local .osm.pbf file.
+        dem_path: Path to the local elevation raster, or None to disable terrain.
         mock_wind: Include deterministic mocked regional-average wind context.
         mock_wind_key: Stable key used to vary mocked wind between scenarios.
         mock_wind_direction: Optional fixed wind direction for controlled runs.
@@ -1072,7 +1174,7 @@ def extract_context(
     Returns:
         A fully validated OperationalContext.
     """
-    _ensure_loaded(pbf_path)
+    _ensure_loaded(pbf_path, dem_path)
 
     point_gdf = _make_point_gdf(lat, lon)
 
@@ -1098,7 +1200,7 @@ def extract_context(
         coordinates=Coordinates(latitude=lat, longitude=lon),
         region=region,
         land_cover=land_cover,
-        terrain=None,
+        terrain=_query_terrain(point_gdf),
         water_sources=water_sources,
         roads=roads,
         settlements=settlements,
@@ -1131,6 +1233,15 @@ def main() -> None:
     parser.add_argument(
         "--pbf", type=Path, default=DEFAULT_PBF,
         help=f"Path to .osm.pbf file (default: {DEFAULT_PBF})",
+    )
+    parser.add_argument(
+        "--dem",
+        type=Path,
+        default=DEFAULT_DEM,
+        help=(
+            f"Path to SRTM elevation GeoTIFF (default: {DEFAULT_DEM}). "
+            "Pass --dem none to disable terrain extraction."
+        ),
     )
     parser.add_argument(
         "--output", type=Path, required=True,
@@ -1173,10 +1284,12 @@ def main() -> None:
         print(f"Error: .pbf file not found: {args.pbf}", file=sys.stderr)
         sys.exit(1)
 
+    dem_path = None if str(args.dem).lower() == "none" else args.dem
     context = extract_context(
         lat=args.lat,
         lon=args.lon,
         pbf_path=args.pbf,
+        dem_path=dem_path,
         mock_wind=args.mock_wind,
         mock_wind_key=args.mock_wind_key,
         mock_wind_direction=args.mock_wind_direction,
