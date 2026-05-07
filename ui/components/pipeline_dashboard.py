@@ -32,6 +32,7 @@ try:
     from ui.components.history_strip import HistoryStrip
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
+    from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from ui.pipeline_worker import DEMO_DATASET_DIR
 except ImportError:
@@ -49,6 +50,7 @@ except ImportError:
     from components.history_strip import HistoryStrip
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
+    from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from pipeline_worker import DEMO_DATASET_DIR
 
@@ -79,6 +81,7 @@ class PipelineDashboard(QWidget):
         self.run_history = []
         self.compact_layout = False
         self.last_image_path = None
+        self._generated_mock_wind = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -356,14 +359,30 @@ class PipelineDashboard(QWidget):
     def wind_status_text(self) -> str:
         config = self.selected_wind_config()
         if config["mode"] == "none":
+            self._generated_mock_wind = None
             return "NO WIND"
         if config["mode"] == "mocked":
-            return "MOCK WIND"
+            if self._generated_mock_wind is None:
+                preview_wind = build_mock_wind("ui-preview")
+                self._generated_mock_wind = {
+                    "direction": preview_wind.direction_compass,
+                    "speed_mps": preview_wind.speed_mps,
+                }
+            return (
+                f"{self._generated_mock_wind['speed_mps']:.1f}m/s "
+                f"{self._generated_mock_wind['direction']}"
+            )
+        self._generated_mock_wind = None
         return f"{config['speed_mps']:.1f}m/s {config['direction']}"
 
     def set_generated_wind(self, direction: str | None, speed_mps: float | None):
         if self.wind_mode_select.currentData() != "mocked":
             return
+        if direction and speed_mps is not None:
+            self._generated_mock_wind = {
+                "direction": direction,
+                "speed_mps": speed_mps,
+            }
         if direction:
             self.wind_direction_select.setCurrentText(direction)
         if speed_mps is not None:
@@ -637,6 +656,8 @@ class PipelineDashboard(QWidget):
     def _sync_wind_controls(self):
         manual = self.wind_mode_select.currentData() == "manual"
         controls_enabled = manual and self.wind_mode_select.isEnabled()
+        self.wind_direction_select.setVisible(manual)
+        self.wind_speed_input.setVisible(manual)
         self.wind_direction_select.setEnabled(controls_enabled)
         self.wind_speed_input.setEnabled(controls_enabled)
 
