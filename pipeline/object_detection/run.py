@@ -79,6 +79,7 @@ def run (image_path: str, model_name: str, show: bool):
         
         #bounding boxes
         boxes = result.boxes
+        image_height, image_width = result.orig_shape
 
         print(f"\nDetection boxes: {len(boxes)}")
 
@@ -91,11 +92,13 @@ def run (image_path: str, model_name: str, show: bool):
                   conf = float(box.conf[0])
                   cls = int(box.cls[0])
                   label = CLASS_NAMES.get(cls, str(cls))
+                  bbox_xyxy = [float(value) for value in box.xyxy[0].tolist()]
                   detections.append({
                        "index": i + 1,
                        "label": label,
                        "class_id": cls,
                        "confidence": conf,
+                       "bbox_xyxy": bbox_xyxy,
                   })
 
                   print(f"{i+1}: {label} | confidence={conf:.2f}")
@@ -121,6 +124,9 @@ def run (image_path: str, model_name: str, show: bool):
              "image_path": str(image_path),
              "model_name": model_name,
              "annotated_image_path": str(output_path),
+             "image_width": image_width,
+             "image_height": image_height,
+             "bbox_coordinate_format": "xyxy_pixel_top_left_origin",
              "detections": detections,
         }
 
