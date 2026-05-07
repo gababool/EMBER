@@ -619,7 +619,7 @@ class PipelineDashboard(QWidget):
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.image_placeholder.setText("Could not load image")
+            self.image_placeholder.setText(f"Could not load image:\n{image_path}")
             return
         self.image_placeholder.setText("")
         self.image_placeholder.setPixmap(

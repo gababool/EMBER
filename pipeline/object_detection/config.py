@@ -5,7 +5,7 @@ WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
 #Path to save the resulting image after yolo detection
 ANNOTATED_OUTPUT_DIR = Path(__file__).resolve().parent / "results"
 #file name, will override previous image after every run
-ANNOTATED_OUTPUT_FILENAME = "result.jpg"
+ANNOTATED_OUTPUT_FILENAME = "result.png"
 
 MODEL_PATHS = {
     "best": WEIGHTS_DIR / "best.pt",
