@@ -28,6 +28,7 @@ RESULT_COLUMNS = [
     'memory_usage_gb',
     'yolo_enabled',
     'yolo_model',
+    'yolo_input_mode',
     'yolo_duration_s',
     'yolo_detection_count',
     'context_enabled',
