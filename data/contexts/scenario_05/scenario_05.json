@@ -1,184 +1,170 @@
 {
   "schema_version": "2.0",
   "coordinates": {
-    "latitude": 62.01362,
-    "longitude": 15.262504
+    "latitude": 56.500001,
+    "longitude": 14.253609
   },
   "region": {
-    "name": "Härjedalens kommun",
-    "admin_area": "Jämtlands län"
+    "name": "Osby kommun",
+    "admin_area": "Skåne län"
   },
-  "land_cover": "forest",
-  "terrain": null,
+  "land_cover": "wetland",
+  "terrain": {
+    "elevation_m": 149.0,
+    "slope_degrees": 1.7,
+    "slope_steepness": "flat",
+    "aspect": "W"
+  },
   "water_sources": [
     {
       "name": null,
-      "source_type": "river",
-      "supply_category": "heavy",
-      "distance_m": 629.1129340168387,
-      "bearing": "SE",
-      "area_m2": 4996009.255337595,
-      "nearest_road_distance_m": 276.85513685898997
-    },
-    {
-      "name": "Ljusnan",
-      "source_type": "river",
-      "supply_category": "heavy",
-      "distance_m": 746.7219000644553,
-      "bearing": "SE",
-      "area_m2": null,
-      "nearest_road_distance_m": 204.60613600936315
-    },
-    {
-      "name": null,
-      "source_type": "stream",
+      "source_type": "lake",
       "supply_category": "light",
-      "distance_m": 503.37595508523407,
+      "distance_m": 2015.733724138565,
       "bearing": "E",
-      "area_m2": null,
-      "nearest_road_distance_m": 722.7652491088938
+      "area_m2": 1177.749506185458,
+      "nearest_road_distance_m": 86.92309584171466
     },
     {
       "name": null,
-      "source_type": "river",
-      "supply_category": "heavy",
-      "distance_m": 682.4019641601661,
-      "bearing": "NE",
-      "area_m2": null,
-      "nearest_road_distance_m": 381.9787145428786
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 2102.4105449744106,
+      "bearing": "SE",
+      "area_m2": 6859.588282838835,
+      "nearest_road_distance_m": 70.53891597512266
     },
     {
       "name": null,
-      "source_type": "river",
-      "supply_category": "heavy",
-      "distance_m": 870.8152138417973,
-      "bearing": "N",
-      "area_m2": null,
-      "nearest_road_distance_m": 27.424456500487317
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 2323.989137625377,
+      "bearing": "SE",
+      "area_m2": 3754.3557292602472,
+      "nearest_road_distance_m": 228.9599336102006
+    },
+    {
+      "name": null,
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 2425.860533771074,
+      "bearing": "SW",
+      "area_m2": 5983.647674927809,
+      "nearest_road_distance_m": 151.86757873994023
+    },
+    {
+      "name": null,
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 2540.185558445598,
+      "bearing": "SE",
+      "area_m2": 3205.4468269681906,
+      "nearest_road_distance_m": 122.23496669011405
     }
   ],
   "roads": {
     "primary_access": {
       "name": null,
-      "road_class": "unclassified",
-      "surface": "compacted",
-      "tracktype": "grade2",
+      "road_class": "service",
+      "surface": null,
+      "tracktype": null,
       "vehicle_accessible": true,
       "max_weight_tonnes": null,
       "has_bridge": false,
-      "distance_m": 807.9018516095518,
-      "bearing": "N"
+      "distance_m": 988.603929196019,
+      "bearing": "SE"
     },
     "nearby_tracks": [
       {
         "name": null,
         "road_class": "track",
-        "surface": "compacted",
-        "tracktype": "grade3",
+        "surface": null,
+        "tracktype": null,
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 482.3062349185253,
-        "bearing": "NE"
-      },
-      {
-        "name": null,
-        "road_class": "track",
-        "surface": "compacted",
-        "tracktype": "grade3",
-        "vehicle_accessible": false,
-        "max_weight_tonnes": null,
-        "has_bridge": false,
-        "distance_m": 611.336606660654,
+        "distance_m": 984.2580326727162,
         "bearing": "SW"
       },
       {
         "name": null,
         "road_class": "track",
-        "surface": "ground",
-        "tracktype": "grade4",
+        "surface": null,
+        "tracktype": null,
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 632.1783609096815,
-        "bearing": "N"
+        "distance_m": 2117.061286987648,
+        "bearing": "S"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": null,
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 2283.3269367292714,
+        "bearing": "SE"
       }
     ]
   },
   "settlements": [
     {
-      "name": "Strömshed",
+      "name": "Lilla Enön",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 2190.530085134025,
-      "bearing": "E"
+      "distance_m": 1113.9123739964361,
+      "bearing": "SE"
     },
     {
-      "name": "Sjövik",
+      "name": "Olofslund",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 3378.1485635571476,
+      "distance_m": 1644.6637097998548,
+      "bearing": "W"
+    },
+    {
+      "name": "Ekesholm",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1728.3656765487071,
+      "bearing": "NE"
+    },
+    {
+      "name": "Skogen",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1825.668592647622,
       "bearing": "S"
     },
     {
-      "name": "Backen",
+      "name": "Björnön",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 3657.4041174450417,
-      "bearing": "SE"
-    },
-    {
-      "name": "Kårböle",
-      "settlement_type": "village",
-      "distance_m": 3733.3901667611285,
-      "bearing": "SE"
-    },
-    {
-      "name": "Sveden",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 3790.581374478061,
-      "bearing": "NW"
+      "distance_m": 1882.1111015829958,
+      "bearing": "NE"
     }
   ],
   "assets_at_risk": {
-    "buildings_within_radius": 7,
-    "has_permanent_structures": true,
-    "power_lines_present": true,
-    "protected_area": "Nötbergets norra naturreservat",
+    "buildings_within_radius": 0,
+    "has_permanent_structures": false,
+    "power_lines_present": false,
+    "protected_area": "Vakö myr Naturreservat",
     "assets_radius_m": 2000.0
   },
   "named_features": [
     {
-      "name": "Nötberget",
-      "feature_type": "peak",
-      "distance_m": 659.725619946254,
-      "bearing": "S"
-    },
-    {
-      "name": "Björkkullen",
-      "feature_type": "peak",
-      "distance_m": 839.7606674181808,
-      "bearing": "E"
-    },
-    {
-      "name": "Nötberget",
-      "feature_type": "peak",
-      "distance_m": 1463.144376778993,
-      "bearing": "S"
-    },
-    {
-      "name": "Kvarnberget",
-      "feature_type": "peak",
-      "distance_m": 3858.0437615103415,
-      "bearing": "E"
-    },
-    {
-      "name": "Gråberget",
-      "feature_type": "peak",
-      "distance_m": 4128.945224974646,
-      "bearing": "E"
+      "name": "Flatön",
+      "feature_type": "forest",
+      "distance_m": 1895.8390734871502,
+      "bearing": "NW"
     }
   ],
-  "wind": null,
+  "wind": {
+    "direction_degrees": 90.0,
+    "direction_compass": "E",
+    "speed_mps": 7.2,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:34:03.071733Z",
+    "extracted_at": "2026-05-07T13:54:35.804891Z",
     "osm_dataset": "scenario_05-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

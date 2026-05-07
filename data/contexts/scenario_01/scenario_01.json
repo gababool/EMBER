@@ -6,10 +6,15 @@
   },
   "region": {
     "name": "Surahammars kommun",
-    "admin_area": null
+    "admin_area": "Västmanlands län"
   },
   "land_cover": "wetland",
-  "terrain": null,
+  "terrain": {
+    "elevation_m": 124.0,
+    "slope_degrees": 4.1,
+    "slope_steepness": "gentle",
+    "aspect": "SW"
+  },
   "water_sources": [
     {
       "name": "Stora Acktjärnen",
@@ -176,9 +181,14 @@
       "bearing": "N"
     }
   ],
-  "wind": null,
+  "wind": {
+    "direction_degrees": 135.0,
+    "direction_compass": "SE",
+    "speed_mps": 8.9,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:31:05.579391Z",
+    "extracted_at": "2026-05-07T13:49:20.924158Z",
     "osm_dataset": "scenario_01-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
