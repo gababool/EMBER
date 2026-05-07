@@ -24,6 +24,7 @@ try:
         FONT_SIZE_MD,
         FONT_SIZE_SM,
         FONT_SIZE_XL,
+        FONT_SIZE_XS,
         Theme,
         app_font,
     )
@@ -31,6 +32,7 @@ try:
     from ui.components.history_strip import HistoryStrip
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
+    from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from ui.pipeline_worker import DEMO_DATASET_DIR
 except ImportError:
@@ -40,6 +42,7 @@ except ImportError:
         FONT_SIZE_MD,
         FONT_SIZE_SM,
         FONT_SIZE_XL,
+        FONT_SIZE_XS,
         Theme,
         app_font,
     )
@@ -47,11 +50,15 @@ except ImportError:
     from components.history_strip import HistoryStrip
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
+    from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from pipeline_worker import DEMO_DATASET_DIR
 
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
+HEADER_CONTROL_WIDTH = 150
+COMPACT_HEADER_CONTROL_WIDTH = 118
+HEADER_CONTROL_HEIGHT = 40
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
 _CONTEXT_MARKER = "structured operational context block"
 
@@ -72,7 +79,9 @@ class PipelineDashboard(QWidget):
         self.expected_label = None
         self.current_run = None
         self.run_history = []
+        self.compact_layout = False
         self.last_image_path = None
+        self._generated_mock_wind = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -92,15 +101,19 @@ class PipelineDashboard(QWidget):
         title_row_layout.setSpacing(12)
 
         title_block = QWidget()
+        title_block.setMinimumWidth(0)
         title_layout = QVBoxLayout(title_block)
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(4)
 
         self.title_label = QLabel("Pipeline Demo")
         self.title_label.setFont(app_font(FONT_SIZE_XL, bold=True))
+        self.title_label.setMinimumWidth(0)
 
         self.subtitle_label = QLabel("Run a wildfire image through screening, detection, and reasoning.")
         self.subtitle_label.setFont(app_font(FONT_SIZE_SM))
+        self.subtitle_label.setWordWrap(True)
+        self.subtitle_label.setMinimumWidth(0)
 
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
@@ -120,7 +133,7 @@ class PipelineDashboard(QWidget):
         self.start_button = QPushButton("Test Image")
         self.start_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.start_button.setCursor(Qt.PointingHandCursor)
-        self.start_button.setFixedHeight(40)
+        self.start_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
         title_row_layout.addWidget(title_block, 1)
         title_row_layout.addWidget(self.pick_button)
@@ -167,6 +180,23 @@ class PipelineDashboard(QWidget):
         self.model_select = ModelComboBox(theme)
         for model_tag in BENCHMARK_MODEL_TAGS:
             self.model_select.addItem(model_tag, model_tag)
+        self.model_select.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+
+        self.wind_mode_select = ModelComboBox(theme)
+        self.wind_mode_select.addItem("No wind", "none")
+        self.wind_mode_select.addItem("Manual", "manual")
+        self.wind_mode_select.addItem("Mocked", "mocked")
+        self.wind_mode_select.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+        self.wind_mode_select.currentIndexChanged.connect(self._sync_wind_controls)
+
+        self.wind_direction_select = ModelComboBox(theme)
+        for direction in ("N", "NE", "E", "SE", "S", "SW", "W", "NW"):
+            self.wind_direction_select.addItem(direction, direction)
+        self.wind_direction_select.setCurrentText("SW")
+        self.wind_direction_select.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+
+        self.wind_speed_input = WindSpeedControl(theme)
+        self.wind_speed_input.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
         controls_row_layout.addWidget(self.image_filter_select)
         controls_row_layout.addWidget(self.annotation_button)
@@ -175,6 +205,9 @@ class PipelineDashboard(QWidget):
         controls_row_layout.addWidget(self.context_select)
         controls_row_layout.addWidget(self.prompt_select)
         controls_row_layout.addWidget(self.model_select)
+        controls_row_layout.addWidget(self.wind_mode_select)
+        controls_row_layout.addWidget(self.wind_direction_select)
+        controls_row_layout.addWidget(self.wind_speed_input)
 
         header_layout.addWidget(title_row)
         header_layout.addWidget(controls_row)
@@ -251,6 +284,8 @@ class PipelineDashboard(QWidget):
         layout.addWidget(self.history_strip)
 
         self.apply_theme(theme)
+        self._on_prompt_changed(self.prompt_select.current_index)
+        self._sync_wind_controls()
 
     def reset_demo(self):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
@@ -258,6 +293,9 @@ class PipelineDashboard(QWidget):
         self.rerun_button.setEnabled(False)
         self.pick_button.setEnabled(False)
         self.model_select.setEnabled(False)
+        self.wind_mode_select.setEnabled(False)
+        self.wind_direction_select.setEnabled(False)
+        self.wind_speed_input.setEnabled(False)
         self.prompt_select.setEnabled(False)
         self.annotation_button.setEnabled(False)
         self.context_select.setEnabled(False)
@@ -278,6 +316,7 @@ class PipelineDashboard(QWidget):
             "error": None,
             "history_image_path": None,
             "llm_model": self.selected_llm_model(),
+            "wind": self.selected_wind_config(),
         }
 
     def _reset_stage_views(self):
@@ -296,6 +335,8 @@ class PipelineDashboard(QWidget):
         self.rerun_button.setEnabled(self.last_image_path is not None)
         self.pick_button.setEnabled(True)
         self.model_select.setEnabled(True)
+        self.wind_mode_select.setEnabled(True)
+        self._sync_wind_controls()
         self.prompt_select.setEnabled(True)
         self.annotation_button.setEnabled(True)
         self.context_select.setEnabled(True)
@@ -307,6 +348,46 @@ class PipelineDashboard(QWidget):
 
     def selected_llm_model(self) -> str:
         return self.model_select.currentData()
+
+    def selected_wind_config(self) -> dict:
+        return {
+            "mode": self.wind_mode_select.currentData(),
+            "direction": self.wind_direction_select.currentData(),
+            "speed_mps": self.wind_speed_input.value(),
+        }
+
+    def wind_status_text(self) -> str:
+        config = self.selected_wind_config()
+        if config["mode"] == "none":
+            self._generated_mock_wind = None
+            return "NO WIND"
+        if config["mode"] == "mocked":
+            if self._generated_mock_wind is None:
+                preview_wind = build_mock_wind("ui-preview")
+                self._generated_mock_wind = {
+                    "direction": preview_wind.direction_compass,
+                    "speed_mps": preview_wind.speed_mps,
+                }
+            return (
+                f"{self._generated_mock_wind['speed_mps']:.1f}m/s "
+                f"{self._generated_mock_wind['direction']}"
+            )
+        self._generated_mock_wind = None
+        return f"{config['speed_mps']:.1f}m/s {config['direction']}"
+
+    def set_generated_wind(self, direction: str | None, speed_mps: float | None):
+        if self.wind_mode_select.currentData() != "mocked":
+            return
+        if direction and speed_mps is not None:
+            self._generated_mock_wind = {
+                "direction": direction,
+                "speed_mps": speed_mps,
+            }
+        if direction:
+            self.wind_direction_select.setCurrentText(direction)
+        if speed_mps is not None:
+            self.wind_speed_input.setValue(speed_mps)
+        self._sync_wind_controls()
 
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
@@ -487,6 +568,11 @@ class PipelineDashboard(QWidget):
                 background-color: {theme.accent_cyan};
                 border-color: {theme.accent_cyan};
             }}
+            QPushButton:disabled {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border-color: {theme.border};
+            }}
         """)
         self.pick_button.setStyleSheet(f"""
             QPushButton {{
@@ -527,6 +613,9 @@ class PipelineDashboard(QWidget):
             }}
         """)
         self.model_select.apply_theme(theme)
+        self.wind_mode_select.apply_theme(theme)
+        self.wind_direction_select.apply_theme(theme)
+        self.wind_speed_input.apply_theme(theme)
         self.prompt_select.apply_theme(theme)
         self.context_select.apply_theme(theme)
         self.image_filter_select.apply_theme(theme)
@@ -563,6 +652,64 @@ class PipelineDashboard(QWidget):
     def _make_check_row(self, label: str):
         row = CheckRow(label, self.theme)
         return row
+
+    def _sync_wind_controls(self):
+        manual = self.wind_mode_select.currentData() == "manual"
+        controls_enabled = manual and self.wind_mode_select.isEnabled()
+        self.wind_direction_select.setVisible(manual)
+        self.wind_speed_input.setVisible(manual)
+        self.wind_direction_select.setEnabled(controls_enabled)
+        self.wind_speed_input.setEnabled(controls_enabled)
+
+    def close_open_popups(self):
+        self.model_select.close_popup()
+        self.prompt_select.close_popup()
+        self.context_select.close_popup()
+        self.image_filter_select.close_popup()
+        self.wind_mode_select.close_popup()
+        self.wind_direction_select.close_popup()
+
+    def resizeEvent(self, event):
+        self.close_open_popups()
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self):
+        compact = self.width() < 1250
+        if compact == self.compact_layout:
+            return
+
+        self.compact_layout = compact
+        self._set_header_control_width(
+            COMPACT_HEADER_CONTROL_WIDTH if compact else HEADER_CONTROL_WIDTH
+        )
+        for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
+            self.grid.removeWidget(panel)
+
+        if compact:
+            self.grid.addWidget(self.quality_panel, 0, 0)
+            self.grid.addWidget(self.image_panel, 1, 0)
+            self.grid.addWidget(self.reasoning_panel, 2, 0)
+            self.grid.setColumnStretch(0, 1)
+            self.grid.setColumnStretch(1, 0)
+            self.grid.setColumnStretch(2, 0)
+        else:
+            self.grid.addWidget(self.quality_panel, 0, 0)
+            self.grid.addWidget(self.image_panel, 0, 1)
+            self.grid.addWidget(self.reasoning_panel, 0, 2)
+            self.grid.setColumnStretch(0, 1)
+            self.grid.setColumnStretch(1, 2)
+            self.grid.setColumnStretch(2, 2)
+
+    def _set_header_control_width(self, width: int):
+        for widget in (
+            self.model_select,
+            self.wind_mode_select,
+            self.wind_direction_select,
+            self.wind_speed_input,
+            self.start_button,
+        ):
+            widget.setFixedSize(width, HEADER_CONTROL_HEIGHT)
 
     def _set_stage_running(self, stage_name: str):
         if stage_name == "quality_screening":
@@ -787,6 +934,118 @@ class CheckRow(QFrame):
         """)
         self.text_label.setStyleSheet(self._label_style(theme.text_primary))
         self.set_state(self.state)
+
+    @staticmethod
+    def _label_style(color: str) -> str:
+        return f"""
+            QLabel {{
+                color: {color};
+                background: transparent;
+                border: none;
+            }}
+        """
+
+
+class WindSpeedControl(QFrame):
+    valueChanged = Signal(float)
+
+    def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self._value = 6.5
+        self._minimum = 0.0
+        self._maximum = 40.0
+        self._step = 0.5
+        self.setObjectName("WindSpeedControl")
+        self.setFixedHeight(40)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.value_label = QLabel()
+        self.value_label.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.value_label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+
+        button_column = QWidget()
+        button_layout = QVBoxLayout(button_column)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(0)
+
+        self.up_button = QPushButton("▲")
+        self.down_button = QPushButton("▼")
+        for button in (self.up_button, self.down_button):
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFont(app_font(FONT_SIZE_XS, bold=True))
+            button.setFixedSize(30, 20)
+
+        self.up_button.clicked.connect(self.increase)
+        self.down_button.clicked.connect(self.decrease)
+        button_layout.addWidget(self.up_button)
+        button_layout.addWidget(self.down_button)
+
+        layout.addWidget(self.value_label, 1)
+        layout.addWidget(button_column)
+
+        self._refresh_label()
+        self.apply_theme(theme)
+
+    def value(self) -> float:
+        return self._value
+
+    def setValue(self, value: float, snap_to_step: bool = False):
+        if snap_to_step:
+            value = round(value / self._step) * self._step
+        value = max(self._minimum, min(self._maximum, round(value, 1)))
+        if value == self._value:
+            return
+        self._value = value
+        self._refresh_label()
+        self.valueChanged.emit(self._value)
+
+    def increase(self):
+        self.setValue(self._value + self._step, snap_to_step=True)
+
+    def decrease(self):
+        self.setValue(self._value - self._step, snap_to_step=True)
+
+    def _refresh_label(self):
+        self.value_label.setText(f"{self._value:.1f} m/s")
+
+    def apply_theme(self, theme: Theme):
+        self.theme = theme
+        self.setStyleSheet(f"""
+            QFrame#WindSpeedControl {{
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+            }}
+            QFrame#WindSpeedControl:hover {{
+                border-color: {theme.accent_orange};
+            }}
+            QPushButton {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: none;
+                border-left: 1px solid {theme.border};
+            }}
+            QPushButton:hover {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:pressed {{
+                color: {theme.text_primary};
+                background-color: {theme.accent_orange};
+            }}
+        """)
+        self.value_label.setStyleSheet(self._label_style(theme.text_primary))
+
+    def setEnabled(self, enabled: bool):
+        super().setEnabled(enabled)
+        color = self.theme.text_primary if enabled else self.theme.text_muted
+        self.value_label.setStyleSheet(self._label_style(color))
+        self.up_button.setEnabled(enabled)
+        self.down_button.setEnabled(enabled)
 
     @staticmethod
     def _label_style(color: str) -> str:

@@ -119,8 +119,6 @@ def test_format_context_matches_documented_template():
             "",
             "Named features:",
             "  - forest Delsjöområdet, 0.2 km E",
-            "",
-            "Wind: unavailable",
         ]
     )
 
@@ -158,7 +156,7 @@ def test_format_context_handles_missing_optional_fields():
     assert "Primary: none within search radius" in formatted
     assert "Tracks: none nearby" in formatted
     assert "Settlements (none within 10 km)" in formatted
-    assert "Wind: unavailable" in formatted
+    assert "Wind:" not in formatted
     assert "unknown county" in formatted
     assert "None" not in formatted
 
@@ -180,15 +178,20 @@ def test_format_context_includes_inline_units():
 def test_format_context_formats_optional_wind_when_available():
     context_data = deepcopy(SAMPLE_CONTEXT)
     context_data["wind"] = {
-        "speed_m_s": 5.0,
-        "direction_from": "SW",
+        "direction_degrees": 225,
+        "direction_compass": "SW",
+        "speed_mps": 5.0,
+        "source": "manual",
     }
 
     context = OperationalContext.model_validate(context_data)
 
     formatted = format_context(context)
 
-    assert "Wind: 5.0 m/s from SW" in formatted
+    assert (
+        "Wind: 5.0 m/s blowing from SW (southwest) toward NE (northeast), "
+        "from 225 degrees"
+    ) in formatted
 
 
 def test_format_context_excludes_extraction_metadata():

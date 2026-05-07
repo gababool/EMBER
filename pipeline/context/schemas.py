@@ -25,7 +25,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 CompassBearing = Literal["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
@@ -491,20 +491,61 @@ class Wind(StrictBaseModel):
     """Wind conditions near the observation point.
 
     Wind is optional because weather/wind integration is a stretch feature.
-    In the prototype, wind data is provided manually per scenario.
+    Wind may be mocked for reproducible scenarios or provided manually.
     """
 
-    speed_m_s: float = Field(
-        ..., ge=0,
-        description="Sustained wind speed. Unit: metres per second.",
+    direction_degrees: float = Field(
+        ..., ge=0, lt=360,
+        description=(
+            "Meteorological wind direction in degrees — the direction the wind "
+            "blows FROM, not toward. Unit: degrees."
+        ),
     )
-    direction_from: CompassBearing = Field(
+    direction_compass: CompassBearing = Field(
         ...,
         description=(
             "Meteorological wind direction — the direction the wind blows FROM, "
             "not toward. Unit: categorical compass bearing."
         ),
     )
+    speed_mps: float = Field(
+        ..., ge=0,
+        description="Sustained wind speed. Unit: metres per second.",
+    )
+    source: Literal["mocked", "manual"] = Field(
+        ...,
+        description="Source of the wind value. Unit: categorical provenance label.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_wind_keys(cls, data):
+        if not isinstance(data, dict):
+            return data
+
+        migrated = dict(data)
+        if "speed_m_s" in migrated and "speed_mps" not in migrated:
+            migrated["speed_mps"] = migrated.pop("speed_m_s")
+        if "direction_from" in migrated and "direction_compass" not in migrated:
+            migrated["direction_compass"] = migrated.pop("direction_from")
+        if "direction_compass" in migrated and "direction_degrees" not in migrated:
+            compass_to_degrees = {
+                "N": 0,
+                "NE": 45,
+                "E": 90,
+                "SE": 135,
+                "S": 180,
+                "SW": 225,
+                "W": 270,
+                "NW": 315,
+            }
+            migrated["direction_degrees"] = compass_to_degrees.get(
+                migrated["direction_compass"]
+            )
+        has_wind_value = "speed_mps" in migrated or "direction_compass" in migrated
+        if has_wind_value and "source" not in migrated:
+            migrated["source"] = "manual"
+        return migrated
 
 
 class ExtractionMetadata(StrictBaseModel):

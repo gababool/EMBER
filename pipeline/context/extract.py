@@ -16,6 +16,21 @@ Usage (CLI):
         --dem data/gis/elevation/vastmanland.tif \\
         --output data/contexts/scenario_01.json
 
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 \\
+        --pbf data/gis/osm/scenario_01-50km.osm.pbf \\
+        --output data/contexts/scenario_01.json \\
+        --mock-wind \\
+        --mock-wind-key scenario_01
+
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 \\
+        --pbf data/gis/osm/scenario_01-50km.osm.pbf \\
+        --output data/contexts/scenario_01.json \\
+        --mock-wind \\
+        --mock-wind-direction SW \\
+        --mock-wind-speed-mps 6.5
+
     # Disable terrain extraction
     uv run python -m pipeline.context.extract \\
         --lat 59.8 --lon 16.1 --dem none \\
@@ -69,6 +84,7 @@ from pipeline.context.schemas import (
     WaterSourceType,
     WaterSupplyCategory,
 )
+from pipeline.context.wind import MOCK_WIND_DIRECTIONS, build_mock_wind
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1134,6 +1150,10 @@ def extract_context(
     lon: float,
     pbf_path: Path = DEFAULT_PBF,
     dem_path: Path | None = DEFAULT_DEM,
+    mock_wind: bool = False,
+    mock_wind_key: str | None = None,
+    mock_wind_direction: CompassBearing | None = None,
+    mock_wind_speed_mps: float | None = None,
 ) -> OperationalContext:
     """Extract a fully populated OperationalContext for the given coordinates.
 
@@ -1145,6 +1165,11 @@ def extract_context(
         lat: Latitude in WGS84 decimal degrees.
         lon: Longitude in WGS84 decimal degrees.
         pbf_path: Path to the local .osm.pbf file.
+        dem_path: Path to the local elevation raster, or None to disable terrain.
+        mock_wind: Include deterministic mocked regional-average wind context.
+        mock_wind_key: Stable key used to vary mocked wind between scenarios.
+        mock_wind_direction: Optional fixed wind direction for controlled runs.
+        mock_wind_speed_mps: Optional fixed wind speed for controlled runs.
 
     Returns:
         A fully validated OperationalContext.
@@ -1181,7 +1206,15 @@ def extract_context(
         settlements=settlements,
         assets_at_risk=assets_at_risk,
         named_features=named_features,
-        wind=None,
+        wind=(
+            build_mock_wind(
+                mock_wind_key or pbf_path.stem,
+                direction_compass=mock_wind_direction,
+                speed_mps=mock_wind_speed_mps,
+            )
+            if mock_wind
+            else None
+        ),
         extraction_metadata=metadata,
     )
 
@@ -1202,15 +1235,48 @@ def main() -> None:
         help=f"Path to .osm.pbf file (default: {DEFAULT_PBF})",
     )
     parser.add_argument(
-    "--dem",
-    type=Path,
-    default=DEFAULT_DEM,
-    help=f"Path to SRTM elevation GeoTIFF (default: {DEFAULT_DEM}). "
-         f"Pass --dem none to disable terrain extraction.",
-    )   
+        "--dem",
+        type=Path,
+        default=DEFAULT_DEM,
+        help=(
+            f"Path to SRTM elevation GeoTIFF (default: {DEFAULT_DEM}). "
+            "Pass --dem none to disable terrain extraction."
+        ),
+    )
     parser.add_argument(
         "--output", type=Path, required=True,
         help="Output path for the JSON file (e.g. data/contexts/scenario_01.json)",
+    )
+    parser.add_argument(
+        "--mock-wind",
+        action="store_true",
+        help=(
+            "Include deterministic semi-random mocked regional-average wind "
+            "data for reproducible scenarios."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-key",
+        help=(
+            "Stable key used to vary --mock-wind between scenarios. "
+            "Defaults to the input PBF filename stem."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-direction",
+        choices=[direction for _, direction in MOCK_WIND_DIRECTIONS],
+        help=(
+            "Fixed mocked wind direction for controlled runs. If omitted, "
+            "direction is derived from --mock-wind-key."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-speed-mps",
+        type=float,
+        help=(
+            "Fixed mocked wind speed in metres per second for controlled runs. "
+            "If omitted, speed is derived from --mock-wind-key."
+        ),
     )
     args = parser.parse_args()
 
@@ -1219,7 +1285,16 @@ def main() -> None:
         sys.exit(1)
 
     dem_path = None if str(args.dem).lower() == "none" else args.dem
-    context = extract_context(lat=args.lat, lon=args.lon, pbf_path=args.pbf, dem_path=dem_path)
+    context = extract_context(
+        lat=args.lat,
+        lon=args.lon,
+        pbf_path=args.pbf,
+        dem_path=dem_path,
+        mock_wind=args.mock_wind,
+        mock_wind_key=args.mock_wind_key,
+        mock_wind_direction=args.mock_wind_direction,
+        mock_wind_speed_mps=args.mock_wind_speed_mps,
+    )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
@@ -1234,6 +1309,13 @@ def main() -> None:
     print(f"  Settlements:     {len(context.settlements)}")
     print(f"  Water sources:   {len(context.water_sources)}")
     print(f"  Named features:  {len(context.named_features)}")
+    if context.wind:
+        print(
+            "  Wind:            "
+            f"{context.wind.speed_mps:.1f} m/s from "
+            f"{context.wind.direction_compass} "
+            f"({context.wind.direction_degrees:.0f} degrees, {context.wind.source})"
+        )
     a = context.assets_at_risk
     print(f"  Buildings:       {a.buildings_within_radius} "
           f"({'permanent' if a.has_permanent_structures else 'no permanent'})")

@@ -41,7 +41,7 @@ Output template:
       Power lines: present | none mapped
       Protected area: <name> | none
 
-    Wind: <speed> m/s from <bearing> | unavailable
+    Wind: <speed> m/s blowing from <bearing> (<name>) toward <opposite bearing> (<name>), from <degrees> degrees | omitted when unavailable
 """
 
 from __future__ import annotations
@@ -212,8 +212,46 @@ def _format_named_features(context: OperationalContext) -> list[str]:
 
 def _format_wind(context: OperationalContext) -> str:
     if context.wind is None:
-        return "Wind: unavailable"
-    return f"Wind: {context.wind.speed_m_s:.1f} m/s from {context.wind.direction_from}"
+        return ""
+    from_direction = context.wind.direction_compass
+    to_direction = _downwind_direction(from_direction)
+    return (
+        f"Wind: {context.wind.speed_mps:.1f} m/s blowing from "
+        f"{from_direction} ({_compass_name(from_direction)}) toward "
+        f"{to_direction} ({_compass_name(to_direction)}), "
+        f"from {context.wind.direction_degrees:.0f} degrees"
+    )
+
+
+_COMPASS_NAMES = {
+    "N": "north",
+    "NE": "northeast",
+    "E": "east",
+    "SE": "southeast",
+    "S": "south",
+    "SW": "southwest",
+    "W": "west",
+    "NW": "northwest",
+}
+
+_DOWNWIND_BY_FROM_DIRECTION = {
+    "N": "S",
+    "NE": "SW",
+    "E": "W",
+    "SE": "NW",
+    "S": "N",
+    "SW": "NE",
+    "W": "E",
+    "NW": "SE",
+}
+
+
+def _compass_name(direction: str) -> str:
+    return _COMPASS_NAMES.get(direction, direction.lower())
+
+
+def _downwind_direction(from_direction: str) -> str:
+    return _DOWNWIND_BY_FROM_DIRECTION.get(from_direction, "unknown")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -267,6 +305,7 @@ def format_context(context: OperationalContext) -> str:
     if named:
         sections += ["", *named]
 
-    sections += ["", wind]
+    if wind:
+        sections += ["", wind]
 
     return "\n".join(sections)

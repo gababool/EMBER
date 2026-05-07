@@ -53,12 +53,23 @@ class ModelComboBox(QFrame):
             return None
         return self.items[self.current_index][1]
 
+    def currentText(self):
+        if self.current_index < 0:
+            return ""
+        return self.items[self.current_index][0]
+
     def setCurrentIndex(self, index: int):
         if index < 0 or index >= len(self.items):
             return
         self.current_index = index
         self.text_label.setText(self.items[index][0])
         self.currentIndexChanged.emit(index)
+
+    def setCurrentText(self, text: str):
+        for index, (item_text, _data) in enumerate(self.items):
+            if item_text == text:
+                self.setCurrentIndex(index)
+                return
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton and self.isEnabled():
@@ -72,9 +83,11 @@ class ModelComboBox(QFrame):
         self.show_popup()
 
     def show_popup(self):
+        self.close_popup()
         self.popup = QFrame(None, Qt.Popup)
         self.popup.setObjectName("ModelPopup")
         self.popup.setFixedWidth(self.width())
+        self.popup.destroyed.connect(lambda: setattr(self, "popup", None))
 
         layout = QVBoxLayout(self.popup)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -84,7 +97,7 @@ class ModelComboBox(QFrame):
             button = QPushButton(text)
             button.setFont(app_font(FONT_SIZE_SM, bold=True))
             button.setCursor(Qt.PointingHandCursor)
-            button.setFixedHeight(34)
+            button.setFixedHeight(40)
             button.clicked.connect(lambda checked=False, i=index: self._select_from_popup(i))
             button.setProperty("selected", index == self.current_index)
             layout.addWidget(button)
@@ -117,8 +130,34 @@ class ModelComboBox(QFrame):
 
     def _select_from_popup(self, index: int):
         self.setCurrentIndex(index)
+        self.close_popup()
+
+    def close_popup(self):
         if self.popup:
-            self.popup.close()
+            popup = self.popup
+            self.popup = None
+            popup.close()
+
+    def setEnabled(self, enabled: bool):
+        if not enabled:
+            self.close_popup()
+        super().setEnabled(enabled)
+
+    def hideEvent(self, event):
+        self.close_popup()
+        super().hideEvent(event)
+
+    def moveEvent(self, event):
+        self.close_popup()
+        super().moveEvent(event)
+
+    def resizeEvent(self, event):
+        self.close_popup()
+        super().resizeEvent(event)
+
+    def focusOutEvent(self, event):
+        self.close_popup()
+        super().focusOutEvent(event)
 
     def _style_popup(self):
         if not self.popup:
