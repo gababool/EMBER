@@ -1,0 +1,189 @@
+{
+  "schema_version": "2.0",
+  "coordinates": {
+    "latitude": 62.01362,
+    "longitude": 15.262504
+  },
+  "region": {
+    "name": "Härjedalens kommun",
+    "admin_area": "Jämtlands län"
+  },
+  "land_cover": "forest",
+  "terrain": null,
+  "water_sources": [
+    {
+      "name": null,
+      "source_type": "river",
+      "supply_category": "heavy",
+      "distance_m": 629.1129340168387,
+      "bearing": "SE",
+      "area_m2": 4996009.255337595,
+      "nearest_road_distance_m": 276.85513685898997
+    },
+    {
+      "name": "Ljusnan",
+      "source_type": "river",
+      "supply_category": "heavy",
+      "distance_m": 746.7219000644553,
+      "bearing": "SE",
+      "area_m2": null,
+      "nearest_road_distance_m": 204.60613600936315
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 503.37595508523407,
+      "bearing": "E",
+      "area_m2": null,
+      "nearest_road_distance_m": 722.7652491088938
+    },
+    {
+      "name": null,
+      "source_type": "river",
+      "supply_category": "heavy",
+      "distance_m": 682.4019641601661,
+      "bearing": "NE",
+      "area_m2": null,
+      "nearest_road_distance_m": 381.9787145428786
+    },
+    {
+      "name": null,
+      "source_type": "river",
+      "supply_category": "heavy",
+      "distance_m": 870.8152138417973,
+      "bearing": "N",
+      "area_m2": null,
+      "nearest_road_distance_m": 27.424456500487317
+    }
+  ],
+  "roads": {
+    "primary_access": {
+      "name": null,
+      "road_class": "unclassified",
+      "surface": "compacted",
+      "tracktype": "grade2",
+      "vehicle_accessible": true,
+      "max_weight_tonnes": null,
+      "has_bridge": false,
+      "distance_m": 807.9018516095518,
+      "bearing": "N"
+    },
+    "nearby_tracks": [
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "compacted",
+        "tracktype": "grade3",
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 482.3062349185253,
+        "bearing": "NE"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "compacted",
+        "tracktype": "grade3",
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 611.336606660654,
+        "bearing": "SW"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "ground",
+        "tracktype": "grade4",
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 632.1783609096815,
+        "bearing": "N"
+      }
+    ]
+  },
+  "settlements": [
+    {
+      "name": "Strömshed",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2190.530085134025,
+      "bearing": "E"
+    },
+    {
+      "name": "Sjövik",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3378.1485635571476,
+      "bearing": "S"
+    },
+    {
+      "name": "Backen",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3657.4041174450417,
+      "bearing": "SE"
+    },
+    {
+      "name": "Kårböle",
+      "settlement_type": "village",
+      "distance_m": 3733.3901667611285,
+      "bearing": "SE"
+    },
+    {
+      "name": "Sveden",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3790.581374478061,
+      "bearing": "NW"
+    }
+  ],
+  "assets_at_risk": {
+    "buildings_within_radius": 7,
+    "has_permanent_structures": true,
+    "power_lines_present": true,
+    "protected_area": "Nötbergets norra naturreservat",
+    "assets_radius_m": 2000.0
+  },
+  "named_features": [
+    {
+      "name": "Nötberget",
+      "feature_type": "peak",
+      "distance_m": 659.725619946254,
+      "bearing": "S"
+    },
+    {
+      "name": "Björkkullen",
+      "feature_type": "peak",
+      "distance_m": 839.7606674181808,
+      "bearing": "E"
+    },
+    {
+      "name": "Nötberget",
+      "feature_type": "peak",
+      "distance_m": 1463.144376778993,
+      "bearing": "S"
+    },
+    {
+      "name": "Kvarnberget",
+      "feature_type": "peak",
+      "distance_m": 3858.0437615103415,
+      "bearing": "E"
+    },
+    {
+      "name": "Gråberget",
+      "feature_type": "peak",
+      "distance_m": 4128.945224974646,
+      "bearing": "E"
+    }
+  ],
+  "wind": null,
+  "extraction_metadata": {
+    "extracted_at": "2026-05-06T09:34:03.071733Z",
+    "osm_dataset": "scenario_05-50km.osm.pbf",
+    "settlement_radius_m": 20000.0,
+    "water_source_radius_m": 10000.0,
+    "track_radius_m": 5000.0,
+    "named_feature_radius_m": 10000.0,
+    "assets_radius_m": 2000.0
+  }
+}

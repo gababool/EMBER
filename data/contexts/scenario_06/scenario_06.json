@@ -1,0 +1,158 @@
+{
+  "schema_version": "2.0",
+  "coordinates": {
+    "latitude": 57.408715,
+    "longitude": 18.708128
+  },
+  "region": {
+    "name": "Unknown region",
+    "admin_area": null
+  },
+  "land_cover": "unknown",
+  "terrain": null,
+  "water_sources": [
+    {
+      "name": null,
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 1714.841278020588,
+      "bearing": "S",
+      "area_m2": 13764.162128335565,
+      "nearest_road_distance_m": 1148.2240548904358
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 3505.0751437586255,
+      "bearing": "N",
+      "area_m2": null,
+      "nearest_road_distance_m": 240.04314670817712
+    },
+    {
+      "name": null,
+      "source_type": "pond",
+      "supply_category": "heavy",
+      "distance_m": 3876.6679833545486,
+      "bearing": "NE",
+      "area_m2": 12683.339169172397,
+      "nearest_road_distance_m": 139.18340927857523
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 3996.394987503185,
+      "bearing": "N",
+      "area_m2": null,
+      "nearest_road_distance_m": 0.8435336387619027
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 4010.1107441169843,
+      "bearing": "NE",
+      "area_m2": null,
+      "nearest_road_distance_m": 319.54887530355785
+    }
+  ],
+  "roads": {
+    "primary_access": {
+      "name": null,
+      "road_class": "unclassified",
+      "surface": "compacted",
+      "tracktype": null,
+      "vehicle_accessible": true,
+      "max_weight_tonnes": null,
+      "has_bridge": false,
+      "distance_m": 989.7740535994913,
+      "bearing": "E"
+    },
+    "nearby_tracks": [
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": null,
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 1.5905405311899241,
+        "bearing": "N"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "gravel",
+        "tracktype": "grade4",
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 972.8107693996898,
+        "bearing": "SE"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": null,
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 975.090422352659,
+        "bearing": "NW"
+      }
+    ]
+  },
+  "settlements": [
+    {
+      "name": "Hajdeby",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2740.3011998915745,
+      "bearing": "NE"
+    },
+    {
+      "name": "Folers gamla tomt",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3054.3160765830958,
+      "bearing": "NW"
+    },
+    {
+      "name": "Bringsarve",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3116.2887877181024,
+      "bearing": "S"
+    },
+    {
+      "name": "Halsgårde",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3188.067395278976,
+      "bearing": "S"
+    },
+    {
+      "name": "Foler",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 3281.67073449713,
+      "bearing": "N"
+    }
+  ],
+  "assets_at_risk": {
+    "buildings_within_radius": 5,
+    "has_permanent_structures": false,
+    "power_lines_present": false,
+    "protected_area": null,
+    "assets_radius_m": 2000.0
+  },
+  "named_features": [],
+  "wind": null,
+  "extraction_metadata": {
+    "extracted_at": "2026-05-06T09:34:13.597195Z",
+    "osm_dataset": "scenario_06-50km.osm.pbf",
+    "settlement_radius_m": 20000.0,
+    "water_source_radius_m": 10000.0,
+    "track_radius_m": 5000.0,
+    "named_feature_radius_m": 10000.0,
+    "assets_radius_m": 2000.0
+  }
+}

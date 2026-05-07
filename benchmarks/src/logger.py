@@ -30,6 +30,8 @@ RESULT_COLUMNS = [
     'yolo_model',
     'yolo_duration_s',
     'yolo_detection_count',
+    'context_enabled',
+    'context_scenario',
 ]
 
 
