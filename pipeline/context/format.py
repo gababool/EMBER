@@ -57,6 +57,8 @@ from pipeline.context.schemas import (
     WaterSource,
 )
 
+# Buildings within radius above this count are flagged as high density.
+HIGH_DENSITY_THRESHOLD = 50
 
 # ── Primitive formatters ───────────────────────────────────────────────────────
 
@@ -186,7 +188,9 @@ def _format_assets(assets: AssetsAtRisk) -> str:
     lines = [f"Assets at risk (within {radius_km}):"]
 
     building_str = str(assets.buildings_within_radius)
-    if assets.buildings_within_radius > 0:
+    if assets.buildings_within_radius >= HIGH_DENSITY_THRESHOLD:
+        building_str += " — HIGH DENSITY, immediate evacuation consideration required"
+    elif assets.buildings_within_radius > 0:
         perm = "including permanent structures" if assets.has_permanent_structures else "no permanent structures"
         building_str += f" ({perm})"
     lines.append(f"  Buildings: {building_str}")
