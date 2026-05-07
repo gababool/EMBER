@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
+from pipeline.context.schemas import OperationalContext
 from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 
 
@@ -142,11 +143,13 @@ class LLMReasoningStage:
         prompt_file: str | Path = DEFAULT_PROMPT_FILE,
         additional_context: str | None = None,
         context_file: str | Path | None = None,
+        operational_context: OperationalContext | None = None,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
         self.additional_context = additional_context
         self.context_file = Path(context_file) if context_file else None
+        self.operational_context = operational_context
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.llm.inference import load_system_prompt, run_llm_inference
@@ -160,6 +163,7 @@ class LLMReasoningStage:
             prompt_file=str(self.prompt_file),
             additional_context=self.additional_context,
             context_file=str(self.context_file) if self.context_file else None,
+            operational_context=self.operational_context,
         )
         context.set_output(self.name, result)
 
@@ -230,6 +234,7 @@ def create_default_pipeline(
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
     context_file: str | Path | None = None,
+    operational_context: OperationalContext | None = None,
 ) -> PipelineRunner:
     return PipelineRunner(
         stages=[
@@ -239,6 +244,7 @@ def create_default_pipeline(
                 model_name=llm_model,
                 prompt_file=prompt_file,
                 context_file=context_file,
+                operational_context=operational_context,
             ),
         ]
     )
