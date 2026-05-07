@@ -47,7 +47,6 @@ import argparse
 import csv
 import json
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -58,6 +57,8 @@ from src.llm_inference import load_prompt_file, call_llm
 from src.logger import log_progress
 from src.metrics import track_memory_usage, get_model_size, count_words
 from src.hardware import get_hardware_specs
+from src.yolo import run_yolo_for_llm, yolo_mode_tag
+from pipeline.object_detection.detections import YOLO_INPUT_MODES
 
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -83,6 +84,8 @@ SCENARIO_RESULT_COLUMNS = [
     'image_path',
     'context_file',
     'yolo_enabled',
+    'yolo_model',
+    'yolo_input_mode',
     'yolo_detection_count',
     'yolo_duration_s',
     'classification',
@@ -164,38 +167,6 @@ def discover_scenarios(context_dir: Path, names: list[str] | None = None) -> lis
     return scenarios
 
 
-# ── YOLO ─────────────────────────────────────────────────────────────────────
-
-def _run_yolo(image_path: Path, yolo_model_name: str) -> dict:
-    """Run YOLO on an image and return annotated path, count, duration."""
-    from pipeline.object_detection.model_handler import get_model
-    from pipeline.object_detection.config import (
-        ANNOTATED_OUTPUT_DIR,
-        ANNOTATED_OUTPUT_FILENAME,
-    )
-    import cv2
-
-    model = get_model(yolo_model_name)
-
-    start = time.perf_counter()
-    results = model(str(image_path))
-    duration_s = time.perf_counter() - start
-
-    result = results[0]
-    detection_count = len(result.boxes)
-
-    ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
-    annotated = result.plot()
-    cv2.imwrite(str(output_path), annotated)
-
-    return {
-        'annotated_path': output_path,
-        'detection_count': detection_count,
-        'duration_s': round(duration_s, 3),
-    }
-
-
 # ── CSV helpers ───────────────────────────────────────────────────────────────
 
 def init_scenario_csv(csv_path: Path) -> None:
@@ -235,6 +206,7 @@ def run_scenario_eval(
     output_dir: Path,
     with_yolo: bool,
     yolo_model: str,
+    yolo_input_mode: str,
     scenario_names: list[str] | None,
     dry_run: bool,
 ) -> None:
@@ -251,7 +223,12 @@ def run_scenario_eval(
 
     log_progress(f"[SCENARIO EVAL] {len(scenarios)} scenario(s), {len(models)} model(s)")
     log_progress(f"  System prompt: {system_prompt_file.name}")
-    log_progress(f"  YOLO: {'enabled (model=' + yolo_model + ')' if with_yolo else 'disabled'}")
+    yolo_status = (
+        f"enabled (model={yolo_model}, mode={yolo_input_mode})"
+        if with_yolo
+        else "disabled"
+    )
+    log_progress(f"  YOLO: {yolo_status}")
     log_progress(f"  Scenarios:")
     for s in scenarios:
         log_progress(f"    {s['scenario_id']}: {s['image_path'].name}")
@@ -263,7 +240,7 @@ def run_scenario_eval(
         return
 
     run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-    yolo_tag = '_yolo' if with_yolo else '_noyolo'
+    yolo_tag = yolo_mode_tag(with_yolo, yolo_input_mode)
     csv_path = output_dir / f"scenario_eval{yolo_tag}_{run_id}.csv"
     init_scenario_csv(csv_path)
     log_progress(f"  Output: {csv_path}")
@@ -276,6 +253,7 @@ def run_scenario_eval(
         'models': models,
         'with_yolo': with_yolo,
         'yolo_model': yolo_model if with_yolo else None,
+        'yolo_input_mode': yolo_input_mode if with_yolo else None,
         'system_prompt_file': str(system_prompt_file),
         'scenarios': [
             {'id': s['scenario_id'], 'image': s['image_path'].name}
@@ -299,12 +277,16 @@ def run_scenario_eval(
                 yolo_duration_s = None
                 yolo_detection_count = None
                 llm_input_path = image_path
+                yolo_context = None
+                resolved_yolo_input_mode = None
 
                 if with_yolo:
-                    yolo_result = _run_yolo(image_path, yolo_model)
+                    yolo_result = run_yolo_for_llm(image_path, yolo_model, yolo_input_mode)
                     yolo_duration_s = yolo_result['duration_s']
                     yolo_detection_count = yolo_result['detection_count']
-                    llm_input_path = yolo_result['annotated_path']
+                    llm_input_path = yolo_result['llm_input_path']
+                    yolo_context = yolo_result['additional_context']
+                    resolved_yolo_input_mode = yolo_result['yolo_input_mode']
 
                 # LLM inference with context.
                 result = call_llm(
@@ -312,6 +294,7 @@ def run_scenario_eval(
                     str(llm_input_path),
                     system_prompt,
                     context_file=str(json_path),
+                    additional_context=yolo_context,
                 )
 
                 parsed = result['parsed']
@@ -324,6 +307,8 @@ def run_scenario_eval(
                     'image_path': str(image_path),
                     'context_file': str(json_path),
                     'yolo_enabled': with_yolo,
+                    'yolo_model': yolo_model if with_yolo else None,
+                    'yolo_input_mode': resolved_yolo_input_mode,
                     'yolo_detection_count': yolo_detection_count,
                     'yolo_duration_s': yolo_duration_s,
                     'classification': parsed.get('classification'),
@@ -386,6 +371,15 @@ def main() -> None:
         help='YOLO model weights to use when --with-yolo is set (default: best)',
     )
     parser.add_argument(
+        '--yolo-input-mode',
+        choices=YOLO_INPUT_MODES,
+        default='annotated_image',
+        help=(
+            'How YOLO output reaches the LLM when --with-yolo is set '
+            '(default: annotated_image)'
+        ),
+    )
+    parser.add_argument(
         '--scenarios', nargs='+', default=None,
         help='Specific scenario folder names to run (default: all discovered)',
     )
@@ -403,6 +397,7 @@ def main() -> None:
         output_dir=args.output,
         with_yolo=args.with_yolo,
         yolo_model=args.yolo_model,
+        yolo_input_mode=args.yolo_input_mode,
         scenario_names=args.scenarios,
         dry_run=args.dry_run,
     )
