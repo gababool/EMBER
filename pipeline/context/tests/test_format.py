@@ -188,7 +188,10 @@ def test_format_context_formats_optional_wind_when_available():
 
     formatted = format_context(context)
 
-    assert "Wind: 5.0 m/s from SW (225 degrees)" in formatted
+    assert (
+        "Wind: 5.0 m/s blowing from SW (southwest) toward NE (northeast), "
+        "from 225 degrees"
+    ) in formatted
 
 
 def test_format_context_excludes_extraction_metadata():
