@@ -3,6 +3,7 @@ from pathlib import Path
 from pipeline.context import extract
 from pipeline.context.schemas import OperationalContext
 from pipeline.context.tests.test_schemas import SAMPLE_CONTEXT
+from pipeline.context.wind import build_mock_wind
 
 
 def _stub_extraction_queries(monkeypatch):
@@ -60,19 +61,19 @@ def test_extract_context_adds_reproducible_mocked_wind_when_enabled(monkeypatch)
 
 
 def test_mocked_wind_varies_by_key():
-    first = extract._mock_regional_wind("scenario_01")
-    second = extract._mock_regional_wind("scenario_02")
+    first = build_mock_wind("scenario_01")
+    second = build_mock_wind("scenario_02")
 
     assert first != second
 
 
 def test_mocked_wind_can_use_fixed_benchmark_values():
-    first = extract._mock_regional_wind(
+    first = build_mock_wind(
         "scenario_01",
         direction_compass="SW",
         speed_mps=6.5,
     )
-    second = extract._mock_regional_wind(
+    second = build_mock_wind(
         "scenario_02",
         direction_compass="SW",
         speed_mps=6.5,

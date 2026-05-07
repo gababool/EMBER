@@ -55,7 +55,6 @@ Pre-computation approach:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import math
 import sys
 from datetime import datetime, timezone
@@ -84,8 +83,8 @@ from pipeline.context.schemas import (
     WaterSource,
     WaterSourceType,
     WaterSupplyCategory,
-    Wind,
 )
+from pipeline.context.wind import MOCK_WIND_DIRECTIONS, build_mock_wind
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -110,24 +109,6 @@ MAX_NAMED_FEATURES = 5
 # Water supply classification threshold.
 # Lakes and reservoirs above this area are classified as heavy supply.
 HEAVY_SUPPLY_AREA_M2 = 10_000
-
-MOCK_WIND_DIRECTIONS: tuple[tuple[int, CompassBearing], ...] = (
-    (0, "N"),
-    (45, "NE"),
-    (90, "E"),
-    (135, "SE"),
-    (180, "S"),
-    (225, "SW"),
-    (270, "W"),
-    (315, "NW"),
-)
-MOCK_WIND_DEGREES_BY_COMPASS: dict[CompassBearing, int] = {
-    compass: degrees for degrees, compass in MOCK_WIND_DIRECTIONS
-}
-MOCK_WIND_MIN_SPEED_MPS = 1.0
-MOCK_WIND_MAX_SPEED_MPS = 10.0
-BENCHMARK_WIND_DIRECTION_COMPASS: CompassBearing = "SW"
-BENCHMARK_WIND_SPEED_MPS = 6.5
 
 PAVED_ROAD_CLASSES = {
     "motorway", "trunk", "primary", "secondary", "tertiary",
@@ -566,36 +547,6 @@ def _compute_bearing(from_geom, to_geom) -> CompassBearing:
     dx = to_pt.x - from_pt.x
     dy = to_pt.y - from_pt.y
     return _degrees_to_compass(math.degrees(math.atan2(dx, dy)) % 360)
-
-
-def _mock_regional_wind(
-    key: str,
-    direction_compass: CompassBearing | None = None,
-    speed_mps: float | None = None,
-) -> Wind:
-    """Return deterministic semi-random regional wind for scenario benchmarks."""
-    digest = hashlib.sha256(key.encode("utf-8")).digest()
-
-    if direction_compass is None:
-        direction_degrees, direction_compass = MOCK_WIND_DIRECTIONS[
-            digest[0] % len(MOCK_WIND_DIRECTIONS)
-        ]
-    else:
-        direction_degrees = MOCK_WIND_DEGREES_BY_COMPASS[direction_compass]
-
-    if speed_mps is None:
-        speed_range_tenths = int(
-            (MOCK_WIND_MAX_SPEED_MPS - MOCK_WIND_MIN_SPEED_MPS) * 10
-        )
-        speed_offset_tenths = int.from_bytes(digest[1:3], "big") % (speed_range_tenths + 1)
-        speed_mps = MOCK_WIND_MIN_SPEED_MPS + speed_offset_tenths / 10
-
-    return Wind(
-        direction_degrees=direction_degrees,
-        direction_compass=direction_compass,
-        speed_mps=round(speed_mps, 1),
-        source="mocked",
-    )
 
 
 def _map_road_class(highway: str) -> RoadClass:
@@ -1154,7 +1105,7 @@ def extract_context(
         assets_at_risk=assets_at_risk,
         named_features=named_features,
         wind=(
-            _mock_regional_wind(
+            build_mock_wind(
                 mock_wind_key or pbf_path.stem,
                 direction_compass=mock_wind_direction,
                 speed_mps=mock_wind_speed_mps,
