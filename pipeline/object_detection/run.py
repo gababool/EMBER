@@ -105,8 +105,17 @@ def run (image_path: str, model_name: str, show: bool):
         ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
         annotated = result.plot()
-        cv2.imwrite(str(output_path), annotated)
-        print(f"\nAnnotated image saved to: {output_path}")  
+        success = cv2.imwrite(str(output_path), annotated)
+        if not success:
+             print(f"[IMAGE_ERROR] cv2.imwrite failed to save annotated image to: {output_path}")
+             return {
+                  "passed": False,
+                  "error": f"Failed to save annotated image to: {output_path}",
+                  "image_path": str(image_path),
+                  "model_name": model_name,
+                  "detections": detections,
+             }
+        print(f"\nAnnotated image saved to: {output_path}")
         return {
              "passed": True,
              "image_path": str(image_path),

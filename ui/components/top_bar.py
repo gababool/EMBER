@@ -14,7 +14,6 @@ try:
         FONT_SIZE_LG,
         FONT_SIZE_SM,
         FONT_SIZE_XL,
-        FONT_SIZE_XS,
         Theme,
         app_font,
     )
@@ -27,7 +26,6 @@ except ImportError:
         FONT_SIZE_LG,
         FONT_SIZE_SM,
         FONT_SIZE_XL,
-        FONT_SIZE_XS,
         Theme,
         app_font,
     )
@@ -73,11 +71,7 @@ class TopBar(QWidget):
         logo_row_layout.addWidget(self.logo_icon_label)
         logo_row_layout.addWidget(self.logo_label)
 
-        self.version_label = QLabel("V.0.3.1")
-        self.version_label.setFont(app_font(FONT_SIZE_XS))
-
         logo_layout.addWidget(logo_row)
-        logo_layout.addWidget(self.version_label)
 
         row_layout.addWidget(logo_widget)
         row_layout.addStretch()
@@ -92,9 +86,6 @@ class TopBar(QWidget):
         self.ram_meter = StatMeter("RAM", "memory-stick.svg", theme.accent_green, theme)
         self.gpu_meter = StatMeter("GPU", "gpu.svg", theme.accent_purple, theme)
 
-        self.mode_label = QLabel("OFFLINE MODE")
-        self.mode_label.setFont(app_font(FONT_SIZE_LG, bold=True))
-
         self.theme_button = QPushButton()
         self.theme_button.setFont(app_font(FONT_SIZE_SM, bold=True))
         self.theme_button.setCursor(Qt.PointingHandCursor)
@@ -107,7 +98,6 @@ class TopBar(QWidget):
         status_layout.addWidget(self.cpu_meter)
         status_layout.addWidget(self.ram_meter)
         status_layout.addWidget(self.gpu_meter)
-        status_layout.addWidget(self.mode_label)
         status_layout.addWidget(self.theme_button)
         status_layout.addWidget(self.signal_label)
 
@@ -131,7 +121,6 @@ class TopBar(QWidget):
         """)
         self.logo_icon_label.setPixmap(load_svg_asset("EMBER_LOGO.svg", 30))
         self.logo_label.setStyleSheet(self._label_style(theme.accent_orange))
-        self.version_label.setStyleSheet(self._label_style(theme.text_muted))
         self.wind_item.setIconColor(theme.accent_cyan)
         self.wind_item.apply_theme(theme)
         self.cpu_meter.accent_color = theme.accent_cyan
@@ -140,7 +129,6 @@ class TopBar(QWidget):
         self.ram_meter.apply_theme(theme)
         self.gpu_meter.accent_color = theme.accent_purple
         self.gpu_meter.apply_theme(theme)
-        self.mode_label.setStyleSheet(self._label_style(theme.accent_blue))
         self.signal_label.setStyleSheet(self._label_style(theme.accent_orange))
         self.theme_button.setText("LIGHT" if theme.name == "dark" else "DARK")
         self.theme_button.setStyleSheet(f"""
@@ -165,31 +153,16 @@ class TopBar(QWidget):
             }}
         """)
 
-    def set_version(self, version: str):
-        self.version_label.setText(version)
-
     def set_logo_text(self, text: str):
         self.logo_label.setText(text)
 
     def set_wind(self, text: str):
         self.wind_item.setText(text)
 
-    def set_gpu(self, text: str):
-        if text.endswith("%"):
-            try:
-                self.gpu_meter.set_value(float(text.removesuffix("%").removeprefix("GPU ")))
-            except ValueError:
-                self.gpu_meter.set_value(None)
-        else:
-            self.gpu_meter.set_value(None)
-
     def set_system_stats(self, cpu_percent, ram_percent, gpu_percent):
         self.cpu_meter.set_value(cpu_percent)
         self.ram_meter.set_value(ram_percent)
         self.gpu_meter.set_value(gpu_percent)
-
-    def set_mode(self, text: str):
-        self.mode_label.setText(text)
 
     @staticmethod
     def _label_style(color: str) -> str:

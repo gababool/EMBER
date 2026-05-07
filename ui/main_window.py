@@ -27,7 +27,11 @@ class MainWindow(QMainWindow):
         self.theme = DARK_THEME
 
         self.setWindowTitle("EMBER")
-        self.resize(1400, 900)
+        screen = QApplication.primaryScreen().availableGeometry()
+        if screen.width() < 1440 or screen.height() < 960:
+            self.showMaximized()
+        else:
+            self.resize(1400, 900)
 
         self.central = QWidget()
         self.central.setObjectName("MainWindowCentral")
@@ -43,12 +47,10 @@ class MainWindow(QMainWindow):
 
         self.dashboard = PipelineDashboard(self.theme)
         self.dashboard.start_button.clicked.connect(self.start_demo)
+        self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
+        self.dashboard.image_picked.connect(self.run_picked_image)
         self.main_layout.addWidget(self.dashboard, 1)
 
-        # Example updates
-        self.top_bar.set_version("V.0.3.1")
-        self.top_bar.set_wind("5m/s nw")
-        self.top_bar.set_mode("OFFLINE MODE")
         self.apply_theme(self.theme)
 
         self.pipeline_thread = None
@@ -62,11 +64,71 @@ class MainWindow(QMainWindow):
             return
 
         self.dashboard.reset_demo()
-        self.top_bar.set_mode("RUNNING DEMO")
 
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
-            llm_model=self.dashboard.selected_llm_model()
+            llm_model=self.dashboard.selected_llm_model(),
+            prompt_file=self.dashboard.selected_prompt_file(),
+            context_file=self.dashboard.selected_context_file(),
+            skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
+            label_filter=self.dashboard.selected_image_filter(),
+        )
+        self.pipeline_worker.moveToThread(self.pipeline_thread)
+
+        self.pipeline_thread.started.connect(self.pipeline_worker.run)
+        self.pipeline_worker.image_selected.connect(self.dashboard.set_selected_image)
+        self.pipeline_worker.event_received.connect(self.dashboard.handle_pipeline_event)
+        self.pipeline_worker.failed.connect(self.dashboard.set_pipeline_error)
+        self.pipeline_worker.finished.connect(self.pipeline_thread.quit)
+        self.pipeline_worker.finished.connect(self.pipeline_worker.deleteLater)
+        self.pipeline_thread.finished.connect(self.pipeline_thread.deleteLater)
+        self.pipeline_thread.finished.connect(self._demo_finished)
+        self.pipeline_thread.start()
+
+    def run_picked_image(self, image_path: str):
+        if self.pipeline_thread is not None:
+            return
+
+        self.dashboard.reset_demo()
+
+        self.pipeline_thread = QThread(self)
+        self.pipeline_worker = PipelineWorker(
+            llm_model=self.dashboard.selected_llm_model(),
+            prompt_file=self.dashboard.selected_prompt_file(),
+            context_file=self.dashboard.selected_context_file(),
+            skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
+            fixed_image_path=image_path,
+        )
+        self.pipeline_worker.moveToThread(self.pipeline_thread)
+
+        self.pipeline_thread.started.connect(self.pipeline_worker.run)
+        self.pipeline_worker.image_selected.connect(self.dashboard.set_selected_image)
+        self.pipeline_worker.event_received.connect(self.dashboard.handle_pipeline_event)
+        self.pipeline_worker.failed.connect(self.dashboard.set_pipeline_error)
+        self.pipeline_worker.finished.connect(self.pipeline_thread.quit)
+        self.pipeline_worker.finished.connect(self.pipeline_worker.deleteLater)
+        self.pipeline_thread.finished.connect(self.pipeline_thread.deleteLater)
+        self.pipeline_thread.finished.connect(self._demo_finished)
+        self.pipeline_thread.start()
+
+    def rerun_demo(self):
+        image_path = self.dashboard.selected_rerun_image()
+        if self.pipeline_thread is not None or image_path is None:
+            return
+
+        self.dashboard.reset_demo()
+
+        self.pipeline_thread = QThread(self)
+        self.pipeline_worker = PipelineWorker(
+            llm_model=self.dashboard.selected_llm_model(),
+            prompt_file=self.dashboard.selected_prompt_file(),
+            context_file=self.dashboard.selected_context_file(),
+            skip_quality_screening=self.dashboard.skip_quality_screening(),
+            use_annotation=self.dashboard.use_annotation(),
+            fixed_image_path=image_path,
+            label_filter=self.dashboard.selected_image_filter(),
         )
         self.pipeline_worker.moveToThread(self.pipeline_thread)
 
@@ -82,7 +144,6 @@ class MainWindow(QMainWindow):
 
     def _demo_finished(self):
         self.dashboard.set_demo_finished()
-        self.top_bar.set_mode("OFFLINE MODE")
         self.pipeline_thread = None
         self.pipeline_worker = None
 

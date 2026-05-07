@@ -3,9 +3,10 @@ import shutil
 import tempfile
 import uuid
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -30,7 +31,8 @@ try:
     from ui.components.history_strip import HistoryStrip
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
-    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from ui.pipeline_worker import DEMO_DATASET_DIR
 except ImportError:
     from assets.design import (
         DEFAULT_THEME,
@@ -45,19 +47,32 @@ except ImportError:
     from components.history_strip import HistoryStrip
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
-    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS
+    from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from pipeline_worker import DEMO_DATASET_DIR
 
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
+CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
+_CONTEXT_MARKER = "structured operational context block"
+
+
+def _prompt_requires_context(prompt_path: str) -> bool:
+    try:
+        return _CONTEXT_MARKER in Path(prompt_path).read_text(encoding="utf-8")
+    except OSError:
+        return False
 
 
 class PipelineDashboard(QWidget):
+    image_picked = Signal(str)
+
     def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
         super().__init__(parent)
         self.theme = theme
         self.expected_label = None
         self.current_run = None
         self.run_history = []
+        self.last_image_path = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -66,9 +81,15 @@ class PipelineDashboard(QWidget):
         layout.setSpacing(18)
 
         header = QWidget()
-        header_layout = QHBoxLayout(header)
+        header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(16)
+        header_layout.setSpacing(10)
+
+        # Row 1: title + action buttons
+        title_row = QWidget()
+        title_row_layout = QHBoxLayout(title_row)
+        title_row_layout.setContentsMargins(0, 0, 0, 0)
+        title_row_layout.setSpacing(12)
 
         title_block = QWidget()
         title_layout = QVBoxLayout(title_block)
@@ -84,18 +105,79 @@ class PipelineDashboard(QWidget):
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
 
+        self.pick_button = QPushButton("Pick Image")
+        self.pick_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.pick_button.setCursor(Qt.PointingHandCursor)
+        self.pick_button.setFixedHeight(40)
+        self.pick_button.clicked.connect(self._open_image_picker)
+
+        self.rerun_button = QPushButton("Re-run")
+        self.rerun_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.rerun_button.setCursor(Qt.PointingHandCursor)
+        self.rerun_button.setFixedHeight(40)
+        self.rerun_button.setEnabled(False)
+
         self.start_button = QPushButton("Test Image")
         self.start_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.setFixedHeight(40)
 
+        title_row_layout.addWidget(title_block, 1)
+        title_row_layout.addWidget(self.pick_button)
+        title_row_layout.addWidget(self.rerun_button)
+        title_row_layout.addWidget(self.start_button)
+
+        # Row 2: settings controls
+        controls_row = QWidget()
+        controls_row_layout = QHBoxLayout(controls_row)
+        controls_row_layout.setContentsMargins(0, 0, 0, 0)
+        controls_row_layout.setSpacing(8)
+
+        self.image_filter_select = ModelComboBox(theme)
+        self.image_filter_select.setMinimumWidth(100)
+        for label, data in [("Any", ""), ("Fire", "fire"), ("No Fire", "nofire")]:
+            self.image_filter_select.addItem(label, data)
+
+        self.annotation_button = QPushButton("Annotation: ON")
+        self.annotation_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.annotation_button.setCursor(Qt.PointingHandCursor)
+        self.annotation_button.setFixedHeight(36)
+        self.annotation_button.setCheckable(True)
+        self.annotation_button.toggled.connect(self._on_annotation_toggled)
+
+        self.skip_quality_button = QPushButton("Quality: ON")
+        self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.skip_quality_button.setCursor(Qt.PointingHandCursor)
+        self.skip_quality_button.setFixedHeight(36)
+        self.skip_quality_button.setCheckable(True)
+        self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
+
+        self.context_select = ModelComboBox(theme)
+        self.context_select.setMinimumWidth(150)
+        for ctx_path in sorted(CONTEXTS_DIR.glob("*.json")):
+            self.context_select.addItem(ctx_path.stem, str(ctx_path))
+        self.context_select.setVisible(False)
+
+        self.prompt_select = ModelComboBox(theme)
+        self.prompt_select.setMinimumWidth(130)
+        for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
+            self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
+        self.prompt_select.currentIndexChanged.connect(self._on_prompt_changed)
+
         self.model_select = ModelComboBox(theme)
         for model_tag in BENCHMARK_MODEL_TAGS:
             self.model_select.addItem(model_tag, model_tag)
 
-        header_layout.addWidget(title_block, 1)
-        header_layout.addWidget(self.model_select)
-        header_layout.addWidget(self.start_button)
+        controls_row_layout.addWidget(self.image_filter_select)
+        controls_row_layout.addWidget(self.annotation_button)
+        controls_row_layout.addWidget(self.skip_quality_button)
+        controls_row_layout.addStretch(1)
+        controls_row_layout.addWidget(self.context_select)
+        controls_row_layout.addWidget(self.prompt_select)
+        controls_row_layout.addWidget(self.model_select)
+
+        header_layout.addWidget(title_row)
+        header_layout.addWidget(controls_row)
 
         self.grid = QGridLayout()
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -173,7 +255,14 @@ class PipelineDashboard(QWidget):
     def reset_demo(self):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
         self.start_button.setEnabled(False)
+        self.rerun_button.setEnabled(False)
+        self.pick_button.setEnabled(False)
         self.model_select.setEnabled(False)
+        self.prompt_select.setEnabled(False)
+        self.annotation_button.setEnabled(False)
+        self.context_select.setEnabled(False)
+        self.image_filter_select.setEnabled(False)
+        self.skip_quality_button.setEnabled(False)
         self.start_button.setText("Running")
         self.expected_label = None
         self._start_current_run_record()
@@ -192,6 +281,8 @@ class PipelineDashboard(QWidget):
         }
 
     def _reset_stage_views(self):
+        skip_quality = self.skip_quality_button.isChecked()
+        self.quality_panel.setVisible(not skip_quality)
         for row in self.quality_rows:
             row.set_state("pending")
         self.image_placeholder.setPixmap(QPixmap())
@@ -202,12 +293,64 @@ class PipelineDashboard(QWidget):
 
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
+        self.rerun_button.setEnabled(self.last_image_path is not None)
+        self.pick_button.setEnabled(True)
         self.model_select.setEnabled(True)
-        self.start_button.setText("Start Demo")
+        self.prompt_select.setEnabled(True)
+        self.annotation_button.setEnabled(True)
+        self.context_select.setEnabled(True)
+        self.image_filter_select.setEnabled(True)
+        self.skip_quality_button.setEnabled(True)
+        self.start_button.setText("Test Image")
+        self.quality_panel.setVisible(True)
         self._save_current_run_to_history()
 
     def selected_llm_model(self) -> str:
         return self.model_select.currentData()
+
+    def selected_prompt_file(self) -> str:
+        return self.prompt_select.currentData()
+
+    def selected_context_file(self) -> str | None:
+        if not self.context_select.isVisible():
+            return None
+        return self.context_select.currentData()
+
+    def use_annotation(self) -> bool:
+        return not self.annotation_button.isChecked()
+
+    def _on_annotation_toggled(self, checked: bool):
+        self.annotation_button.setText("Annotation: OFF" if checked else "Annotation: ON")
+        self._style_annotation_button(self.theme)
+
+    def _on_prompt_changed(self, _index: int):
+        self.context_select.setVisible(
+            _prompt_requires_context(self.prompt_select.currentData() or "")
+        )
+
+    def selected_image_filter(self) -> str | None:
+        data = self.image_filter_select.currentData()
+        return data or None
+
+    def skip_quality_screening(self) -> bool:
+        return self.skip_quality_button.isChecked()
+
+    def selected_rerun_image(self) -> str | None:
+        return self.last_image_path
+
+    def _open_image_picker(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Pick Image",
+            str(DEMO_DATASET_DIR),
+            "Images (*.jpg *.jpeg *.png)",
+        )
+        if path:
+            self.image_picked.emit(path)
+
+    def _on_skip_quality_toggled(self, checked: bool):
+        self.skip_quality_button.setText("Quality: OFF" if checked else "Quality: ON")
+        self._style_skip_quality_button(self.theme)
 
     def set_selected_image(self, image_path: str):
         if self.current_run is None:
@@ -215,6 +358,7 @@ class PipelineDashboard(QWidget):
             self._reset_stage_views()
 
         path = Path(image_path)
+        self.last_image_path = str(path)
         label = path.parent.name
         self.expected_label = label
         if self.current_run is not None:
@@ -301,12 +445,21 @@ class PipelineDashboard(QWidget):
         classification = parsed.get("classification", "unknown")
         reasoning = parsed.get("reasoning", "")
         recommendation = parsed.get("recommendation", "")
+        situation_brief = parsed.get("situation_brief") or ""
+        tactical_priority = parsed.get("tactical_priority") or ""
         self.classification_badge.set_classification(classification)
         self.correctness_badge.set_prediction(classification)
-        self.reasoning_text.setPlainText(
-            f"Reasoning:\n{reasoning}\n\n"
-            f"Recommendation:\n{recommendation}"
-        )
+
+        parts = []
+        if situation_brief:
+            parts.append(f"Situation Brief:\n{situation_brief}")
+        if reasoning:
+            parts.append(f"Reasoning:\n{reasoning}")
+        if tactical_priority:
+            parts.append(f"Tactical Priority:\n{tactical_priority}")
+        if recommendation:
+            parts.append(f"Recommendation:\n{recommendation}")
+        self.reasoning_text.setPlainText("\n\n".join(parts) if parts else "No reasoning returned.")
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
@@ -335,7 +488,50 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.accent_cyan};
             }}
         """)
+        self.pick_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
+        self.rerun_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_orange};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
         self.model_select.apply_theme(theme)
+        self.prompt_select.apply_theme(theme)
+        self.context_select.apply_theme(theme)
+        self.image_filter_select.apply_theme(theme)
+        self._style_annotation_button(theme)
+        self._style_skip_quality_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
             panel.apply_theme(theme)
@@ -403,6 +599,8 @@ class PipelineDashboard(QWidget):
         self.current_run = None
         run_record = self.run_history[index]
         image_path = Path(run_record.get("image_path", ""))
+        self.last_image_path = str(image_path) if run_record.get("image_path") else self.last_image_path
+        self.rerun_button.setEnabled(self.last_image_path is not None)
         expected_label = run_record.get("expected_label")
         self.expected_label = expected_label
         self.subtitle_label.setText(
@@ -446,7 +644,7 @@ class PipelineDashboard(QWidget):
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.image_placeholder.setText("Could not load image")
+            self.image_placeholder.setText(f"Could not load image:\n{image_path}")
             return
         self.image_placeholder.setText("")
         self.image_placeholder.setPixmap(
@@ -476,6 +674,44 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result") or {}
         parsed = reasoning_result.get("parsed", {})
         return parsed.get("classification", "pending")
+
+    def _style_annotation_button(self, theme: Theme):
+        checked = self.annotation_button.isChecked()
+        border_color = theme.danger if checked else theme.border
+        text_color = theme.danger if checked else theme.text_primary
+        self.annotation_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {text_color};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{ border-color: {theme.danger}; color: {theme.danger}; }}
+            QPushButton:disabled {{ color: {theme.text_muted}; border-color: {theme.border}; }}
+        """)
+
+    def _style_skip_quality_button(self, theme: Theme):
+        checked = self.skip_quality_button.isChecked()
+        border_color = theme.danger if checked else theme.border
+        text_color = theme.danger if checked else theme.text_primary
+        self.skip_quality_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {text_color};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.danger};
+                color: {theme.danger};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
 
     @staticmethod
     def _label_style(color: str) -> str:
