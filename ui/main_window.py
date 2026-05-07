@@ -27,7 +27,8 @@ class MainWindow(QMainWindow):
         self.theme = DARK_THEME
 
         self.setWindowTitle("EMBER")
-        self.resize(1400, 900)
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(1400, screen.width()), min(900, screen.height()))
 
         self.central = QWidget()
         self.central.setObjectName("MainWindowCentral")
