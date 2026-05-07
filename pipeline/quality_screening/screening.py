@@ -74,6 +74,8 @@ def run_quality_screening(
                 img,
                 min_brightness=config.min_brightness,
                 max_brightness=config.max_brightness,
+                bright_pixel_threshold=config.bright_pixel_threshold,
+                min_bright_pixel_fraction=config.min_bright_pixel_fraction,
             ),
         ),
         (
