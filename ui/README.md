@@ -32,6 +32,8 @@ If quality screening fails, the app immediately loads another random image. The 
 
 - `Test Image`: runs one random dataset image through the pipeline.
 - model dropdown: selects the LLM model for the next run.
+- wind dropdown: selects no wind, manually entered wind, or mocked wind for the operational context.
+- wind direction and speed inputs: enabled only for manual wind.
 - theme button: toggles light/dark mode.
 - history strip: click a recent processed image to reload its stored outputs for the current app session.
 
@@ -62,5 +64,7 @@ If the app is not run with `sudo`, the GPU meter may show `N/A`. This is expecte
 ## Notes
 
 - The full demo depends on local YOLO weights and local Ollama models.
+- The demo uses `data/contexts/benchmark_scenario.json` as its default operational context.
+  Wind is set to `null`, manual, or mocked based on the UI controls before the LLM stage runs.
 - The frontend uses the reusable pipeline service in `pipeline/service.py`.
 - The UI runs the pipeline in a Qt worker thread so the window remains responsive while the demo is running.
