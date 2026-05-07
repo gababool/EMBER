@@ -28,7 +28,10 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("EMBER")
         screen = QApplication.primaryScreen().availableGeometry()
-        self.resize(min(1400, screen.width()), min(900, screen.height()))
+        if screen.width() < 1440 or screen.height() < 960:
+            self.showMaximized()
+        else:
+            self.resize(1400, 900)
 
         self.central = QWidget()
         self.central.setObjectName("MainWindowCentral")

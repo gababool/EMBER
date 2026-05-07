@@ -53,7 +53,14 @@ except ImportError:
 
 HISTORY_IMAGE_DIR = Path(tempfile.gettempdir()) / "ember_ui_history"
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
-CONTEXT_PROMPTS = {"c2v2prompt", "c2v3prompt", "c2v4prompt"}
+_CONTEXT_MARKER = "structured operational context block"
+
+
+def _prompt_requires_context(prompt_path: str) -> bool:
+    try:
+        return _CONTEXT_MARKER in Path(prompt_path).read_text(encoding="utf-8")
+    except OSError:
+        return False
 
 
 class PipelineDashboard(QWidget):
@@ -74,9 +81,15 @@ class PipelineDashboard(QWidget):
         layout.setSpacing(18)
 
         header = QWidget()
-        header_layout = QHBoxLayout(header)
+        header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(16)
+        header_layout.setSpacing(10)
+
+        # Row 1: title + action buttons
+        title_row = QWidget()
+        title_row_layout = QHBoxLayout(title_row)
+        title_row_layout.setContentsMargins(0, 0, 0, 0)
+        title_row_layout.setSpacing(12)
 
         title_block = QWidget()
         title_layout = QVBoxLayout(title_block)
@@ -92,6 +105,12 @@ class PipelineDashboard(QWidget):
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
 
+        self.pick_button = QPushButton("Pick Image")
+        self.pick_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.pick_button.setCursor(Qt.PointingHandCursor)
+        self.pick_button.setFixedHeight(40)
+        self.pick_button.clicked.connect(self._open_image_picker)
+
         self.rerun_button = QPushButton("Re-run")
         self.rerun_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.rerun_button.setCursor(Qt.PointingHandCursor)
@@ -103,57 +122,62 @@ class PipelineDashboard(QWidget):
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.setFixedHeight(40)
 
-        self.model_select = ModelComboBox(theme)
-        for model_tag in BENCHMARK_MODEL_TAGS:
-            self.model_select.addItem(model_tag, model_tag)
+        title_row_layout.addWidget(title_block, 1)
+        title_row_layout.addWidget(self.pick_button)
+        title_row_layout.addWidget(self.rerun_button)
+        title_row_layout.addWidget(self.start_button)
 
-        self.prompt_select = ModelComboBox(theme)
-        self.prompt_select.setMinimumWidth(140)
-        for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
-            self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
-        self.prompt_select.currentIndexChanged.connect(self._on_prompt_changed)
-
-        self.context_select = ModelComboBox(theme)
-        self.context_select.setMinimumWidth(160)
-        for ctx_path in sorted(CONTEXTS_DIR.glob("*.json")):
-            self.context_select.addItem(ctx_path.stem, str(ctx_path))
-        self.context_select.setVisible(False)
+        # Row 2: settings controls
+        controls_row = QWidget()
+        controls_row_layout = QHBoxLayout(controls_row)
+        controls_row_layout.setContentsMargins(0, 0, 0, 0)
+        controls_row_layout.setSpacing(8)
 
         self.image_filter_select = ModelComboBox(theme)
-        self.image_filter_select.setMinimumWidth(110)
+        self.image_filter_select.setMinimumWidth(100)
         for label, data in [("Any", ""), ("Fire", "fire"), ("No Fire", "nofire")]:
             self.image_filter_select.addItem(label, data)
-
-        self.pick_button = QPushButton("Pick Image")
-        self.pick_button.setFont(app_font(FONT_SIZE_MD, bold=True))
-        self.pick_button.setCursor(Qt.PointingHandCursor)
-        self.pick_button.setFixedHeight(40)
-        self.pick_button.clicked.connect(self._open_image_picker)
 
         self.annotation_button = QPushButton("Annotation: ON")
         self.annotation_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.annotation_button.setCursor(Qt.PointingHandCursor)
-        self.annotation_button.setFixedHeight(40)
+        self.annotation_button.setFixedHeight(36)
         self.annotation_button.setCheckable(True)
         self.annotation_button.toggled.connect(self._on_annotation_toggled)
 
         self.skip_quality_button = QPushButton("Quality: ON")
         self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.skip_quality_button.setCursor(Qt.PointingHandCursor)
-        self.skip_quality_button.setFixedHeight(40)
+        self.skip_quality_button.setFixedHeight(36)
         self.skip_quality_button.setCheckable(True)
         self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
 
-        header_layout.addWidget(title_block, 1)
-        header_layout.addWidget(self.image_filter_select)
-        header_layout.addWidget(self.pick_button)
-        header_layout.addWidget(self.skip_quality_button)
-        header_layout.addWidget(self.annotation_button)
-        header_layout.addWidget(self.context_select)
-        header_layout.addWidget(self.prompt_select)
-        header_layout.addWidget(self.model_select)
-        header_layout.addWidget(self.rerun_button)
-        header_layout.addWidget(self.start_button)
+        self.context_select = ModelComboBox(theme)
+        self.context_select.setMinimumWidth(150)
+        for ctx_path in sorted(CONTEXTS_DIR.glob("*.json")):
+            self.context_select.addItem(ctx_path.stem, str(ctx_path))
+        self.context_select.setVisible(False)
+
+        self.prompt_select = ModelComboBox(theme)
+        self.prompt_select.setMinimumWidth(130)
+        for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
+            self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
+        self.prompt_select.currentIndexChanged.connect(self._on_prompt_changed)
+
+        self.model_select = ModelComboBox(theme)
+        for model_tag in BENCHMARK_MODEL_TAGS:
+            self.model_select.addItem(model_tag, model_tag)
+
+        controls_row_layout.addWidget(self.image_filter_select)
+        controls_row_layout.addWidget(self.annotation_button)
+        controls_row_layout.addWidget(self.skip_quality_button)
+        controls_row_layout.addStretch(1)
+        controls_row_layout.addWidget(self.context_select)
+        controls_row_layout.addWidget(self.prompt_select)
+        controls_row_layout.addWidget(self.model_select)
+
+        header_layout.addWidget(title_row)
+        header_layout.addWidget(controls_row)
 
         self.grid = QGridLayout()
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -300,8 +324,9 @@ class PipelineDashboard(QWidget):
         self._style_annotation_button(self.theme)
 
     def _on_prompt_changed(self, _index: int):
-        stem = Path(self.prompt_select.currentData() or "").stem
-        self.context_select.setVisible(stem in CONTEXT_PROMPTS)
+        self.context_select.setVisible(
+            _prompt_requires_context(self.prompt_select.currentData() or "")
+        )
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()
