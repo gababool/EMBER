@@ -41,7 +41,7 @@ Output template:
       Power lines: present | none mapped
       Protected area: <name> | none
 
-    Wind: <speed> m/s from <bearing> | unavailable
+    Wind: <speed> m/s from <bearing> (<degrees> degrees) | omitted when unavailable
 """
 
 from __future__ import annotations
@@ -212,8 +212,11 @@ def _format_named_features(context: OperationalContext) -> list[str]:
 
 def _format_wind(context: OperationalContext) -> str:
     if context.wind is None:
-        return "Wind: unavailable"
-    return f"Wind: {context.wind.speed_m_s:.1f} m/s from {context.wind.direction_from}"
+        return ""
+    return (
+        f"Wind: {context.wind.speed_mps:.1f} m/s from "
+        f"{context.wind.direction_compass} ({context.wind.direction_degrees:.0f} degrees)"
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -267,6 +270,7 @@ def format_context(context: OperationalContext) -> str:
     if named:
         sections += ["", *named]
 
-    sections += ["", wind]
+    if wind:
+        sections += ["", wind]
 
     return "\n".join(sections)

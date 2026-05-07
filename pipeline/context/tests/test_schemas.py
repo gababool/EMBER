@@ -158,6 +158,40 @@ def test_operational_context_accepts_explicit_null_wind():
     assert context.wind is None
 
 
+def test_operational_context_accepts_mocked_wind_shape():
+    context_data = deepcopy(SAMPLE_CONTEXT)
+    context_data["wind"] = {
+        "direction_degrees": 225,
+        "direction_compass": "SW",
+        "speed_mps": 6.5,
+        "source": "mocked",
+    }
+
+    context = OperationalContext.model_validate(context_data)
+
+    assert context.wind is not None
+    assert context.wind.direction_degrees == 225
+    assert context.wind.direction_compass == "SW"
+    assert context.wind.speed_mps == 6.5
+    assert context.wind.source == "mocked"
+
+
+def test_operational_context_accepts_legacy_wind_keys():
+    context_data = deepcopy(SAMPLE_CONTEXT)
+    context_data["wind"] = {
+        "speed_m_s": 5.0,
+        "direction_from": "SW",
+    }
+
+    context = OperationalContext.model_validate(context_data)
+
+    assert context.wind is not None
+    assert context.wind.direction_degrees == 225
+    assert context.wind.direction_compass == "SW"
+    assert context.wind.speed_mps == 5.0
+    assert context.wind.source == "manual"
+
+
 def test_operational_context_accepts_missing_optional_terrain():
     context_data = deepcopy(SAMPLE_CONTEXT)
     context_data["terrain"] = None
