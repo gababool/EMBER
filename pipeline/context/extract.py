@@ -16,6 +16,21 @@ Usage (CLI):
         --pbf data/gis/osm/vastmanland-50km.osm.pbf \\
         --output data/contexts/scenario_01.json
 
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 \\
+        --pbf data/gis/osm/scenario_01-50km.osm.pbf \\
+        --output data/contexts/scenario_01.json \\
+        --mock-wind \\
+        --mock-wind-key scenario_01
+
+    uv run python -m pipeline.context.extract \\
+        --lat 59.8 --lon 16.1 \\
+        --pbf data/gis/osm/scenario_01-50km.osm.pbf \\
+        --output data/contexts/scenario_01.json \\
+        --mock-wind \\
+        --mock-wind-direction SW \\
+        --mock-wind-speed-mps 6.5
+
 Coordinate projection:
     OSM data is stored in WGS84 (lat/lon degrees). All distance and area
     calculations are performed in SWEREF99 TM (EPSG:3006), the Swedish
@@ -40,6 +55,7 @@ Pre-computation approach:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import math
 import sys
 from datetime import datetime, timezone
@@ -68,6 +84,7 @@ from pipeline.context.schemas import (
     WaterSource,
     WaterSourceType,
     WaterSupplyCategory,
+    Wind,
 )
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -93,6 +110,24 @@ MAX_NAMED_FEATURES = 5
 # Water supply classification threshold.
 # Lakes and reservoirs above this area are classified as heavy supply.
 HEAVY_SUPPLY_AREA_M2 = 10_000
+
+MOCK_WIND_DIRECTIONS: tuple[tuple[int, CompassBearing], ...] = (
+    (0, "N"),
+    (45, "NE"),
+    (90, "E"),
+    (135, "SE"),
+    (180, "S"),
+    (225, "SW"),
+    (270, "W"),
+    (315, "NW"),
+)
+MOCK_WIND_DEGREES_BY_COMPASS: dict[CompassBearing, int] = {
+    compass: degrees for degrees, compass in MOCK_WIND_DIRECTIONS
+}
+MOCK_WIND_MIN_SPEED_MPS = 1.0
+MOCK_WIND_MAX_SPEED_MPS = 10.0
+BENCHMARK_WIND_DIRECTION_COMPASS: CompassBearing = "SW"
+BENCHMARK_WIND_SPEED_MPS = 6.5
 
 PAVED_ROAD_CLASSES = {
     "motorway", "trunk", "primary", "secondary", "tertiary",
@@ -531,6 +566,36 @@ def _compute_bearing(from_geom, to_geom) -> CompassBearing:
     dx = to_pt.x - from_pt.x
     dy = to_pt.y - from_pt.y
     return _degrees_to_compass(math.degrees(math.atan2(dx, dy)) % 360)
+
+
+def _mock_regional_wind(
+    key: str,
+    direction_compass: CompassBearing | None = None,
+    speed_mps: float | None = None,
+) -> Wind:
+    """Return deterministic semi-random regional wind for scenario benchmarks."""
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+
+    if direction_compass is None:
+        direction_degrees, direction_compass = MOCK_WIND_DIRECTIONS[
+            digest[0] % len(MOCK_WIND_DIRECTIONS)
+        ]
+    else:
+        direction_degrees = MOCK_WIND_DEGREES_BY_COMPASS[direction_compass]
+
+    if speed_mps is None:
+        speed_range_tenths = int(
+            (MOCK_WIND_MAX_SPEED_MPS - MOCK_WIND_MIN_SPEED_MPS) * 10
+        )
+        speed_offset_tenths = int.from_bytes(digest[1:3], "big") % (speed_range_tenths + 1)
+        speed_mps = MOCK_WIND_MIN_SPEED_MPS + speed_offset_tenths / 10
+
+    return Wind(
+        direction_degrees=direction_degrees,
+        direction_compass=direction_compass,
+        speed_mps=round(speed_mps, 1),
+        source="mocked",
+    )
 
 
 def _map_road_class(highway: str) -> RoadClass:
@@ -1033,6 +1098,10 @@ def extract_context(
     lat: float,
     lon: float,
     pbf_path: Path = DEFAULT_PBF,
+    mock_wind: bool = False,
+    mock_wind_key: str | None = None,
+    mock_wind_direction: CompassBearing | None = None,
+    mock_wind_speed_mps: float | None = None,
 ) -> OperationalContext:
     """Extract a fully populated OperationalContext for the given coordinates.
 
@@ -1044,6 +1113,10 @@ def extract_context(
         lat: Latitude in WGS84 decimal degrees.
         lon: Longitude in WGS84 decimal degrees.
         pbf_path: Path to the local .osm.pbf file.
+        mock_wind: Include deterministic mocked regional-average wind context.
+        mock_wind_key: Stable key used to vary mocked wind between scenarios.
+        mock_wind_direction: Optional fixed wind direction for controlled runs.
+        mock_wind_speed_mps: Optional fixed wind speed for controlled runs.
 
     Returns:
         A fully validated OperationalContext.
@@ -1080,7 +1153,15 @@ def extract_context(
         settlements=settlements,
         assets_at_risk=assets_at_risk,
         named_features=named_features,
-        wind=None,
+        wind=(
+            _mock_regional_wind(
+                mock_wind_key or pbf_path.stem,
+                direction_compass=mock_wind_direction,
+                speed_mps=mock_wind_speed_mps,
+            )
+            if mock_wind
+            else None
+        ),
         extraction_metadata=metadata,
     )
 
@@ -1104,13 +1185,52 @@ def main() -> None:
         "--output", type=Path, required=True,
         help="Output path for the JSON file (e.g. data/contexts/scenario_01.json)",
     )
+    parser.add_argument(
+        "--mock-wind",
+        action="store_true",
+        help=(
+            "Include deterministic semi-random mocked regional-average wind "
+            "data for reproducible scenarios."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-key",
+        help=(
+            "Stable key used to vary --mock-wind between scenarios. "
+            "Defaults to the input PBF filename stem."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-direction",
+        choices=[direction for _, direction in MOCK_WIND_DIRECTIONS],
+        help=(
+            "Fixed mocked wind direction for controlled runs. If omitted, "
+            "direction is derived from --mock-wind-key."
+        ),
+    )
+    parser.add_argument(
+        "--mock-wind-speed-mps",
+        type=float,
+        help=(
+            "Fixed mocked wind speed in metres per second for controlled runs. "
+            "If omitted, speed is derived from --mock-wind-key."
+        ),
+    )
     args = parser.parse_args()
 
     if not args.pbf.exists():
         print(f"Error: .pbf file not found: {args.pbf}", file=sys.stderr)
         sys.exit(1)
 
-    context = extract_context(lat=args.lat, lon=args.lon, pbf_path=args.pbf)
+    context = extract_context(
+        lat=args.lat,
+        lon=args.lon,
+        pbf_path=args.pbf,
+        mock_wind=args.mock_wind,
+        mock_wind_key=args.mock_wind_key,
+        mock_wind_direction=args.mock_wind_direction,
+        mock_wind_speed_mps=args.mock_wind_speed_mps,
+    )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
@@ -1125,6 +1245,13 @@ def main() -> None:
     print(f"  Settlements:     {len(context.settlements)}")
     print(f"  Water sources:   {len(context.water_sources)}")
     print(f"  Named features:  {len(context.named_features)}")
+    if context.wind:
+        print(
+            "  Wind:            "
+            f"{context.wind.speed_mps:.1f} m/s from "
+            f"{context.wind.direction_compass} "
+            f"({context.wind.direction_degrees:.0f} degrees, {context.wind.source})"
+        )
     a = context.assets_at_risk
     print(f"  Buildings:       {a.buildings_within_radius} "
           f"({'permanent' if a.has_permanent_structures else 'no permanent'})")

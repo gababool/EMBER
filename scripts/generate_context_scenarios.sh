@@ -11,6 +11,8 @@ do_generate=1
 do_validate=1
 run_tests=1
 scenario_filter=""
+mock_wind=0
+benchmark_wind=0
 
 usage() {
   cat <<'USAGE'
@@ -26,6 +28,8 @@ Options:
   --extract-only     Only create data/gis/osm/scenario_XX-50km.osm.pbf files.
   --generate-only    Only generate data/contexts/scenario_XX.json files.
   --validate-only    Only validate existing JSON files and run context tests.
+  --mock-wind        Add deterministic semi-random regional wind to generated JSON.
+  --benchmark-wind   Add the same mocked wind to every generated JSON (SW, 6.5 m/s).
   --skip-tests       Validate JSON but skip pytest.
   -h, --help         Show this help text.
 
@@ -122,6 +126,15 @@ while [[ $# -gt 0 ]]; do
       run_tests=0
       shift
       ;;
+    --mock-wind)
+      mock_wind=1
+      shift
+      ;;
+    --benchmark-wind)
+      mock_wind=1
+      benchmark_wind=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -206,11 +219,32 @@ for scenario in "${SCENARIOS[@]}"; do
     fi
 
     echo "Generating scenario ${id}: ${output_json}"
-    $project_python -m pipeline.context.extract \
-      --lat "$lat" \
-      --lon "$lon" \
-      --pbf "$clipped_pbf" \
-      --output "$output_json"
+    if [[ "$mock_wind" -eq 1 ]]; then
+      if [[ "$benchmark_wind" -eq 1 ]]; then
+        $project_python -m pipeline.context.extract \
+          --lat "$lat" \
+          --lon "$lon" \
+          --pbf "$clipped_pbf" \
+          --output "$output_json" \
+          --mock-wind \
+          --mock-wind-direction SW \
+          --mock-wind-speed-mps 6.5
+      else
+        $project_python -m pipeline.context.extract \
+          --lat "$lat" \
+          --lon "$lon" \
+          --pbf "$clipped_pbf" \
+          --output "$output_json" \
+          --mock-wind \
+          --mock-wind-key "scenario_${id}"
+      fi
+    else
+      $project_python -m pipeline.context.extract \
+        --lat "$lat" \
+        --lon "$lon" \
+        --pbf "$clipped_pbf" \
+        --output "$output_json"
+    fi
   fi
 done
 
