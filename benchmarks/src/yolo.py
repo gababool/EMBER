@@ -42,6 +42,7 @@ def run_yolo_for_llm(
         image_path=str(image_path),
         model_name=yolo_model_name,
         show=False,
+        save_annotation=mode == "annotated_image",
     )
     duration_s = time.perf_counter() - start
 
@@ -63,6 +64,10 @@ def run_yolo_for_llm(
         "detection_result": detection_result,
         "detection_count": len(detection_result.get("detections", [])),
         "duration_s": round(duration_s, 3),
-        "annotated_path": Path(detection_result["annotated_image_path"]),
+        "annotated_path": (
+            Path(detection_result["annotated_image_path"])
+            if detection_result.get("annotated_image_path")
+            else None
+        ),
         "yolo_input_mode": mode,
     }

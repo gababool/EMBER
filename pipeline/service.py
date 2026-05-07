@@ -114,6 +114,7 @@ class ObjectDetectionStage:
             image_path=str(context.image_path),
             model_name=self.model_name,
             show=self.show,
+            save_annotation=self.yolo_input_mode == "annotated_image",
         )
         if result is None:
             result = {
