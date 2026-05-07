@@ -36,7 +36,7 @@ Usage:
 
     # Override prompt or models
     uv run python run_scenario_eval.py \\
-        --system-prompt ../pipeline/llm/prompts/c2v5prompt.txt \\
+        --system-prompt ../pipeline/llm/prompts/latest.txt \\
         --models ministral-3:3b qwen3-vl:4b
 
     # Preview without running
@@ -68,7 +68,7 @@ DEFAULT_MODELS = [
     'gemma4:e2b',
 ]
 
-DEFAULT_PROMPT_FILE_NAME = 'c2v5prompt.txt'
+DEFAULT_PROMPT_FILE_NAME = 'latest.txt'
 DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PROMPT_FILE_NAME
 DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'
 DEFAULT_OUTPUT_DIR = Path('results') / 'scenarios'

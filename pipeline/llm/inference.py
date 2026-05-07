@@ -12,7 +12,7 @@ from pipeline.context.schemas import OperationalContext
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
-DEFAULT_PROMPT_FILE = PROMPTS_DIR / "c1v1prompt.txt"
+DEFAULT_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
 
 MODELS = {
     "ministral": "ministral-3:3b",
