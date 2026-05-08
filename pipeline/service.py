@@ -179,6 +179,9 @@ class LLMReasoningStage:
         if self.yolo_input_mode == "annotated_image":
             image_path = context.get_output("annotated_image_path", context.image_path)
             additional_context = self.additional_context
+        elif self.yolo_input_mode == "disabled":
+            image_path = context.image_path
+            additional_context = self.additional_context
         else:
             image_path = context.image_path
             detection_result = context.get_output("object_detection", {})
@@ -280,12 +283,13 @@ def create_default_pipeline(
     stages = []
     if not skip_quality_screening:
         stages.append(QualityScreeningStage())
-    stages.append(
-        ObjectDetectionStage(
-            model_name=yolo_model,
-            yolo_input_mode=resolved_yolo_input_mode,
+    if resolved_yolo_input_mode != "disabled":
+        stages.append(
+            ObjectDetectionStage(
+                model_name=yolo_model,
+                yolo_input_mode=resolved_yolo_input_mode,
+            )
         )
-    )
     stages.append(LLMReasoningStage(
         model_name=llm_model,
         prompt_file=prompt_file,

@@ -3,8 +3,14 @@ from __future__ import annotations
 from typing import Any, Literal
 
 
-YoloInputMode = Literal["annotated_image", "context_summary", "context_locations"]
+YoloInputMode = Literal[
+    "disabled",
+    "annotated_image",
+    "context_summary",
+    "context_locations",
+]
 YOLO_INPUT_MODES: tuple[YoloInputMode, ...] = (
+    "disabled",
     "annotated_image",
     "context_summary",
     "context_locations",
@@ -28,7 +34,7 @@ def format_detection_context(
     detection_result: dict[str, Any],
     mode: YoloInputMode,
 ) -> str:
-    if mode == "annotated_image":
+    if mode in ("disabled", "annotated_image"):
         return ""
 
     detections = detection_result.get("detections", [])
