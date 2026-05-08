@@ -22,6 +22,7 @@ Default            : Load only no-YOLO CSVs (filename contains '_noyolo').
 Classification
 --------------
 Binary classification only. Every prediction is either correct or incorrect.
+Ambiguous/uncertain output is not part of the schema and is not handled here.
 """
 
 import argparse
@@ -72,12 +73,38 @@ def load_csvs(directory, compare_yolo=False):
         with open(csv_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # Skip rows where inference failed (empty classification).
+                if not row.get('llm_classification', '').strip():
+                    continue
                 if is_yolo:
                     rows_yolo.append(row)
                 else:
                     rows_noyolo.append(row)
 
     return rows_noyolo, rows_yolo
+
+
+def count_errors(directory):
+    """Count rows with missing classification (inference failures).
+
+    Returns (total_rows, error_rows) across all CSV files in the directory.
+    Used to report how many inference failures were skipped during analysis.
+    """
+    total = 0
+    errors = 0
+    path = Path(directory)
+    if not path.exists():
+        return 0, 0
+    for csv_file in sorted(path.glob('*.csv')):
+        name = csv_file.name
+        if '_noyolo' not in name and '_yolo' not in name:
+            continue
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                total += 1
+                if not row.get('llm_classification', '').strip():
+                    errors += 1
+    return total, errors
 
 
 def group_by_model(rows):
@@ -841,6 +868,15 @@ def main():
           f"{len(acc_yolo)} accuracy rows (with YOLO)")
     print(f"Loaded {len(perf_noyolo)} performance rows (no YOLO), "
           f"{len(perf_yolo)} performance rows (with YOLO)")
+
+    acc_total, acc_errors = count_errors(args.accuracy_dir)
+    perf_total, perf_errors = count_errors(args.performance_dir)
+    if acc_errors:
+        print(f"  Warning: {acc_errors}/{acc_total} accuracy rows skipped "
+              f"(inference failures — empty classification)")
+    if perf_errors:
+        print(f"  Warning: {perf_errors}/{perf_total} performance rows skipped "
+              f"(inference failures — empty classification)")
 
     # Always generate model size chart
     print("\nGenerating model size chart...")
