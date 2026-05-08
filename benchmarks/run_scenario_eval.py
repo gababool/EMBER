@@ -96,6 +96,7 @@ SCENARIO_RESULT_COLUMNS = [
     'word_count',
     'tokens_per_sec',
     'prompt_eval_duration_s',
+    'prompt_eval_count',
     'eval_duration_s',
     'total_duration_s',
     'load_duration_s',
