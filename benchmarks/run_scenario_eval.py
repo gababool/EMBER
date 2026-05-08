@@ -58,7 +58,7 @@ from src.logger import log_progress
 from src.metrics import track_memory_usage, get_model_size, count_words
 from src.hardware import get_hardware_specs
 from src.yolo import run_yolo_for_llm, yolo_mode_tag
-from pipeline.object_detection.detections import YOLO_INPUT_MODES
+from pipeline.object_detection.detections import YOLO_INPUT_MODES, resolve_yolo_input_mode
 
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -223,11 +223,12 @@ def run_scenario_eval(
 
     log_progress(f"[SCENARIO EVAL] {len(scenarios)} scenario(s), {len(models)} model(s)")
     log_progress(f"  System prompt: {system_prompt_file.name}")
-    yolo_status = (
-        f"enabled (model={yolo_model}, mode={yolo_input_mode})"
-        if with_yolo
-        else "disabled"
-    )
+    resolved_mode = resolve_yolo_input_mode(yolo_input_mode)
+    yolo_status = "disabled"
+    if with_yolo and resolved_mode != "disabled":
+        yolo_status = f"enabled (model={yolo_model}, mode={resolved_mode})"
+    elif with_yolo:
+        yolo_status = "disabled (mode=disabled)"
     log_progress(f"  YOLO: {yolo_status}")
     log_progress(f"  Scenarios:")
     for s in scenarios:
@@ -278,9 +279,10 @@ def run_scenario_eval(
                 yolo_detection_count = None
                 llm_input_path = image_path
                 yolo_context = None
-                resolved_yolo_input_mode = None
+                resolved_yolo_input_mode = resolve_yolo_input_mode(yolo_input_mode)
+                yolo_enabled = with_yolo and resolved_yolo_input_mode != "disabled"
 
-                if with_yolo:
+                if yolo_enabled:
                     yolo_result = run_yolo_for_llm(image_path, yolo_model, yolo_input_mode)
                     yolo_duration_s = yolo_result['duration_s']
                     yolo_detection_count = yolo_result['detection_count']
@@ -306,9 +308,9 @@ def run_scenario_eval(
                     'model_name': model_name,
                     'image_path': str(image_path),
                     'context_file': str(json_path),
-                    'yolo_enabled': with_yolo,
-                    'yolo_model': yolo_model if with_yolo else None,
-                    'yolo_input_mode': resolved_yolo_input_mode,
+                    'yolo_enabled': yolo_enabled,
+                    'yolo_model': yolo_model if yolo_enabled else None,
+                    'yolo_input_mode': resolved_yolo_input_mode if with_yolo else None,
                     'yolo_detection_count': yolo_detection_count,
                     'yolo_duration_s': yolo_duration_s,
                     'classification': parsed.get('classification'),

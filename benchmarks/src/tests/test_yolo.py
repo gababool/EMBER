@@ -8,9 +8,25 @@ from src.yolo import run_yolo_for_llm, yolo_mode_tag
 
 def test_yolo_mode_tag_distinguishes_benchmark_conditions():
     assert yolo_mode_tag(False) == "_noyolo"
+    assert yolo_mode_tag(True, "disabled") == "_noyolo"
     assert yolo_mode_tag(True, "annotated_image") == "_yolo_annotated"
     assert yolo_mode_tag(True, "context_summary") == "_yolo_summary"
     assert yolo_mode_tag(True, "context_locations") == "_yolo_boxes"
+
+
+def test_disabled_mode_does_not_run_yolo(tmp_path):
+    result = run_yolo_for_llm(
+        tmp_path / "plain.jpg",
+        "best",
+        "disabled",
+    )
+
+    assert result["llm_input_path"] == tmp_path / "plain.jpg"
+    assert result["additional_context"] is None
+    assert result["detection_result"] is None
+    assert result["detection_count"] is None
+    assert result["duration_s"] is None
+    assert result["annotated_path"] is None
 
 
 def test_context_modes_do_not_request_saved_annotation(monkeypatch, tmp_path):

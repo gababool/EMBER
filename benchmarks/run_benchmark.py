@@ -58,7 +58,7 @@ from src.metrics import (
     evaluate_accuracy,
 )
 from src.hardware import get_hardware_specs
-from pipeline.object_detection.detections import YOLO_INPUT_MODES
+from pipeline.object_detection.detections import YOLO_INPUT_MODES, resolve_yolo_input_mode
 
 
 DEFAULT_MODELS = [
@@ -115,9 +115,10 @@ def run_single_inference(model_name, image_path, system_prompt,
     yolo_detection_count = None
     llm_input_path = image_path
     yolo_context = None
-    resolved_yolo_input_mode = None
+    resolved_yolo_input_mode = resolve_yolo_input_mode(yolo_input_mode)
+    yolo_enabled = with_yolo and resolved_yolo_input_mode != "disabled"
 
-    if with_yolo:
+    if yolo_enabled:
         yolo_result = run_yolo_for_llm(image_path, yolo_model, yolo_input_mode)
         yolo_duration_s = yolo_result['duration_s']
         yolo_detection_count = yolo_result['detection_count']
@@ -166,9 +167,9 @@ def run_single_inference(model_name, image_path, system_prompt,
         'load_duration_s': round(result['load_duration_ns'] / 1e9, 3),
         'model_size_gb': get_model_size(model_name),
         'memory_usage_gb': memory_gb,
-        'yolo_enabled': with_yolo,
-        'yolo_model': yolo_model if with_yolo else None,
-        'yolo_input_mode': resolved_yolo_input_mode,
+        'yolo_enabled': yolo_enabled,
+        'yolo_model': yolo_model if yolo_enabled else None,
+        'yolo_input_mode': resolved_yolo_input_mode if with_yolo else None,
         'yolo_duration_s': yolo_duration_s,
         'yolo_detection_count': yolo_detection_count,
         'context_enabled': context_file is not None,
@@ -238,9 +239,13 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
 
     log_progress(f"  System prompt: {system_prompt_file}")
     if with_yolo:
-        log_progress(
-            f"  YOLO preprocessing: enabled (model={yolo_model}, mode={yolo_input_mode})"
-        )
+        resolved_mode = resolve_yolo_input_mode(yolo_input_mode)
+        if resolved_mode == "disabled":
+            log_progress("  YOLO preprocessing: disabled (mode=disabled)")
+        else:
+            log_progress(
+                f"  YOLO preprocessing: enabled (model={yolo_model}, mode={resolved_mode})"
+            )
     if with_context:
         log_progress(f"  GIS context: enabled (scenario={scenario})")
 
@@ -348,9 +353,13 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
     log_progress(f"  System prompt: {system_prompt_file}")
     log_progress(f"  Selected images: {[img.name for img in images]}")
     if with_yolo:
-        log_progress(
-            f"  YOLO preprocessing: enabled (model={yolo_model}, mode={yolo_input_mode})"
-        )
+        resolved_mode = resolve_yolo_input_mode(yolo_input_mode)
+        if resolved_mode == "disabled":
+            log_progress("  YOLO preprocessing: disabled (mode=disabled)")
+        else:
+            log_progress(
+                f"  YOLO preprocessing: enabled (model={yolo_model}, mode={resolved_mode})"
+            )
     if with_context:
         log_progress(f"  GIS context: enabled (scenario={scenario})")
 

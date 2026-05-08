@@ -18,6 +18,9 @@ def yolo_mode_tag(with_yolo: bool, yolo_input_mode: str = "annotated_image") -> 
         return "_noyolo"
 
     mode = resolve_yolo_input_mode(yolo_input_mode)
+    if mode == "disabled":
+        return "_noyolo"
+
     tags = {
         "annotated_image": "_yolo_annotated",
         "context_summary": "_yolo_summary",
@@ -32,10 +35,20 @@ def run_yolo_for_llm(
     yolo_input_mode: str,
 ) -> dict[str, Any]:
     """Run YOLO once and prepare the corresponding LLM input payload."""
-    from pipeline.object_detection.run import run as run_detection
-
     mode: YoloInputMode = resolve_yolo_input_mode(yolo_input_mode)
     image_path = Path(image_path)
+    if mode == "disabled":
+        return {
+            "llm_input_path": image_path,
+            "additional_context": None,
+            "detection_result": None,
+            "detection_count": None,
+            "duration_s": None,
+            "annotated_path": None,
+            "yolo_input_mode": mode,
+        }
+
+    from pipeline.object_detection.run import run as run_detection
 
     start = time.perf_counter()
     detection_result = run_detection(

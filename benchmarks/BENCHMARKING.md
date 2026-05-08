@@ -121,6 +121,7 @@ When `--with-yolo` is set, each image passes through the YOLO object detection s
 
 `--yolo-input-mode` controls how YOLO output reaches the LLM:
 
+- `disabled` — no YOLO preprocessing; the LLM receives the original image.
 - `annotated_image` — the current/default behavior; the LLM receives the annotated image with fire/smoke boxes.
 - `context_summary` — the LLM receives the original image plus detection count, labels, and confidence values as text context.
 - `context_locations` — the LLM receives the original image plus detection count, labels, confidence values, and bounding box coordinates as text context.
