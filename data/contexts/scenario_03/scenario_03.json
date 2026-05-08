@@ -1,84 +1,89 @@
 {
   "schema_version": "2.0",
   "coordinates": {
-    "latitude": 59.176784,
-    "longitude": 18.27547
+    "latitude": 62.950035,
+    "longitude": 18.050492
   },
   "region": {
-    "name": "Haninge kommun",
-    "admin_area": null
+    "name": "Kramfors kommun",
+    "admin_area": "Västernorrlands län"
   },
   "land_cover": "forest",
-  "terrain": null,
+  "terrain": {
+    "elevation_m": 87.0,
+    "slope_degrees": 18.5,
+    "slope_steepness": "steep",
+    "aspect": "W"
+  },
   "water_sources": [
     {
-      "name": null,
-      "source_type": "stream",
+      "name": "Acktjärnen",
+      "source_type": "lake",
       "supply_category": "light",
-      "distance_m": 323.2269280254348,
-      "bearing": "NW",
-      "area_m2": null,
-      "nearest_road_distance_m": 32.72757263040208
+      "distance_m": 686.0653093347136,
+      "bearing": "W",
+      "area_m2": 4854.198617270299,
+      "nearest_road_distance_m": 644.2567070678941
     },
     {
-      "name": "Bylsjön",
+      "name": "Träsktjärnen",
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 968.255344006993,
+      "bearing": "E",
+      "area_m2": 7602.546488828815,
+      "nearest_road_distance_m": 213.05810811319785
+    },
+    {
+      "name": "Överedstjärnen",
       "source_type": "lake",
       "supply_category": "heavy",
-      "distance_m": 675.6948989315943,
-      "bearing": "W",
-      "area_m2": 48387.51512457049,
-      "nearest_road_distance_m": 146.44636416091055
+      "distance_m": 977.7959949522823,
+      "bearing": "N",
+      "area_m2": 27360.829185865212,
+      "nearest_road_distance_m": 254.03588556451683
     },
     {
-      "name": "Bylsjöbäcken",
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 960.6751425901979,
-      "bearing": "W",
-      "area_m2": null,
-      "nearest_road_distance_m": 21.11231468670321
+      "name": "Grössjön",
+      "source_type": "lake",
+      "supply_category": "heavy",
+      "distance_m": 1140.0278734582223,
+      "bearing": "NW",
+      "area_m2": 416150.19251205854,
+      "nearest_road_distance_m": 225.12300882057747
     },
     {
-      "name": null,
-      "source_type": "stream",
+      "name": "Landtjärnen",
+      "source_type": "lake",
       "supply_category": "light",
-      "distance_m": 713.2050185947799,
-      "bearing": "SW",
-      "area_m2": null,
-      "nearest_road_distance_m": 688.8329401015252
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 710.6141882496643,
-      "bearing": "SE",
-      "area_m2": null,
-      "nearest_road_distance_m": 836.3999835532063
+      "distance_m": 1570.6593674437063,
+      "bearing": "N",
+      "area_m2": 4836.6643737373915,
+      "nearest_road_distance_m": 135.8697820677294
     }
   ],
   "roads": {
     "primary_access": {
       "name": null,
-      "road_class": "service",
-      "surface": null,
+      "road_class": "unclassified",
+      "surface": "unpaved",
       "tracktype": null,
       "vehicle_accessible": true,
       "max_weight_tonnes": null,
       "has_bridge": false,
-      "distance_m": 1764.8051699014588,
-      "bearing": "S"
+      "distance_m": 431.6864496259354,
+      "bearing": "NE"
     },
     "nearby_tracks": [
       {
         "name": null,
         "road_class": "track",
-        "surface": "compacted",
-        "tracktype": "grade2",
-        "vehicle_accessible": true,
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 16.333252624809585,
+        "distance_m": 406.406819337879,
         "bearing": "NW"
       },
       {
@@ -89,56 +94,56 @@
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 559.6600180264804,
-        "bearing": "NW"
+        "distance_m": 439.69484475685334,
+        "bearing": "N"
       },
       {
         "name": null,
         "road_class": "track",
-        "surface": "compacted",
-        "tracktype": "grade2",
-        "vehicle_accessible": true,
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 614.7258234946868,
-        "bearing": "W"
+        "distance_m": 1250.8244700484017,
+        "bearing": "NE"
       }
     ]
   },
   "settlements": [
     {
-      "name": "Norrby torp",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 1779.7881239948965,
-      "bearing": "S"
-    },
-    {
-      "name": "Sipängen",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 2302.069558164948,
-      "bearing": "S"
-    },
-    {
-      "name": "Tyresta by",
+      "name": "Ry",
       "settlement_type": "hamlet",
-      "distance_m": 2319.2763666147916,
-      "bearing": "SW"
+      "distance_m": 502.2726425478669,
+      "bearing": "NE"
     },
     {
-      "name": "Finnedal",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 2495.219789178377,
-      "bearing": "NW"
-    },
-    {
-      "name": "Högdalen",
+      "name": "Träsk",
       "settlement_type": "hamlet",
-      "distance_m": 2874.136951721564,
-      "bearing": "NW"
+      "distance_m": 1131.1685967524509,
+      "bearing": "NE"
+    },
+    {
+      "name": "Gullsjöbacken",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1354.793643814604,
+      "bearing": "SE"
+    },
+    {
+      "name": "Lande",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1403.2759330763604,
+      "bearing": "N"
+    },
+    {
+      "name": "Övered",
+      "settlement_type": "hamlet",
+      "distance_m": 1610.050474009353,
+      "bearing": "N"
     }
   ],
   "assets_at_risk": {
-    "buildings_within_radius": 3,
+    "buildings_within_radius": 1,
     "has_permanent_structures": false,
     "power_lines_present": false,
     "protected_area": null,
@@ -146,39 +151,44 @@
   },
   "named_features": [
     {
-      "name": "Nordankärrsberget",
+      "name": "Bräntberget",
       "feature_type": "peak",
-      "distance_m": 3795.95693159486,
-      "bearing": "W"
-    },
-    {
-      "name": "Fårholmen",
-      "feature_type": "forest",
-      "distance_m": 5665.7892651317,
-      "bearing": "N"
-    },
-    {
-      "name": "Gimmerstaholmen",
-      "feature_type": "forest",
-      "distance_m": 5816.438746965225,
-      "bearing": "N"
-    },
-    {
-      "name": "Rävnäset",
-      "feature_type": "forest",
-      "distance_m": 5913.685550711265,
-      "bearing": "N"
-    },
-    {
-      "name": "Klövberget",
-      "feature_type": "peak",
-      "distance_m": 5990.592063280794,
+      "distance_m": 2665.275512621586,
       "bearing": "NE"
+    },
+    {
+      "name": "Lidberget",
+      "feature_type": "peak",
+      "distance_m": 3351.8522287639057,
+      "bearing": "N"
+    },
+    {
+      "name": "Gårdberget",
+      "feature_type": "peak",
+      "distance_m": 3502.9318415468783,
+      "bearing": "SE"
+    },
+    {
+      "name": "Dalberget",
+      "feature_type": "peak",
+      "distance_m": 3673.975182903364,
+      "bearing": "NE"
+    },
+    {
+      "name": "Storrösberget",
+      "feature_type": "peak",
+      "distance_m": 4349.263014086908,
+      "bearing": "E"
     }
   ],
-  "wind": null,
+  "wind": {
+    "direction_degrees": 45.0,
+    "direction_compass": "NE",
+    "speed_mps": 5.6,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:33:30.162917Z",
+    "extracted_at": "2026-05-07T14:08:56.061679Z",
     "osm_dataset": "scenario_03-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

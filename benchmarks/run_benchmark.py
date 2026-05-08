@@ -30,7 +30,7 @@ Usage:
 
     Override prompt, scenario, or context directory explicitly:
     uv run python run_benchmark.py accuracy --images ../dataset \\
-        --system-prompt ../pipeline/llm/prompts/c2v5prompt.txt \\
+        --system-prompt ../pipeline/llm/prompts/latest.txt \\
         --context-dir ../data/contexts \\
         --scenario scenario_02.json
 
@@ -76,7 +76,7 @@ ALL_MODELS = [
     'gemma4:e4b',
 ]
 
-DEFAULT_PROMPT_FILE_NAME = 'c2v4prompt.txt'
+DEFAULT_PROMPT_FILE_NAME = 'latest.txt'
 DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PROMPT_FILE_NAME
 
 DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'

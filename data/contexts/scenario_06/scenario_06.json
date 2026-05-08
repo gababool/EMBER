@@ -1,153 +1,194 @@
 {
   "schema_version": "2.0",
   "coordinates": {
-    "latitude": 57.408715,
-    "longitude": 18.708128
+    "latitude": 65.16019,
+    "longitude": 16.70643
   },
   "region": {
-    "name": "Unknown region",
-    "admin_area": null
+    "name": "Storumans kommun",
+    "admin_area": "Västerbottens län"
   },
-  "land_cover": "unknown",
-  "terrain": null,
+  "land_cover": "forest",
+  "terrain": {
+    "elevation_m": 588.0,
+    "slope_degrees": 4.5,
+    "slope_steepness": "gentle",
+    "aspect": "E"
+  },
   "water_sources": [
+    {
+      "name": "Mittilidbäcken",
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 545.5127639356037,
+      "bearing": "NE",
+      "area_m2": null,
+      "nearest_road_distance_m": 88.74700067684455
+    },
     {
       "name": null,
       "source_type": "lake",
-      "supply_category": "heavy",
-      "distance_m": 1714.841278020588,
+      "supply_category": "light",
+      "distance_m": 423.5670701571157,
+      "bearing": "E",
+      "area_m2": 1320.812290114648,
+      "nearest_road_distance_m": 470.0812484406446
+    },
+    {
+      "name": "Mittilidbäcken",
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 677.7891440648434,
+      "bearing": "NE",
+      "area_m2": null,
+      "nearest_road_distance_m": 2.793941371464424
+    },
+    {
+      "name": "Mittilidbäcken",
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 696.5831605962587,
+      "bearing": "NE",
+      "area_m2": null,
+      "nearest_road_distance_m": 258.7587185725445
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 799.7111897660184,
       "bearing": "S",
-      "area_m2": 13764.162128335565,
-      "nearest_road_distance_m": 1148.2240548904358
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 3505.0751437586255,
-      "bearing": "N",
       "area_m2": null,
-      "nearest_road_distance_m": 240.04314670817712
-    },
-    {
-      "name": null,
-      "source_type": "pond",
-      "supply_category": "heavy",
-      "distance_m": 3876.6679833545486,
-      "bearing": "NE",
-      "area_m2": 12683.339169172397,
-      "nearest_road_distance_m": 139.18340927857523
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 3996.394987503185,
-      "bearing": "N",
-      "area_m2": null,
-      "nearest_road_distance_m": 0.8435336387619027
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 4010.1107441169843,
-      "bearing": "NE",
-      "area_m2": null,
-      "nearest_road_distance_m": 319.54887530355785
+      "nearest_road_distance_m": 647.8520159338883
     }
   ],
   "roads": {
     "primary_access": {
-      "name": null,
+      "name": "Nyängsvägen",
       "road_class": "unclassified",
-      "surface": "compacted",
+      "surface": "unpaved",
       "tracktype": null,
       "vehicle_accessible": true,
       "max_weight_tonnes": null,
       "has_bridge": false,
-      "distance_m": 989.7740535994913,
+      "distance_m": 404.5652446963248,
       "bearing": "E"
     },
     "nearby_tracks": [
       {
-        "name": null,
+        "name": "Rödmossamyrvägen",
         "road_class": "track",
-        "surface": null,
+        "surface": "unpaved",
         "tracktype": null,
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 1.5905405311899241,
+        "distance_m": 506.03429975240624,
+        "bearing": "SW"
+      },
+      {
+        "name": "Förstmyrvägen",
+        "road_class": "track",
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 840.2530072521287,
         "bearing": "N"
       },
       {
-        "name": null,
+        "name": "Nyängsvägen, grenväg 1 H",
         "road_class": "track",
-        "surface": "gravel",
-        "tracktype": "grade4",
-        "vehicle_accessible": false,
-        "max_weight_tonnes": null,
-        "has_bridge": false,
-        "distance_m": 972.8107693996898,
-        "bearing": "SE"
-      },
-      {
-        "name": null,
-        "road_class": "track",
-        "surface": null,
+        "surface": "unpaved",
         "tracktype": null,
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 975.090422352659,
-        "bearing": "NW"
+        "distance_m": 1031.2603137992764,
+        "bearing": "NE"
       }
     ]
   },
   "settlements": [
     {
-      "name": "Hajdeby",
+      "name": "Fristad",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 2740.3011998915745,
+      "distance_m": 3218.3404259653307,
+      "bearing": "N"
+    },
+    {
+      "name": "Frans-Olsfäboden",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 5076.872269463222,
       "bearing": "NE"
     },
     {
-      "name": "Folers gamla tomt",
+      "name": "Vallträsk",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 3054.3160765830958,
-      "bearing": "NW"
+      "distance_m": 5248.083983680544,
+      "bearing": "SE"
     },
     {
-      "name": "Bringsarve",
+      "name": "Björkgård",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 3116.2887877181024,
-      "bearing": "S"
+      "distance_m": 6369.36358923128,
+      "bearing": "SW"
     },
     {
-      "name": "Halsgårde",
+      "name": "Sörgården",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 3188.067395278976,
-      "bearing": "S"
-    },
-    {
-      "name": "Foler",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 3281.67073449713,
+      "distance_m": 6568.70200661093,
       "bearing": "N"
     }
   ],
   "assets_at_risk": {
-    "buildings_within_radius": 5,
+    "buildings_within_radius": 2,
     "has_permanent_structures": false,
     "power_lines_present": false,
     "protected_area": null,
     "assets_radius_m": 2000.0
   },
-  "named_features": [],
-  "wind": null,
+  "named_features": [
+    {
+      "name": "Rönnberget",
+      "feature_type": "peak",
+      "distance_m": 2074.267718166822,
+      "bearing": "W"
+    },
+    {
+      "name": "Tjärnhobben",
+      "feature_type": "peak",
+      "distance_m": 3320.2826480085305,
+      "bearing": "SE"
+    },
+    {
+      "name": "Alperna",
+      "feature_type": "peak",
+      "distance_m": 3497.2497828148253,
+      "bearing": "E"
+    },
+    {
+      "name": "Signalhobben",
+      "feature_type": "peak",
+      "distance_m": 3664.9424349096535,
+      "bearing": "SE"
+    },
+    {
+      "name": "Bergmyrhobben",
+      "feature_type": "peak",
+      "distance_m": 3972.7053317737505,
+      "bearing": "E"
+    }
+  ],
+  "wind": {
+    "direction_degrees": 45.0,
+    "direction_compass": "NE",
+    "speed_mps": 2.3,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:34:13.597195Z",
+    "extracted_at": "2026-05-07T13:56:05.055815Z",
     "osm_dataset": "scenario_06-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

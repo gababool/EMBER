@@ -1,109 +1,89 @@
 # Scenario Context Files
 
-This folder contains generated operational wildfire scenario contexts.
+This folder contains generated operational wildfire scenario contexts used for
+benchmarking, qualitative evaluation, and stakeholder interviews.
 
-Each scenario is created in two steps:
+Each scenario folder contains:
+- `scenario_NN.json` — pre-computed GIS context (committed)
+- `scenario_NN.jpg` / `scenario_NN.png` — paired wildfire image (committed)
 
-1. Extract a local 50 × 50 km OpenStreetMap `.osm.pbf` file from `sweden-latest.osm.pbf`.
-2. Run the GIS context extractor on that clipped `.osm.pbf` file to generate `scenario_XX.json`.
-
-The `.osm.pbf` files are local GIS data and must **not** be committed.  
-The generated `scenario_XX.json` files should be committed.
-
----
-
-## Required local input file
-
-Before running the commands, make sure this file exists:
-
-```text
-data/gis/osm/sweden-latest.osm.pbf
-```
-
-Run all commands from the repository root:
-
-```bash
-mkdir -p data/gis/osm
-mkdir -p data/contexts
-```
+The clipped `.osm.pbf` and `.tif` elevation files are stored under `data/gis/`
+and committed. Only the full Sweden download (`sweden-latest.osm.pbf`) is gitignored.
 
 ---
 
-## Recommended — Generate everything with one script
+## Scenario summaries
 
-From the repository root, run:
+| Scenario | Location | Key features | What it tests |
+|---|---|---|---|
+| `scenario_01` | Acktjärnsåsarna, Västmanland | Wetland forest, protected area, named lakes, limited tracks | Water availability vs difficult access |
+| `scenario_02` | Tyresta NP edge, Stockholm | 83 buildings, power lines, Tyresta by 666m, paved road | Wildland-urban interface, asset protection |
+| `scenario_03` | Skuleskogen, High Coast | Steep terrain (manually set), named peaks, moderate remoteness | Terrain-driven fire behavior and access difficulty |
+| `scenario_04` | Skåne countryside, Kristianstad | 72 buildings, forest, light water supply, rural roads | Dense assets, good access, no heavy water |
+| `scenario_05` | Vakö myr, Kronoberg | Protected mire, flat, all light supply water, isolated | Smouldering peat risk, deceptive wet terrain |
+| `scenario_06` | Sorsele remote forest, Västerbotten | 588m elevation, named tracks, light water only, sparse settlements | Remote access, minimal infrastructure, sparse OSM |
+
+---
+
+## Regenerating scenarios
+
+From the repository root:
 
 ```bash
-scripts/generate_context_scenarios.sh
-```
+# Full pipeline: extract OSM + elevation, generate JSONs, validate
+scripts/generate_context_scenarios.sh --mock-wind
 
-This will:
+# One scenario only
+scripts/generate_context_scenarios.sh --scenario 03 --mock-wind
 
-1. Extract all seven local 50 × 50 km `.osm.pbf` files into `data/gis/osm/`.
-2. Generate all seven `data/contexts/scenario_XX.json` files.
-3. Validate JSON formatting and run the context tests.
+# Already have OSM/DEM, just regenerate JSONs
+scripts/generate_context_scenarios.sh --generate-only --mock-wind --skip-tests
 
-Useful options:
-
-```bash
-# Run only one scenario
-scripts/generate_context_scenarios.sh --scenario 03
-
-# Generate JSON from already extracted .osm.pbf files
-scripts/generate_context_scenarios.sh --generate-only
-
-# Generate JSON with deterministic semi-random regional wind
-scripts/generate_context_scenarios.sh --generate-only --mock-wind
-
-# Generate JSON with the same mocked wind in every scenario for benchmarking
-scripts/generate_context_scenarios.sh --generate-only --benchmark-wind
-
-# Validate existing scenario JSON files
-scripts/generate_context_scenarios.sh --validate-only
-
-# Use a source PBF from another location
-scripts/generate_context_scenarios.sh --input /path/to/sweden-latest.osm.pbf
+# Same wind for all scenarios (benchmark reproducibility)
+scripts/generate_context_scenarios.sh --generate-only --benchmark-wind --skip-tests
 ```
 
 Run `scripts/generate_context_scenarios.sh --help` for all options.
 
-Mocked wind uses a deterministic semi-random rough regional value for each
-scenario. It is reproducible for benchmarking, not a localized weather
-observation. Values use one compass bearing and a speed between 1.0 and
-10.0 m/s:
+### Wind notes
+
+`--mock-wind` adds a deterministic semi-random wind per scenario:
 
 ```json
 "wind": {
-  "direction_degrees": 315,
-  "direction_compass": "NW",
-  "speed_mps": 4.2,
+  "direction_degrees": 135,
+  "direction_compass": "SE",
+  "speed_mps": 8.9,
   "source": "mocked"
 }
 ```
 
-For benchmark runs where wind should be controlled across prompts,
-`--benchmark-wind` writes the same mocked value to every scenario:
+`--benchmark-wind` writes the same value to every scenario (SW, 6.5 m/s) for
+controlled benchmark runs. Wind is meteorological — the direction is where the
+wind blows *from*, not toward. The formatter computes the spread direction automatically.
 
-```json
-"wind": {
-  "direction_degrees": 225,
-  "direction_compass": "SW",
-  "speed_mps": 6.5,
-  "source": "mocked"
-}
-```
+### Terrain notes
+
+Terrain is derived from SRTM 30m elevation data via the `elevation` Python package.
+Scenario 03 (Skuleskogen) has terrain manually adjusted to reflect known local
+topography that SRTM 30m underestimates on the High Coast ridge.
 
 ---
 
-## Manual reference — Step 1: Extract 50 × 50 km OSM files
+## Manual reference — OSM extraction
 
-The bounding box format for `osmium extract -b` is:
+Bounding box format: `west,south,east,north`
 
-```text
-west_lon,south_lat,east_lon,north_lat
-```
+| Scenario | Bounding box | Lat | Lon |
+|---|---|---|---|
+| 01 | `15.653541,59.575422,16.546459,60.024578` | 59.8000 | 16.1000 |
+| 02 | `17.790000,58.990000,18.690000,59.400000` | 59.17372 | 18.24039 |
+| 03 | `18.000000,62.850000,18.200000,63.050000` | 62.94232 | 18.04936 |
+| 04 | `13.370000,55.650000,14.270000,56.130000` | 55.890 | 13.820 |
+| 05 | `13.846719,56.275423,14.660499,56.724579` | 56.500001 | 14.253609 |
+| 06 | `16.200000,64.950000,17.200000,65.400000` | 65.16019 | 16.70643 |
 
-### Scenario 01 — Acktjärnsåsarna, Västmanland
+Example (single scenario):
 
 ```bash
 osmium extract \
@@ -113,224 +93,45 @@ osmium extract \
   --overwrite
 ```
 
-### Scenario 02 — Hälleskogsbrännan, Västmanland
+---
+
+## Manual reference — Elevation download
 
 ```bash
-osmium extract \
-  -b 15.747293,59.610830,16.641161,60.059986 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_02-50km.osm.pbf \
-  --overwrite
+eio clip -o data/gis/elevation/scenario_01.tif \
+    --bounds 15.653541 59.575422 16.546459 60.024578
 ```
 
-### Scenario 03 — Tyresta, Stockholm area
-
-```bash
-osmium extract \
-  -b 17.837176,58.952206,18.713764,59.401362 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_03-50km.osm.pbf \
-  --overwrite
-```
-
-### Scenario 04 — Skansberget / Kårböle, Ljusdal
-
-```bash
-osmium extract \
-  -b 14.854897,61.746117,15.810703,62.195273 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_04-50km.osm.pbf \
-  --overwrite
-```
-
-### Scenario 05 — Nötbergets norra, Ljusdal
-
-```bash
-osmium extract \
-  -b 14.783927,61.789042,15.741081,62.238198 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_05-50km.osm.pbf \
-  --overwrite
-```
-
-### Scenario 06 — Torsburgen, Gotland
-
-```bash
-osmium extract \
-  -b 18.291195,57.184137,19.125061,57.633293 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_06-50km.osm.pbf \
-  --overwrite
-```
-
-### Scenario 07 — Vakö myr, Kronoberg/Skåne
-
-```bash
-osmium extract \
-  -b 13.846719,56.275423,14.660499,56.724579 \
-  data/gis/osm/sweden-latest.osm.pbf \
-  -o data/gis/osm/scenario_07-50km.osm.pbf \
-  --overwrite
-```
-
-Check that the clipped files were created:
-
-```bash
-ls -lh data/gis/osm/scenario_*-50km.osm.pbf
-```
-
-Expected files:
-
-```text
-data/gis/osm/scenario_01-50km.osm.pbf
-data/gis/osm/scenario_02-50km.osm.pbf
-data/gis/osm/scenario_03-50km.osm.pbf
-data/gis/osm/scenario_04-50km.osm.pbf
-data/gis/osm/scenario_05-50km.osm.pbf
-data/gis/osm/scenario_06-50km.osm.pbf
-data/gis/osm/scenario_07-50km.osm.pbf
-```
+Note: `eio` expects bounds as space-separated `west south east north`.
+GDAL must be installed (`brew install gdal`) for `eio` to work.
 
 ---
 
-## Manual reference — Step 2: Generate scenario JSON files
-
-After the `.osm.pbf` files have been created, run the GIS context extractor.
-
-### Scenario 01 — Acktjärnsåsarna, Västmanland
+## Manual reference — Context extraction
 
 ```bash
 uv run python -m pipeline.context.extract \
   --lat 59.8000 \
   --lon 16.1000 \
   --pbf data/gis/osm/scenario_01-50km.osm.pbf \
-  --output data/contexts/scenario_01.json
-```
-
-### Scenario 02 — Hälleskogsbrännan, Västmanland
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 59.835408 \
-  --lon 16.194227 \
-  --pbf data/gis/osm/scenario_02-50km.osm.pbf \
-  --output data/contexts/scenario_02.json
-```
-
-### Scenario 03 — Tyresta, Stockholm area
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 59.176784 \
-  --lon 18.275470 \
-  --pbf data/gis/osm/scenario_03-50km.osm.pbf \
-  --output data/contexts/scenario_03.json
-```
-
-### Scenario 04 — Skansberget / Kårböle, Ljusdal
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 61.970695 \
-  --lon 15.332800 \
-  --pbf data/gis/osm/scenario_04-50km.osm.pbf \
-  --output data/contexts/scenario_04.json
-```
-
-### Scenario 05 — Nötbergets norra, Ljusdal
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 62.013620 \
-  --lon 15.262504 \
-  --pbf data/gis/osm/scenario_05-50km.osm.pbf \
-  --output data/contexts/scenario_05.json
-```
-
-### Scenario 06 — Torsburgen, Gotland
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 57.408715 \
-  --lon 18.708128 \
-  --pbf data/gis/osm/scenario_06-50km.osm.pbf \
-  --output data/contexts/scenario_06.json
-```
-
-### Scenario 07 — Vakö myr, Kronoberg/Skåne
-
-```bash
-uv run python -m pipeline.context.extract \
-  --lat 56.500001 \
-  --lon 14.253609 \
-  --pbf data/gis/osm/scenario_07-50km.osm.pbf \
-  --output data/contexts/scenario_07.json
-```
-
-Check that the JSON files were created:
-
-```bash
-ls -lh data/contexts/scenario_*.json
-```
-
-Expected files:
-
-```text
-data/contexts/scenario_01.json
-data/contexts/scenario_02.json
-data/contexts/scenario_03.json
-data/contexts/scenario_04.json
-data/contexts/scenario_05.json
-data/contexts/scenario_06.json
-data/contexts/scenario_07.json
+  --dem data/gis/elevation/scenario_01.tif \
+  --output data/contexts/scenario_01/scenario_01.json
 ```
 
 ---
 
-## Manual reference — Step 3: Validate generated files
-
-Validate JSON formatting:
+## Validation
 
 ```bash
-for file in data/contexts/scenario_*.json; do
-  python -m json.tool "$file" > /dev/null
-  echo "valid JSON: $file"
+# Validate JSON
+for file in data/contexts/scenario_*/scenario_*.json; do
+  python -m json.tool "$file" > /dev/null && echo "valid: $file"
 done
-```
 
-Run context tests:
-
-```bash
+# Run context tests
 uv run pytest pipeline/context/tests -v
+
+# Inspect a scenario
+jq '{region, land_cover, terrain, assets_at_risk}' \
+  data/contexts/scenario_01/scenario_01.json
 ```
-
-Inspect one generated context:
-
-```bash
-jq '{
-  coordinates,
-  region,
-  land_cover,
-  water_sources,
-  roads,
-  settlements,
-  assets_at_risk,
-  named_features
-}' data/contexts/scenario_01.json
-```
-
----
-
-## Scenario summaries
-
-| Scenario | Location | Why it was chosen |
-|---|---|---|
-| `scenario_01` | Acktjärnsåsarna, Västmanland | Wetland forest with nearby lakes. Tests whether the model can reason about water availability while still considering difficult access. |
-| `scenario_02` | Hälleskogsbrännan, Västmanland | Historical 2014 wildfire area. Tests post-fire landscape reasoning, burn scars, dead wood, access, and protected-area context. |
-| `scenario_03` | Tyresta, Stockholm area | Wildland-urban interface. Tests public safety, visitors, nearby buildings, trails, roads, and protected forest. |
-| `scenario_04` | Skansberget / Kårböle, Ljusdal | Slope and settlement-edge scenario. Tests terrain difficulty combined with nearby settlement exposure. |
-| `scenario_05` | Nötbergets norra, Ljusdal | Remote post-fire forest. Tests limited access, sparse settlement exposure, and long approach distances. |
-| `scenario_06` | Torsburgen, Gotland | Dry island and cliff terrain. Tests dry fuels, exposed terrain, cliffs, wind exposure, and limited water availability. |
-| `scenario_07` | Vakö myr, Kronoberg/Skåne | Peat/mire scenario. Tests whether the model handles wetland and smouldering-fire risk instead of assuming wet ground means low risk. |
-
----

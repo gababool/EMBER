@@ -1,73 +1,78 @@
 {
   "schema_version": "2.0",
   "coordinates": {
-    "latitude": 61.970695,
-    "longitude": 15.3328
+    "latitude": 55.89,
+    "longitude": 13.82
   },
   "region": {
-    "name": "Härjedalens kommun",
-    "admin_area": "Jämtlands län"
+    "name": "Kristianstads kommun",
+    "admin_area": "Skåne län"
   },
   "land_cover": "forest",
-  "terrain": null,
+  "terrain": {
+    "elevation_m": 184.0,
+    "slope_degrees": 3.3,
+    "slope_steepness": "gentle",
+    "aspect": "E"
+  },
   "water_sources": [
     {
-      "name": "Ärtmyrtjärnarna",
-      "source_type": "lake",
-      "supply_category": "light",
-      "distance_m": 154.81592409110806,
-      "bearing": "NE",
-      "area_m2": 1638.346045671015,
-      "nearest_road_distance_m": 298.04529324623604
-    },
-    {
-      "name": "Ärtmyrtjärnarna",
-      "source_type": "lake",
-      "supply_category": "light",
-      "distance_m": 227.425922093276,
-      "bearing": "E",
-      "area_m2": 6241.140146517727,
-      "nearest_road_distance_m": 365.852145727298
-    },
-    {
       "name": null,
-      "source_type": "lake",
-      "supply_category": "heavy",
-      "distance_m": 487.97162668645024,
-      "bearing": "NE",
-      "area_m2": 19959.34911496211,
-      "nearest_road_distance_m": 68.11390057964915
-    },
-    {
-      "name": null,
-      "source_type": "lake",
+      "source_type": "stream",
       "supply_category": "light",
-      "distance_m": 565.5612333563263,
+      "distance_m": 224.80645994584413,
       "bearing": "N",
-      "area_m2": 1685.7268899048936,
-      "nearest_road_distance_m": 23.149903612483755
+      "area_m2": null,
+      "nearest_road_distance_m": 267.6431233840124
     },
     {
       "name": null,
-      "source_type": "river",
-      "supply_category": "heavy",
-      "distance_m": 581.5478920937561,
-      "bearing": "E",
-      "area_m2": 4996009.255337595,
-      "nearest_road_distance_m": 276.85513685898997
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 544.8599210859204,
+      "bearing": "S",
+      "area_m2": null,
+      "nearest_road_distance_m": 370.5065939692038
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 552.363832192969,
+      "bearing": "S",
+      "area_m2": null,
+      "nearest_road_distance_m": 394.65819903246256
+    },
+    {
+      "name": null,
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 1136.2153053449736,
+      "bearing": "SE",
+      "area_m2": 3196.2664067174283,
+      "nearest_road_distance_m": 41.941856410664
+    },
+    {
+      "name": null,
+      "source_type": "lake",
+      "supply_category": "light",
+      "distance_m": 1146.3954307830215,
+      "bearing": "SE",
+      "area_m2": 2280.7865313341263,
+      "nearest_road_distance_m": 33.56475947737502
     }
   ],
   "roads": {
     "primary_access": {
-      "name": "Härjedalsvägen",
-      "road_class": "primary",
-      "surface": "asphalt",
+      "name": null,
+      "road_class": "service",
+      "surface": null,
       "tracktype": null,
       "vehicle_accessible": true,
       "max_weight_tonnes": null,
       "has_bridge": false,
-      "distance_m": 469.73991312147274,
-      "bearing": "SE"
+      "distance_m": 252.83583625671702,
+      "bearing": "E"
     },
     "nearby_tracks": [
       {
@@ -78,8 +83,8 @@
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 386.20966034174006,
-        "bearing": "NW"
+        "distance_m": 52.40450490534422,
+        "bearing": "E"
       },
       {
         "name": null,
@@ -89,8 +94,8 @@
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 569.3405969372432,
-        "bearing": "NW"
+        "distance_m": 72.75361352235397,
+        "bearing": "W"
       },
       {
         "name": null,
@@ -100,85 +105,59 @@
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 579.8466315254545,
-        "bearing": "N"
+        "distance_m": 398.21847930196424,
+        "bearing": "S"
       }
     ]
   },
   "settlements": [
     {
-      "name": "Kårböle",
-      "settlement_type": "village",
-      "distance_m": 2307.147117554457,
+      "name": "Torastorp",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 987.3053832571176,
       "bearing": "NW"
     },
     {
-      "name": "Gotthem",
+      "name": "Byrhult",
       "settlement_type": "isolated_dwelling",
-      "distance_m": 2419.974381505337,
-      "bearing": "NW"
-    },
-    {
-      "name": "Backen",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 2450.075421426084,
-      "bearing": "NW"
-    },
-    {
-      "name": "Sjövik",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 2961.8029260242456,
-      "bearing": "NW"
-    },
-    {
-      "name": "Strömshed",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 4394.859047651616,
-      "bearing": "N"
-    }
-  ],
-  "assets_at_risk": {
-    "buildings_within_radius": 125,
-    "has_permanent_structures": true,
-    "power_lines_present": true,
-    "protected_area": null,
-    "assets_radius_m": 2000.0
-  },
-  "named_features": [
-    {
-      "name": "Skansberget",
-      "feature_type": "peak",
-      "distance_m": 588.9928487166073,
-      "bearing": "SW"
-    },
-    {
-      "name": "Kölen",
-      "feature_type": "peak",
-      "distance_m": 2284.7710283313154,
-      "bearing": "SW"
-    },
-    {
-      "name": "Bliberget",
-      "feature_type": "peak",
-      "distance_m": 2463.502222951247,
-      "bearing": "SE"
-    },
-    {
-      "name": "Björkvallsberget",
-      "feature_type": "peak",
-      "distance_m": 3536.250267078476,
+      "distance_m": 1855.5352417884856,
       "bearing": "NE"
     },
     {
-      "name": "Gammelvallsberget",
-      "feature_type": "peak",
-      "distance_m": 3988.1192795619972,
+      "name": "Lahult",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2129.580047276246,
       "bearing": "SE"
+    },
+    {
+      "name": "Norreskog",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2247.0218347266114,
+      "bearing": "SE"
+    },
+    {
+      "name": "Råset",
+      "settlement_type": "hamlet",
+      "distance_m": 2667.2427529426272,
+      "bearing": "SW"
     }
   ],
-  "wind": null,
+  "assets_at_risk": {
+    "buildings_within_radius": 72,
+    "has_permanent_structures": false,
+    "power_lines_present": false,
+    "protected_area": null,
+    "assets_radius_m": 2000.0
+  },
+  "named_features": [],
+  "wind": {
+    "direction_degrees": 135.0,
+    "direction_compass": "SE",
+    "speed_mps": 6.0,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:33:47.156409Z",
+    "extracted_at": "2026-05-07T13:53:54.992482Z",
     "osm_dataset": "scenario_04-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

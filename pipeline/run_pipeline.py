@@ -4,7 +4,7 @@ To run:
 uv run python -m pipeline.run_pipeline pipeline/llm/image.png \
     --yolo-model best \
     --llm-model ministral \
-    --prompt-file pipeline/llm/prompts/c2v4prompt.txt \
+    --prompt-file pipeline/llm/prompts/latest.txt \
     --context-json data/contexts/example_scenario.json
     
 '''
@@ -16,7 +16,7 @@ from pipeline.service import create_default_pipeline
 from pipeline.object_detection.detections import YOLO_INPUT_MODES
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT = SCRIPT_DIR / "pipeline" / "llm" / "prompts" / "c2v4prompt.txt"
+DEFAULT_PROMPT = SCRIPT_DIR / "pipeline" / "llm" / "prompts" / "latest.txt"
 
 
 def run_pipeline(image_path: str, yolo_model: str, llm_model: str,

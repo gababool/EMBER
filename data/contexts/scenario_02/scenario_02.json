@@ -1,184 +1,194 @@
 {
   "schema_version": "2.0",
   "coordinates": {
-    "latitude": 59.835408,
-    "longitude": 16.194227
+    "latitude": 59.17372,
+    "longitude": 18.24039
   },
   "region": {
-    "name": "Sala kommun",
-    "admin_area": null
+    "name": "Haninge kommun",
+    "admin_area": "Stockholms län"
   },
   "land_cover": "forest",
-  "terrain": null,
+  "terrain": {
+    "elevation_m": 76.0,
+    "slope_degrees": 2.6,
+    "slope_steepness": "gentle",
+    "aspect": "NW"
+  },
   "water_sources": [
     {
-      "name": null,
+      "name": "Bylsjöbäcken",
       "source_type": "stream",
       "supply_category": "light",
-      "distance_m": 296.52197463427717,
-      "bearing": "W",
+      "distance_m": 208.27661724263982,
+      "bearing": "E",
       "area_m2": null,
-      "nearest_road_distance_m": 1.7486721929152829
+      "nearest_road_distance_m": 21.11231468670321
     },
     {
-      "name": null,
+      "name": "Bylsjöbäcken",
       "source_type": "stream",
       "supply_category": "light",
-      "distance_m": 325.54314758676725,
-      "bearing": "W",
-      "area_m2": null,
-      "nearest_road_distance_m": 40.38859077421266
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 238.83865544999642,
+      "distance_m": 436.33122776983856,
       "bearing": "S",
       "area_m2": null,
-      "nearest_road_distance_m": 274.72905876687804
+      "nearest_road_distance_m": 62.92764717172401
+    },
+    {
+      "name": "Bylsjöbäcken",
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 438.1313534808775,
+      "bearing": "S",
+      "area_m2": null,
+      "nearest_road_distance_m": 116.61915167255191
+    },
+    {
+      "name": null,
+      "source_type": "pond",
+      "supply_category": "light",
+      "distance_m": 544.3312874117208,
+      "bearing": "S",
+      "area_m2": 873.5800761319341,
+      "nearest_road_distance_m": 106.84448187094675
     },
     {
       "name": null,
       "source_type": "stream",
       "supply_category": "light",
-      "distance_m": 300.08473677090717,
-      "bearing": "NW",
+      "distance_m": 594.7083345125303,
+      "bearing": "S",
       "area_m2": null,
-      "nearest_road_distance_m": 300.0700875614647
-    },
-    {
-      "name": null,
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 495.47320511628334,
-      "bearing": "NW",
-      "area_m2": null,
-      "nearest_road_distance_m": 162.76350777721314
+      "nearest_road_distance_m": 41.64873934853196
     }
   ],
   "roads": {
     "primary_access": {
-      "name": "Bergtorpsvägen",
-      "road_class": "unclassified",
-      "surface": "gravel",
+      "name": null,
+      "road_class": "service",
+      "surface": "compacted",
       "tracktype": null,
       "vehicle_accessible": true,
       "max_weight_tonnes": null,
       "has_bridge": false,
-      "distance_m": 1605.8396566981783,
-      "bearing": "W"
+      "distance_m": 438.6579428040854,
+      "bearing": "SW"
     },
     "nearby_tracks": [
       {
-        "name": "Trapphällsmossen SÖ",
+        "name": null,
         "road_class": "track",
-        "surface": "gravel",
+        "surface": "compacted",
         "tracktype": "grade2",
         "vehicle_accessible": true,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 7.26548857844984,
-        "bearing": "W"
+        "distance_m": 149.40633261086285,
+        "bearing": "SE"
       },
       {
-        "name": "Lilla Gräsgårdsvägen",
-        "road_class": "track",
-        "surface": "gravel",
-        "tracktype": "grade2",
-        "vehicle_accessible": true,
-        "max_weight_tonnes": null,
-        "has_bridge": false,
-        "distance_m": 346.3834094497725,
-        "bearing": "W"
-      },
-      {
-        "name": "Urskogsvägen",
+        "name": null,
         "road_class": "track",
         "surface": "unpaved",
         "tracktype": null,
         "vehicle_accessible": false,
         "max_weight_tonnes": null,
         "has_bridge": false,
-        "distance_m": 379.8766797256627,
+        "distance_m": 219.95656578146276,
+        "bearing": "S"
+      },
+      {
+        "name": null,
+        "road_class": "track",
+        "surface": "unpaved",
+        "tracktype": null,
+        "vehicle_accessible": false,
+        "max_weight_tonnes": null,
+        "has_bridge": false,
+        "distance_m": 291.8907667549986,
         "bearing": "SW"
       }
     ]
   },
   "settlements": [
     {
-      "name": "Rabo",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 2737.9034862321296,
-      "bearing": "SW"
-    },
-    {
-      "name": "Seglingsberg",
-      "settlement_type": "village",
-      "distance_m": 2901.788867106042,
-      "bearing": "SW"
-    },
-    {
-      "name": "Färmansbo",
+      "name": "Tyresta by",
       "settlement_type": "hamlet",
-      "distance_m": 3117.6583559866317,
-      "bearing": "SW"
-    },
-    {
-      "name": "Norra Kilbäcken",
-      "settlement_type": "isolated_dwelling",
-      "distance_m": 3634.3957532935106,
+      "distance_m": 666.2681699739964,
       "bearing": "S"
     },
     {
-      "name": "Öjesjön",
-      "settlement_type": "hamlet",
-      "distance_m": 3722.2674156907315,
-      "bearing": "NE"
+      "name": "Lillgården",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 1023.3311626683768,
+      "bearing": "SW"
+    },
+    {
+      "name": "Forsen",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2253.778583021837,
+      "bearing": "N"
+    },
+    {
+      "name": "Svartbäcken",
+      "settlement_type": "village",
+      "distance_m": 2342.429335575728,
+      "bearing": "W"
+    },
+    {
+      "name": "Övre Hammarby",
+      "settlement_type": "isolated_dwelling",
+      "distance_m": 2358.19118472193,
+      "bearing": "S"
     }
   ],
   "assets_at_risk": {
-    "buildings_within_radius": 0,
-    "has_permanent_structures": false,
-    "power_lines_present": false,
-    "protected_area": "Hälleskogsbrännans naturreservat",
+    "buildings_within_radius": 83,
+    "has_permanent_structures": true,
+    "power_lines_present": true,
+    "protected_area": null,
     "assets_radius_m": 2000.0
   },
   "named_features": [
     {
-      "name": "Fermansbo urskog",
+      "name": "Nordankärrsberget",
+      "feature_type": "peak",
+      "distance_m": 1852.5720734231372,
+      "bearing": "W"
+    },
+    {
+      "name": "Fårholmen",
       "feature_type": "forest",
-      "distance_m": 502.48022293854,
-      "bearing": "SE"
+      "distance_m": 6643.447286866992,
+      "bearing": "NE"
     },
     {
-      "name": "Fågelmossberget",
-      "feature_type": "peak",
-      "distance_m": 1461.0792439574427,
-      "bearing": "S"
+      "name": "Gimmerstaholmen",
+      "feature_type": "forest",
+      "distance_m": 6705.701911236437,
+      "bearing": "N"
     },
     {
-      "name": "Fräksmossberget",
-      "feature_type": "peak",
-      "distance_m": 2306.7162674533133,
-      "bearing": "SE"
+      "name": "Rävnäset",
+      "feature_type": "forest",
+      "distance_m": 6909.223947669174,
+      "bearing": "N"
     },
     {
-      "name": "Källberget",
+      "name": "Fikahöjden",
       "feature_type": "peak",
-      "distance_m": 2687.8338375031904,
-      "bearing": "SW"
-    },
-    {
-      "name": "Valbergen",
-      "feature_type": "peak",
-      "distance_m": 3524.390707887107,
+      "distance_m": 7706.377087105188,
       "bearing": "NW"
     }
   ],
-  "wind": null,
+  "wind": {
+    "direction_degrees": 90.0,
+    "direction_compass": "E",
+    "speed_mps": 4.7,
+    "source": "mocked"
+  },
   "extraction_metadata": {
-    "extracted_at": "2026-05-06T09:31:37.987383Z",
+    "extracted_at": "2026-05-07T13:51:59.121714Z",
     "osm_dataset": "scenario_02-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

@@ -119,6 +119,16 @@ def call_llm(model_name, image_path, system_prompt, context_file=None, additiona
     )
 
     raw_content = response['message']['content']
+
+    raw_content = response['message']['content']
+
+    if not raw_content.strip():
+        raise ValueError(
+            f"Model returned empty response. This may indicate context window "
+            f"exhaustion due to thinking mode (observed with qwen3-vl on complex "
+            f"images with long prompts). Consider a simpler image or shorter prompt."
+        )
+
     try:
         parsed = LLMInferenceResult.model_validate_json(raw_content)
     except ValidationError as e:
