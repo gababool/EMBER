@@ -110,11 +110,11 @@ def run_llm_inference(
     messages = [
         {
             "role": "system",
-            "content": system_prompt,
+            "content": "You are a wildfire analyst. You must respond strictly in JSON format.",
         },
         {
             "role": "user",
-            "content": user_content,
+            "content": f"{system_prompt}\n\n{user_content}",
             "images": [image_b64],
         },
     ]

@@ -110,15 +110,20 @@ def call_llm(model_name, image_path, system_prompt, context_file=None, additiona
 
     response = ollama.chat(
         model=model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content, "images": [image_b64]},
+        messages = [
+        {
+            "role": "system",
+            "content": "You are a wildfire analyst. You must respond strictly in JSON format.",
+        },
+        {
+            "role": "user",
+            "content": f"{system_prompt}\n\n{user_content}",
+            "images": [image_b64],
+        },
         ],
         format=LLMInferenceResult.model_json_schema(),
         options={"temperature": 0},
     )
-
-    raw_content = response['message']['content']
 
     raw_content = response['message']['content']
 
