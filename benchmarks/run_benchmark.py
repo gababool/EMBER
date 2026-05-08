@@ -11,7 +11,8 @@ is loaded from a modular prompt file so that different prompt versions
 can be evaluated without changes to the code.
 
 Optional YOLO preprocessing adds bounding box annotations to images before
-they reach the LLM. YOLO timing is tracked separately from LLM timing.
+they reach the LLM, or sends YOLO detection metadata as text context. YOLO
+timing is tracked separately from LLM timing.
 Runs with and without YOLO produce separate CSV files, allowing the two
 conditions to be compared during analysis.
 
@@ -48,7 +49,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.data_loader import get_all_test_images, get_ground_truth, get_balanced_sample
 from src.llm_inference import load_prompt_file, call_llm
-from src.logger import init_csv, log_result, log_progress, RESULT_COLUMNS
+from src.logger import init_csv, log_result, log_progress
+from src.yolo import run_yolo_for_llm, yolo_mode_tag
 from src.metrics import (
     track_memory_usage,
     get_model_size,
@@ -56,6 +58,7 @@ from src.metrics import (
     evaluate_accuracy,
 )
 from src.hardware import get_hardware_specs
+from pipeline.object_detection.detections import YOLO_INPUT_MODES, resolve_yolo_input_mode
 
 
 DEFAULT_MODELS = [
@@ -80,10 +83,6 @@ DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'
 DEFAULT_SCENARIO = 'benchmark_scenario.json'
 
 
-def _yolo_tag(with_yolo):
-    return '_yolo' if with_yolo else '_noyolo'
-
-
 def _context_tag(with_context):
     return '_ctx' if with_context else ''
 
@@ -102,43 +101,12 @@ def _resolve_context_file(context_dir, scenario, with_context):
     return path
 
 
-# ── YOLO Integration ──────────────────────────────────────────────────────────
-
-def _run_yolo(image_path, yolo_model_name):
-    """Run YOLO inference on an image and return annotated path, count, duration."""
-    from pipeline.object_detection.model_handler import get_model
-    from pipeline.object_detection.config import (
-        ANNOTATED_OUTPUT_DIR,
-        ANNOTATED_OUTPUT_FILENAME,
-    )
-    import cv2
-
-    model = get_model(yolo_model_name)
-
-    start = time.perf_counter()
-    results = model(str(image_path))
-    duration_s = time.perf_counter() - start
-
-    result = results[0]
-    detection_count = len(result.boxes)
-
-    ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
-    annotated = result.plot()
-    cv2.imwrite(str(output_path), annotated)
-
-    return {
-        'annotated_path': output_path,
-        'detection_count': detection_count,
-        'duration_s': round(duration_s, 3),
-    }
-
-
 # ── Inference ─────────────────────────────────────────────────────────────────
 
 def run_single_inference(model_name, image_path, system_prompt,
                          with_yolo=False, yolo_model='best',
-                         context_file=None):
+                         context_file=None,
+                         yolo_input_mode='annotated_image'):
     """Run one model on one image, optionally with YOLO and/or GIS context."""
     ground_truth = get_ground_truth(image_path)
 
@@ -146,12 +114,17 @@ def run_single_inference(model_name, image_path, system_prompt,
     yolo_duration_s = None
     yolo_detection_count = None
     llm_input_path = image_path
+    yolo_context = None
+    resolved_yolo_input_mode = resolve_yolo_input_mode(yolo_input_mode)
+    yolo_enabled = with_yolo and resolved_yolo_input_mode != "disabled"
 
-    if with_yolo:
-        yolo_result = _run_yolo(image_path, yolo_model)
+    if yolo_enabled:
+        yolo_result = run_yolo_for_llm(image_path, yolo_model, yolo_input_mode)
         yolo_duration_s = yolo_result['duration_s']
         yolo_detection_count = yolo_result['detection_count']
-        llm_input_path = yolo_result['annotated_path']
+        llm_input_path = yolo_result['llm_input_path']
+        yolo_context = yolo_result['additional_context']
+        resolved_yolo_input_mode = yolo_result['yolo_input_mode']
 
     # LLM inference. Context file is passed through to call_llm which loads
     # and formats it internally. When context_file is None the LLM receives
@@ -161,6 +134,7 @@ def run_single_inference(model_name, image_path, system_prompt,
         str(llm_input_path),
         system_prompt,
         context_file=str(context_file) if context_file else None,
+        additional_context=yolo_context,
     )
 
     classification_raw = result['classification']
@@ -193,8 +167,9 @@ def run_single_inference(model_name, image_path, system_prompt,
         'load_duration_s': round(result['load_duration_ns'] / 1e9, 3),
         'model_size_gb': get_model_size(model_name),
         'memory_usage_gb': memory_gb,
-        'yolo_enabled': with_yolo,
-        'yolo_model': yolo_model if with_yolo else None,
+        'yolo_enabled': yolo_enabled,
+        'yolo_model': yolo_model if yolo_enabled else None,
+        'yolo_input_mode': resolved_yolo_input_mode if with_yolo else None,
         'yolo_duration_s': yolo_duration_s,
         'yolo_detection_count': yolo_detection_count,
         'context_enabled': context_file is not None,
@@ -235,7 +210,8 @@ def write_hardware_json(csv_path, run_id, mode, config):
 def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
                  num_images=None, seed=42, with_yolo=False, yolo_model='best',
                  with_context=False, context_dir=DEFAULT_CONTEXT_DIR,
-                 scenario=DEFAULT_SCENARIO):
+                 scenario=DEFAULT_SCENARIO,
+                 yolo_input_mode='annotated_image'):
     """All images (or balanced sample), no cooldown. Measures classification correctness."""
     output_path = Path(output_dir) / 'accuracy'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -263,7 +239,13 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
 
     log_progress(f"  System prompt: {system_prompt_file}")
     if with_yolo:
-        log_progress(f"  YOLO preprocessing: enabled (model={yolo_model})")
+        resolved_mode = resolve_yolo_input_mode(yolo_input_mode)
+        if resolved_mode == "disabled":
+            log_progress("  YOLO preprocessing: disabled (mode=disabled)")
+        else:
+            log_progress(
+                f"  YOLO preprocessing: enabled (model={yolo_model}, mode={resolved_mode})"
+            )
     if with_context:
         log_progress(f"  GIS context: enabled (scenario={scenario})")
 
@@ -275,7 +257,7 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
         log_progress(f"  Estimated time: ~{total * 25 / 60:.0f} minutes")
         return
 
-    yolo_tag = _yolo_tag(with_yolo)
+    yolo_tag = yolo_mode_tag(with_yolo, yolo_input_mode)
     context_tag = _context_tag(with_context)
 
     for model_name in models:
@@ -300,6 +282,7 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
                     model_name, image_path, system_prompt,
                     with_yolo=with_yolo, yolo_model=yolo_model,
                     context_file=context_file,
+                    yolo_input_mode=yolo_input_mode,
                 )
                 log_result(str(csv_file), result)
 
@@ -308,7 +291,10 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
 
                 suffix = ''
                 if with_yolo:
-                    suffix += f" | yolo: {result['yolo_detection_count']} box(es)"
+                    suffix += (
+                        f" | yolo: {result['yolo_detection_count']} box(es)"
+                        f" via {result['yolo_input_mode']}"
+                    )
                 if with_context:
                     suffix += f" | ctx: {result['context_scenario']}"
 
@@ -340,7 +326,8 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
                     num_images=3, cooldown=10, model_cooldown=90, seed=42,
                     with_yolo=False, yolo_model='best',
                     with_context=False, context_dir=DEFAULT_CONTEXT_DIR,
-                    scenario=DEFAULT_SCENARIO):
+                    scenario=DEFAULT_SCENARIO,
+                    yolo_input_mode='annotated_image'):
     """Balanced random sample with cooldowns. Each run gets a timestamped CSV+JSON."""
     output_path = Path(output_dir) / 'performance'
     output_path.mkdir(parents=True, exist_ok=True)
@@ -366,7 +353,13 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
     log_progress(f"  System prompt: {system_prompt_file}")
     log_progress(f"  Selected images: {[img.name for img in images]}")
     if with_yolo:
-        log_progress(f"  YOLO preprocessing: enabled (model={yolo_model})")
+        resolved_mode = resolve_yolo_input_mode(yolo_input_mode)
+        if resolved_mode == "disabled":
+            log_progress("  YOLO preprocessing: disabled (mode=disabled)")
+        else:
+            log_progress(
+                f"  YOLO preprocessing: enabled (model={yolo_model}, mode={resolved_mode})"
+            )
     if with_context:
         log_progress(f"  GIS context: enabled (scenario={scenario})")
 
@@ -387,13 +380,14 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
         'seed': seed,
         'with_yolo': with_yolo,
         'yolo_model': yolo_model if with_yolo else None,
+        'yolo_input_mode': yolo_input_mode if with_yolo else None,
         'with_context': with_context,
         'context_scenario': scenario if with_context else None,
         'system_prompt_file': str(system_prompt_file),
         'selected_images': [img.name for img in images],
     }
 
-    yolo_tag = _yolo_tag(with_yolo)
+    yolo_tag = yolo_mode_tag(with_yolo, yolo_input_mode)
     context_tag = _context_tag(with_context)
 
     for mi, model_name in enumerate(models):
@@ -413,12 +407,16 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
                     model_name, image_path, system_prompt,
                     with_yolo=with_yolo, yolo_model=yolo_model,
                     context_file=context_file,
+                    yolo_input_mode=yolo_input_mode,
                 )
                 log_result(str(csv_file), result)
 
                 suffix = ''
                 if with_yolo:
-                    suffix += f" | yolo: {result['yolo_duration_s']}s ({result['yolo_detection_count']} box)"
+                    suffix += (
+                        f" | yolo: {result['yolo_duration_s']}s "
+                        f"({result['yolo_detection_count']} box, {result['yolo_input_mode']})"
+                    )
                 if with_context:
                     suffix += f" | ctx: {result['context_scenario']}"
 
@@ -470,6 +468,15 @@ def main():
                         help='Run YOLO preprocessing before LLM inference')
     shared.add_argument('--yolo-model', default='best',
                         help='YOLO model weights (default: best)')
+    shared.add_argument(
+        '--yolo-input-mode',
+        choices=YOLO_INPUT_MODES,
+        default='annotated_image',
+        help=(
+            'How YOLO output reaches the LLM when --with-yolo is set '
+            '(default: annotated_image)'
+        ),
+    )
     shared.add_argument('--with-context', action='store_true',
                         help='Pass GIS context to the LLM alongside each image')
     shared.add_argument('--context-dir', default=str(DEFAULT_CONTEXT_DIR),
@@ -509,6 +516,7 @@ def main():
             with_context=args.with_context,
             context_dir=args.context_dir,
             scenario=args.scenario,
+            yolo_input_mode=args.yolo_input_mode,
         )
     elif args.mode == 'performance':
         run_performance(
@@ -526,6 +534,7 @@ def main():
             with_context=args.with_context,
             context_dir=args.context_dir,
             scenario=args.scenario,
+            yolo_input_mode=args.yolo_input_mode,
         )
 
 

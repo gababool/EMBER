@@ -34,6 +34,7 @@ try:
     from ui.components.result_panel import ResultPanel
     from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from pipeline.object_detection.detections import YOLO_INPUT_MODES
     from ui.pipeline_worker import DEMO_DATASET_DIR
 except ImportError:
     from assets.design import (
@@ -52,6 +53,7 @@ except ImportError:
     from components.result_panel import ResultPanel
     from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
+    from pipeline.object_detection.detections import YOLO_INPUT_MODES
     from pipeline_worker import DEMO_DATASET_DIR
 
 
@@ -151,12 +153,18 @@ class PipelineDashboard(QWidget):
         for label, data in [("Any", ""), ("Fire", "fire"), ("No Fire", "nofire")]:
             self.image_filter_select.addItem(label, data)
 
-        self.annotation_button = QPushButton("Annotation: ON")
-        self.annotation_button.setFont(app_font(FONT_SIZE_MD, bold=True))
-        self.annotation_button.setCursor(Qt.PointingHandCursor)
-        self.annotation_button.setFixedHeight(36)
-        self.annotation_button.setCheckable(True)
-        self.annotation_button.toggled.connect(self._on_annotation_toggled)
+        self.yolo_mode_select = ModelComboBox(theme)
+        self.yolo_mode_select.setMinimumWidth(170)
+        yolo_mode_labels = {
+            "annotated_image": "YOLO: Annotated Image",
+            "disabled": "YOLO: Off",
+            "context_summary": "YOLO: Box Summary",
+            "context_locations": "YOLO: Box Location",
+        }
+        for mode in ("annotated_image", "disabled", "context_summary", "context_locations"):
+            if mode not in YOLO_INPUT_MODES:
+                continue
+            self.yolo_mode_select.addItem(yolo_mode_labels[mode], mode)
 
         self.skip_quality_button = QPushButton("Quality: ON")
         self.skip_quality_button.setFont(app_font(FONT_SIZE_MD, bold=True))
@@ -199,7 +207,7 @@ class PipelineDashboard(QWidget):
         self.wind_speed_input.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
         controls_row_layout.addWidget(self.image_filter_select)
-        controls_row_layout.addWidget(self.annotation_button)
+        controls_row_layout.addWidget(self.yolo_mode_select)
         controls_row_layout.addWidget(self.skip_quality_button)
         controls_row_layout.addStretch(1)
         controls_row_layout.addWidget(self.context_select)
@@ -297,7 +305,7 @@ class PipelineDashboard(QWidget):
         self.wind_direction_select.setEnabled(False)
         self.wind_speed_input.setEnabled(False)
         self.prompt_select.setEnabled(False)
-        self.annotation_button.setEnabled(False)
+        self.yolo_mode_select.setEnabled(False)
         self.context_select.setEnabled(False)
         self.image_filter_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
@@ -316,6 +324,7 @@ class PipelineDashboard(QWidget):
             "error": None,
             "history_image_path": None,
             "llm_model": self.selected_llm_model(),
+            "yolo_input_mode": self.selected_yolo_input_mode(),
             "wind": self.selected_wind_config(),
         }
 
@@ -338,7 +347,7 @@ class PipelineDashboard(QWidget):
         self.wind_mode_select.setEnabled(True)
         self._sync_wind_controls()
         self.prompt_select.setEnabled(True)
-        self.annotation_button.setEnabled(True)
+        self.yolo_mode_select.setEnabled(True)
         self.context_select.setEnabled(True)
         self.image_filter_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
@@ -397,12 +406,11 @@ class PipelineDashboard(QWidget):
             return None
         return self.context_select.currentData()
 
-    def use_annotation(self) -> bool:
-        return not self.annotation_button.isChecked()
+    def selected_yolo_input_mode(self) -> str:
+        return self.yolo_mode_select.currentData() or "annotated_image"
 
-    def _on_annotation_toggled(self, checked: bool):
-        self.annotation_button.setText("Annotation: OFF" if checked else "Annotation: ON")
-        self._style_annotation_button(self.theme)
+    def use_annotation(self) -> bool:
+        return self.selected_yolo_input_mode() == "annotated_image"
 
     def _on_prompt_changed(self, _index: int):
         self.context_select.setVisible(
@@ -619,7 +627,7 @@ class PipelineDashboard(QWidget):
         self.prompt_select.apply_theme(theme)
         self.context_select.apply_theme(theme)
         self.image_filter_select.apply_theme(theme)
-        self._style_annotation_button(theme)
+        self.yolo_mode_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
@@ -821,22 +829,6 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result") or {}
         parsed = reasoning_result.get("parsed", {})
         return parsed.get("classification", "pending")
-
-    def _style_annotation_button(self, theme: Theme):
-        checked = self.annotation_button.isChecked()
-        border_color = theme.danger if checked else theme.border
-        text_color = theme.danger if checked else theme.text_primary
-        self.annotation_button.setStyleSheet(f"""
-            QPushButton {{
-                color: {text_color};
-                background-color: {theme.bg_panel_alt};
-                border: 1px solid {border_color};
-                border-radius: 5px;
-                padding: 6px 14px;
-            }}
-            QPushButton:hover {{ border-color: {theme.danger}; color: {theme.danger}; }}
-            QPushButton:disabled {{ color: {theme.text_muted}; border-color: {theme.border}; }}
-        """)
 
     def _style_skip_quality_button(self, theme: Theme):
         checked = self.skip_quality_button.isChecked()

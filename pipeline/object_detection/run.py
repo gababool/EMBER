@@ -31,7 +31,7 @@ CLASS_NAMES = {
 }
 
 
-def run (image_path: str, model_name: str, show: bool):
+def run(image_path: str, model_name: str, show: bool, save_annotation: bool = True):
 
         print(f"\nRunning YOLO on: {image_path} (model={model_name})")
 
@@ -79,6 +79,7 @@ def run (image_path: str, model_name: str, show: bool):
         
         #bounding boxes
         boxes = result.boxes
+        image_height, image_width = result.orig_shape
 
         print(f"\nDetection boxes: {len(boxes)}")
 
@@ -91,17 +92,33 @@ def run (image_path: str, model_name: str, show: bool):
                   conf = float(box.conf[0])
                   cls = int(box.cls[0])
                   label = CLASS_NAMES.get(cls, str(cls))
+                  bbox_xyxy = [float(value) for value in box.xyxy[0].tolist()]
                   detections.append({
                        "index": i + 1,
                        "label": label,
                        "class_id": cls,
                        "confidence": conf,
+                       "bbox_xyxy": bbox_xyxy,
                   })
 
                   print(f"{i+1}: {label} | confidence={conf:.2f}")
+        result_payload = {
+             "passed": True,
+             "image_path": str(image_path),
+             "model_name": model_name,
+             "image_width": image_width,
+             "image_height": image_height,
+             "bbox_coordinate_format": "xyxy_pixel_top_left_origin",
+             "detections": detections,
+        }
+
         if show:
              result.show()
-          # save annotated image
+
+        if not save_annotation:
+             return result_payload
+
+        # save annotated image
         ANNOTATED_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         output_path = ANNOTATED_OUTPUT_DIR / ANNOTATED_OUTPUT_FILENAME
         annotated = result.plot()
@@ -113,16 +130,14 @@ def run (image_path: str, model_name: str, show: bool):
                   "error": f"Failed to save annotated image to: {output_path}",
                   "image_path": str(image_path),
                   "model_name": model_name,
+                  "image_width": image_width,
+                  "image_height": image_height,
+                  "bbox_coordinate_format": "xyxy_pixel_top_left_origin",
                   "detections": detections,
              }
         print(f"\nAnnotated image saved to: {output_path}")
-        return {
-             "passed": True,
-             "image_path": str(image_path),
-             "model_name": model_name,
-             "annotated_image_path": str(output_path),
-             "detections": detections,
-        }
+        result_payload["annotated_image_path"] = str(output_path)
+        return result_payload
 
 
 
@@ -133,10 +148,11 @@ if __name__ == "__main__":
      parser.add_argument("image_path")
      parser.add_argument("--model", default="best")
      parser.add_argument("--show", action="store_true" )
+     parser.add_argument("--no-save-annotation", action="store_true")
 
      args = parser.parse_args()
 
-     run(args.image_path, args.model, args.show)
+     run(args.image_path, args.model, args.show, save_annotation=not args.no_save_annotation)
 
 
 

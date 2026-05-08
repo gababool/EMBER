@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
-            use_annotation=self.dashboard.use_annotation(),
+            yolo_input_mode=self.dashboard.selected_yolo_input_mode(),
             fixed_image_path=fixed_image_path,
             label_filter=label_filter,
             wind_mode=wind_config["mode"],

@@ -46,7 +46,8 @@ class PipelineWorker(QObject):
         prompt_file: str | None = None,
         context_file: str | None = None,
         skip_quality_screening: bool = False,
-        use_annotation: bool = True,
+        yolo_input_mode: str = "annotated_image",
+        use_annotation: bool | None = None,
         fixed_image_path: str | None = None,
         label_filter: str | None = None,
         max_quality_retries: int = 20,
@@ -62,7 +63,9 @@ class PipelineWorker(QObject):
         self.prompt_file = prompt_file
         self.context_file = context_file
         self.skip_quality_screening = skip_quality_screening
-        self.use_annotation = use_annotation
+        if use_annotation is not None:
+            yolo_input_mode = "annotated_image" if use_annotation else "context_summary"
+        self.yolo_input_mode = yolo_input_mode
         self.fixed_image_path = Path(fixed_image_path) if fixed_image_path else None
         self.label_filter = label_filter
         self.max_quality_retries = max_quality_retries
@@ -112,7 +115,7 @@ class PipelineWorker(QObject):
             yolo_model=self.yolo_model,
             llm_model=self.llm_model,
             skip_quality_screening=self.skip_quality_screening,
-            use_annotation=self.use_annotation,
+            yolo_input_mode=self.yolo_input_mode,
             operational_context=operational_context,
         )
         if self.prompt_file:

@@ -64,6 +64,13 @@ uv run python run_benchmark.py accuracy --images ../dataset --num-images 100
 # With YOLO preprocessing
 uv run python run_benchmark.py accuracy --images ../dataset --with-yolo
 
+# With YOLO metadata as LLM text context instead of annotated image
+uv run python run_benchmark.py accuracy --images ../dataset --with-yolo \
+    --yolo-input-mode context_summary
+
+uv run python run_benchmark.py accuracy --images ../dataset --with-yolo \
+    --yolo-input-mode context_locations
+
 # With GIS context (uses scenario_01/scenario_01.json by default)
 uv run python run_benchmark.py accuracy --images ../dataset --with-context
 
@@ -110,9 +117,16 @@ Run CSVs are timestamped so multiple runs accumulate for better statistics.
 
 ### YOLO Preprocessing
 
-When `--with-yolo` is set, each image passes through the YOLO object detection stage before reaching the LLM. The annotated image (bounding boxes for fire/smoke) becomes the LLM input. `--yolo-model` selects which weights to use (default: `best`).
+When `--with-yolo` is set, each image passes through the YOLO object detection stage before reaching the LLM. `--yolo-model` selects which weights to use (default: `best`).
 
-YOLO timing and detection count are logged as separate CSV columns (`yolo_duration_s`, `yolo_detection_count`) so YOLO cost is not lumped into LLM timing metrics.
+`--yolo-input-mode` controls how YOLO output reaches the LLM:
+
+- `disabled` — no YOLO preprocessing; the LLM receives the original image.
+- `annotated_image` — the current/default behavior; the LLM receives the annotated image with fire/smoke boxes.
+- `context_summary` — the LLM receives the original image plus detection count, labels, and confidence values as text context.
+- `context_locations` — the LLM receives the original image plus detection count, labels, confidence values, and bounding box coordinates as text context.
+
+YOLO mode, timing, and detection count are logged as separate CSV columns (`yolo_input_mode`, `yolo_duration_s`, `yolo_detection_count`) so YOLO cost and input style are not lumped into LLM timing metrics.
 
 ### GIS Context
 

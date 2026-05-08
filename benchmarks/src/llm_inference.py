@@ -68,7 +68,7 @@ def load_operational_context(context_file):
     return format_context(context)
 
 
-def call_llm(model_name, image_path, system_prompt, context_file=None):
+def call_llm(model_name, image_path, system_prompt, context_file=None, additional_context=None):
     """
     Call Ollama with structured JSON output enforced via Pydantic schema.
 
@@ -79,6 +79,9 @@ def call_llm(model_name, image_path, system_prompt, context_file=None):
         context_file:  Optional path to a scenario JSON file. When provided,
                        the formatted operational context is appended to the
                        user message before the image is sent to the LLM.
+        additional_context:
+                       Optional extra text context, such as structured YOLO
+                       detection metadata.
 
     Returns:
         dict with keys:
@@ -97,10 +100,13 @@ def call_llm(model_name, image_path, system_prompt, context_file=None):
     # Build user message content. Operational context is prepended as text
     # when a context file is provided, so the model sees the context block
     # before the image content.
-    user_content = ""
+    user_content_parts = []
     operational_context_text = load_operational_context(context_file)
     if operational_context_text:
-        user_content = operational_context_text
+        user_content_parts.append(operational_context_text)
+    if additional_context and additional_context.strip():
+        user_content_parts.append(additional_context.strip())
+    user_content = "\n\n".join(user_content_parts)
 
     response = ollama.chat(
         model=model_name,
