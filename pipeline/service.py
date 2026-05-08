@@ -8,6 +8,7 @@ from pipeline.object_detection.detections import (
     format_detection_context,
     resolve_yolo_input_mode,
 )
+from pipeline.context.schemas import OperationalContext
 from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 
 
@@ -163,6 +164,7 @@ class LLMReasoningStage:
         context_file: str | Path | None = None,
         yolo_input_mode: str | None = None,
         use_annotation: bool | None = None,
+        operational_context: OperationalContext | None = None,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
@@ -172,6 +174,7 @@ class LLMReasoningStage:
             yolo_input_mode,
             use_annotation=use_annotation,
         )
+        self.operational_context = operational_context
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.llm.inference import load_system_prompt, run_llm_inference
@@ -201,6 +204,7 @@ class LLMReasoningStage:
             prompt_file=str(self.prompt_file),
             additional_context=additional_context,
             context_file=str(self.context_file) if self.context_file else None,
+            operational_context=self.operational_context,
         )
         result["yolo_input_mode"] = self.yolo_input_mode
         context.set_output(self.name, result)
@@ -272,6 +276,7 @@ def create_default_pipeline(
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
     context_file: str | Path | None = None,
+    operational_context: OperationalContext | None = None,
     skip_quality_screening: bool = False,
     yolo_input_mode: str | None = None,
     use_annotation: bool | None = None,
@@ -295,6 +300,7 @@ def create_default_pipeline(
         prompt_file=prompt_file,
         context_file=context_file,
         yolo_input_mode=resolved_yolo_input_mode,
+        operational_context=operational_context,
     ))
     return PipelineRunner(stages=stages)
 

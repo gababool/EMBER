@@ -52,6 +52,12 @@ scripts/generate_context_scenarios.sh --scenario 03
 # Generate JSON from already extracted .osm.pbf files
 scripts/generate_context_scenarios.sh --generate-only
 
+# Generate JSON with deterministic semi-random regional wind
+scripts/generate_context_scenarios.sh --generate-only --mock-wind
+
+# Generate JSON with the same mocked wind in every scenario for benchmarking
+scripts/generate_context_scenarios.sh --generate-only --benchmark-wind
+
 # Validate existing scenario JSON files
 scripts/generate_context_scenarios.sh --validate-only
 
@@ -60,6 +66,32 @@ scripts/generate_context_scenarios.sh --input /path/to/sweden-latest.osm.pbf
 ```
 
 Run `scripts/generate_context_scenarios.sh --help` for all options.
+
+Mocked wind uses a deterministic semi-random rough regional value for each
+scenario. It is reproducible for benchmarking, not a localized weather
+observation. Values use one compass bearing and a speed between 1.0 and
+10.0 m/s:
+
+```json
+"wind": {
+  "direction_degrees": 315,
+  "direction_compass": "NW",
+  "speed_mps": 4.2,
+  "source": "mocked"
+}
+```
+
+For benchmark runs where wind should be controlled across prompts,
+`--benchmark-wind` writes the same mocked value to every scenario:
+
+```json
+"wind": {
+  "direction_degrees": 225,
+  "direction_compass": "SW",
+  "speed_mps": 6.5,
+  "source": "mocked"
+}
+```
 
 ---
 

@@ -8,7 +8,7 @@ Treat the image and context as describing the same operational situation. Do not
 
 When reasoning, attribute claims to their source: use "From the image..." for observations derived from visual evidence, and "From the context..." for information drawn from the operational context block.
 
-Make your reasoning specific. Reference named locations, distances, and bearings from the context when relevant. Consider water source supply category when discussing logistics. Consider road accessibility when discussing crew deployment. Consider settlements and protected areas when determining priority.
+Make your reasoning specific. Reference named locations, distances, and bearings from the context when relevant. Consider water source supply category when discussing logistics. Consider road accessibility when discussing crew deployment. Consider settlements and protected areas when determining priority. When wind is present in the context, consider its speed and the meteorological direction it blows from when discussing likely exposure, access positioning, and tactical priority. When wind is absent, do not infer wind conditions.
 
 Produce output with the following fields:
 
