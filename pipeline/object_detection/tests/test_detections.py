@@ -4,6 +4,7 @@ from pipeline.object_detection.detections import (
     format_detection_context,
     resolve_yolo_input_mode,
 )
+from pipeline.service import create_default_pipeline
 
 
 SAMPLE_DETECTION_RESULT = {
@@ -31,6 +32,7 @@ SAMPLE_DETECTION_RESULT = {
 def test_resolve_yolo_input_mode_keeps_legacy_annotation_flag():
     assert resolve_yolo_input_mode(use_annotation=True) == "annotated_image"
     assert resolve_yolo_input_mode(use_annotation=False) == "context_summary"
+    assert resolve_yolo_input_mode("disabled") == "disabled"
 
 
 def test_resolve_yolo_input_mode_rejects_unknown_mode():
@@ -63,3 +65,16 @@ def test_format_detection_context_handles_zero_detections():
 
     assert "Detections: 0 boxes" in formatted
     assert "bbox xyxy" not in formatted
+
+
+def test_format_detection_context_disabled_mode_is_empty():
+    assert format_detection_context(SAMPLE_DETECTION_RESULT, "disabled") == ""
+
+
+def test_disabled_mode_skips_object_detection_stage():
+    runner = create_default_pipeline(
+        yolo_input_mode="disabled",
+        skip_quality_screening=True,
+    )
+
+    assert [stage.name for stage in runner.stages] == ["llm_reasoning"]

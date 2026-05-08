@@ -144,10 +144,13 @@ class PipelineDashboard(QWidget):
         self.yolo_mode_select.setMinimumWidth(170)
         yolo_mode_labels = {
             "annotated_image": "YOLO: Annotated",
+            "disabled": "YOLO: Off",
             "context_summary": "YOLO: Summary",
             "context_locations": "YOLO: Boxes",
         }
-        for mode in YOLO_INPUT_MODES:
+        for mode in ("annotated_image", "disabled", "context_summary", "context_locations"):
+            if mode not in YOLO_INPUT_MODES:
+                continue
             self.yolo_mode_select.addItem(yolo_mode_labels[mode], mode)
 
         self.skip_quality_button = QPushButton("Quality: ON")
