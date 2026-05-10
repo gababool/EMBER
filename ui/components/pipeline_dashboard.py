@@ -4,11 +4,15 @@ import tempfile
 import uuid
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
+    QGraphicsPixmapItem,
+    QGraphicsScene,
+    QGraphicsView,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -63,6 +67,8 @@ COMPACT_HEADER_CONTROL_WIDTH = 118
 HEADER_CONTROL_HEIGHT = 40
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
 _CONTEXT_MARKER = "structured operational context block"
+PREVIEW_ZOOM_STEP = 1.20
+PREVIEW_WHEEL_DELTA_PER_STEP = 150
 
 
 def _prompt_requires_context(prompt_path: str) -> bool:
@@ -83,6 +89,8 @@ class PipelineDashboard(QWidget):
         self.run_history = []
         self.compact_layout = False
         self.last_image_path = None
+        self.current_preview_image_path = None
+        self._current_preview_pixmap = QPixmap()
         self._generated_mock_wind = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
@@ -238,9 +246,24 @@ class PipelineDashboard(QWidget):
             quality_layout.addWidget(row)
         quality_layout.addStretch()
 
-        self.image_placeholder = QLabel("Processed image will appear here")
+        self.image_placeholder = ClickableImageLabel("Processed image will appear here")
         self.image_placeholder.setAlignment(Qt.AlignCenter)
         self.image_placeholder.setMinimumSize(360, 220)
+        self.image_placeholder.clicked.connect(self._open_image_preview)
+
+        self.open_preview_button = QPushButton("Open Preview")
+        self.open_preview_button.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.open_preview_button.setCursor(Qt.PointingHandCursor)
+        self.open_preview_button.setFixedHeight(32)
+        self.open_preview_button.setEnabled(False)
+        self.open_preview_button.clicked.connect(self._open_image_preview)
+
+        self.image_body = QWidget()
+        image_layout = QVBoxLayout(self.image_body)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        image_layout.setSpacing(10)
+        image_layout.addWidget(self.image_placeholder, 1)
+        image_layout.addWidget(self.open_preview_button, 0, Qt.AlignRight)
 
         self.reasoning_text = QTextEdit()
         self.reasoning_text.setReadOnly(True)
@@ -267,7 +290,7 @@ class PipelineDashboard(QWidget):
         self.image_panel = ResultPanel(
             "Processed Image",
             "Detection output with bounding boxes.",
-            self.image_placeholder,
+            self.image_body,
             theme,
         )
         self.reasoning_panel = ResultPanel(
@@ -333,8 +356,7 @@ class PipelineDashboard(QWidget):
         self.quality_panel.setVisible(not skip_quality)
         for row in self.quality_rows:
             row.set_state("pending")
-        self.image_placeholder.setPixmap(QPixmap())
-        self.image_placeholder.setText("Processed image will appear here")
+        self._clear_processed_image("Processed image will appear here")
         self.classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
@@ -500,28 +522,15 @@ class PipelineDashboard(QWidget):
         if self.current_run is not None:
             self.current_run["detection_result"] = result
         if not result.get("passed"):
-            self.image_placeholder.setPixmap(QPixmap())
-            self.image_placeholder.setText(result.get("error", "Object detection failed"))
+            self._clear_processed_image(result.get("error", "Object detection failed"))
             return
 
         annotated_path = result.get("annotated_image_path")
         if not annotated_path:
-            self.image_placeholder.setText("No annotated image returned")
+            self._clear_processed_image("No annotated image returned")
             return
 
-        pixmap = QPixmap(annotated_path)
-        if pixmap.isNull():
-            self.image_placeholder.setText(f"Could not load image:\n{annotated_path}")
-            return
-
-        self.image_placeholder.setText("")
-        self.image_placeholder.setPixmap(
-            pixmap.scaled(
-                self.image_placeholder.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
+        self._load_image_into_processed_box(annotated_path)
 
     def set_reasoning_result(self, result: dict):
         if self.current_run is not None:
@@ -620,6 +629,25 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.border};
             }}
         """)
+        self.open_preview_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 5px 12px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
         self.model_select.apply_theme(theme)
         self.wind_mode_select.apply_theme(theme)
         self.wind_direction_select.apply_theme(theme)
@@ -642,9 +670,8 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
-                background-color: {theme.bg_panel_alt};
-                border: 1px dashed {theme.border};
-                border-radius: 4px;
+                background-color: transparent;
+                border: none;
             }}
         """)
         self.reasoning_text.setStyleSheet(f"""
@@ -680,6 +707,7 @@ class PipelineDashboard(QWidget):
     def resizeEvent(self, event):
         self.close_open_popups()
         super().resizeEvent(event)
+        self._refresh_processed_pixmap()
         self._apply_responsive_layout()
 
     def _apply_responsive_layout(self):
@@ -724,8 +752,7 @@ class PipelineDashboard(QWidget):
             for row in self.quality_rows:
                 row.set_state("running")
         elif stage_name == "object_detection":
-            self.image_placeholder.setPixmap(QPixmap())
-            self.image_placeholder.setText("Running object detection...")
+            self._clear_processed_image("Running object detection...")
         elif stage_name == "llm_reasoning":
             self.reasoning_text.setPlainText("Running LLM reasoning...")
 
@@ -788,8 +815,7 @@ class PipelineDashboard(QWidget):
     def reset_loaded_state(self, expected_label: str | None):
         for row in self.quality_rows:
             row.set_state("pending")
-        self.image_placeholder.setPixmap(QPixmap())
-        self.image_placeholder.setText("Processed image will appear here")
+        self._clear_processed_image("Processed image will appear here")
         self.classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         if expected_label:
@@ -799,16 +825,47 @@ class PipelineDashboard(QWidget):
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.image_placeholder.setText(f"Could not load image:\n{image_path}")
+            self._clear_processed_image(f"Could not load image:\n{image_path}")
             return
+        self.current_preview_image_path = image_path
+        self._current_preview_pixmap = pixmap
         self.image_placeholder.setText("")
+        self.image_placeholder.setCursor(Qt.PointingHandCursor)
+        self.open_preview_button.setEnabled(True)
+        self._refresh_processed_pixmap()
+
+    def _clear_processed_image(self, message: str):
+        self.image_placeholder.setPixmap(QPixmap())
+        self.image_placeholder.setText(message)
+        self.image_placeholder.unsetCursor()
+        self.current_preview_image_path = None
+        self._current_preview_pixmap = QPixmap()
+        self.open_preview_button.setEnabled(False)
+
+    def _refresh_processed_pixmap(self):
+        if self._current_preview_pixmap.isNull():
+            return
         self.image_placeholder.setPixmap(
-            pixmap.scaled(
+            self._current_preview_pixmap.scaled(
                 self.image_placeholder.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )
         )
+
+    def _open_image_preview(self):
+        if not self.current_preview_image_path:
+            return
+        dialog = ImagePreviewDialog(self.current_preview_image_path, self.theme, self)
+        parent_window = self.window()
+        parent_geometry = parent_window.geometry()
+        dialog.resize(
+            max(900, int(parent_geometry.width() * 0.9)),
+            max(640, int(parent_geometry.height() * 0.86)),
+        )
+        dialog.move(parent_geometry.center() - dialog.rect().center())
+        dialog.image_view.fit_image()
+        dialog.exec()
 
     @staticmethod
     def _copy_history_image(image_path: str | None):
@@ -851,6 +908,209 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.border};
             }}
         """)
+
+    @staticmethod
+    def _label_style(color: str) -> str:
+        return f"""
+            QLabel {{
+                color: {color};
+                background: transparent;
+                border: none;
+            }}
+        """
+
+
+class ClickableImageLabel(QLabel):
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.pixmap() and not self.pixmap().isNull():
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class ZoomableImageView(QGraphicsView):
+    zoom_changed = Signal(int)
+
+    def __init__(self, pixmap: QPixmap, parent=None):
+        super().__init__(parent)
+        self.pixmap_item = QGraphicsPixmapItem(pixmap)
+        self.scene = QGraphicsScene(self)
+        self.scene.addItem(self.pixmap_item)
+        self.setScene(self.scene)
+
+        self.fit_to_view = True
+        self.min_zoom = 0.10
+        self.max_zoom = 12.0
+        self.zoom_scale = 1.0
+
+        self.setAlignment(Qt.AlignCenter)
+        self.setDragMode(QGraphicsView.NoDrag)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+        self.setRenderHint(QPainter.SmoothPixmapTransform, True)
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y() or event.pixelDelta().y()
+        if not delta:
+            event.ignore()
+            return
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.zoom_by(PREVIEW_ZOOM_STEP ** (delta / PREVIEW_WHEEL_DELTA_PER_STEP))
+        event.accept()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.fit_to_view:
+            self.fit_image()
+
+    def zoom_by(self, factor: float):
+        next_zoom = max(self.min_zoom, min(self.max_zoom, self.zoom_scale * factor))
+        if next_zoom == self.zoom_scale:
+            return
+        self.fit_to_view = False
+        scale_factor = next_zoom / self.zoom_scale
+        self.scale(scale_factor, scale_factor)
+        self.zoom_scale = next_zoom
+        self.zoom_changed.emit(int(self.zoom_scale * 100))
+
+    def fit_image(self):
+        if self.pixmap_item.pixmap().isNull():
+            return
+        self.fit_to_view = True
+        self.resetTransform()
+        self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+        self.zoom_scale = self.transform().m11()
+        self.zoom_changed.emit(int(self.zoom_scale * 100))
+
+
+class ImagePreviewDialog(QDialog):
+    def __init__(self, image_path: str, theme: Theme = DEFAULT_THEME, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.image_path = image_path
+        self.source_pixmap = QPixmap(image_path)
+
+        self.setWindowTitle("Image Preview")
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.setSpacing(8)
+
+        self.title_label = QLabel(Path(image_path).name)
+        self.title_label.setFont(app_font(FONT_SIZE_MD, bold=True))
+
+        self.zoom_out_button = QPushButton("-")
+        self.fit_button = QPushButton("Fit")
+        self.zoom_in_button = QPushButton("+")
+        self.close_button = QPushButton("Close")
+        for button in (
+            self.zoom_out_button,
+            self.fit_button,
+            self.zoom_in_button,
+            self.close_button,
+        ):
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFont(app_font(FONT_SIZE_SM, bold=True))
+            button.setFixedHeight(34)
+
+        self.zoom_out_button.setFixedWidth(42)
+        self.zoom_in_button.setFixedWidth(42)
+        self.fit_button.setFixedWidth(64)
+        self.close_button.setFixedWidth(84)
+
+        self.zoom_label = QLabel("100%")
+        self.zoom_label.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.zoom_label.setAlignment(Qt.AlignCenter)
+        self.zoom_label.setFixedWidth(70)
+
+        toolbar.addWidget(self.title_label, 1)
+        toolbar.addWidget(self.zoom_out_button)
+        toolbar.addWidget(self.zoom_label)
+        toolbar.addWidget(self.zoom_in_button)
+        toolbar.addWidget(self.fit_button)
+        toolbar.addWidget(self.close_button)
+
+        self.image_view = ZoomableImageView(self.source_pixmap)
+        self.image_view.zoom_changed.connect(lambda value: self.zoom_label.setText(f"{value}%"))
+        self.zoom_out_button.clicked.connect(lambda: self.image_view.zoom_by(1 / PREVIEW_ZOOM_STEP))
+        self.zoom_in_button.clicked.connect(lambda: self.image_view.zoom_by(PREVIEW_ZOOM_STEP))
+        self.fit_button.clicked.connect(self.image_view.fit_image)
+        self.close_button.clicked.connect(self.accept)
+
+        layout.addLayout(toolbar)
+        layout.addWidget(self.image_view, 1)
+
+        self.apply_theme(theme)
+        self.image_view.fit_image()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Plus, Qt.Key_Equal):
+            self.image_view.zoom_by(PREVIEW_ZOOM_STEP)
+            return
+        if event.key() == Qt.Key_Minus:
+            self.image_view.zoom_by(1 / PREVIEW_ZOOM_STEP)
+            return
+        if event.key() == Qt.Key_0:
+            self.image_view.fit_image()
+            return
+        super().keyPressEvent(event)
+
+    def apply_theme(self, theme: Theme):
+        self.theme = theme
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {theme.bg_main};
+                color: {theme.text_primary};
+            }}
+            QGraphicsView {{
+                background-color: {theme.bg_panel};
+                border: 1px solid {theme.border};
+                border-radius: 6px;
+            }}
+            QScrollBar:vertical, QScrollBar:horizontal {{
+                background-color: {theme.bg_panel_alt};
+                border: none;
+                width: 10px;
+                height: 10px;
+            }}
+            QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+                background-color: {theme.border};
+                border-radius: 5px;
+            }}
+            QScrollBar::add-line, QScrollBar::sub-line {{
+                width: 0px;
+                height: 0px;
+            }}
+        """)
+        self.title_label.setStyleSheet(self._label_style(theme.text_primary))
+        self.zoom_label.setStyleSheet(self._label_style(theme.text_muted))
+        for button in (
+            self.zoom_out_button,
+            self.fit_button,
+            self.zoom_in_button,
+            self.close_button,
+        ):
+            button.setStyleSheet(f"""
+                QPushButton {{
+                    color: {theme.text_primary};
+                    background-color: {theme.bg_panel_alt};
+                    border: 1px solid {theme.border};
+                    border-radius: 5px;
+                    padding: 5px 10px;
+                }}
+                QPushButton:hover {{
+                    border-color: {theme.accent_cyan};
+                }}
+                QPushButton:pressed {{
+                    background-color: {theme.bg_panel};
+                }}
+            """)
 
     @staticmethod
     def _label_style(color: str) -> str:
