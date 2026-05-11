@@ -1,10 +1,11 @@
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -18,14 +19,18 @@ try:
     from ui.assets.design import DARK_THEME, LIGHT_THEME, Theme
     from ui.components.pipeline_dashboard import PipelineDashboard
     from ui.components.top_bar import TopBar
-    from ui.pipeline_worker import PipelineWorker
+    from ui.pipeline_worker import DEFAULT_LLM_TIMEOUT_SECONDS, PipelineWorker
     from ui.system_monitor import SystemMonitor
 except ImportError:
     from assets.design import DARK_THEME, LIGHT_THEME, Theme
     from components.pipeline_dashboard import PipelineDashboard
     from components.top_bar import TopBar
-    from pipeline_worker import PipelineWorker
+    from pipeline_worker import DEFAULT_LLM_TIMEOUT_SECONDS, PipelineWorker
     from system_monitor import SystemMonitor
+
+
+LLM_TIMEOUT_MS = int(DEFAULT_LLM_TIMEOUT_SECONDS * 1000)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -55,6 +60,9 @@ class MainWindow(QMainWindow):
         self.dashboard.start_button.clicked.connect(self.start_demo)
         self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
         self.dashboard.image_picked.connect(self.run_picked_image)
+        self.dashboard.cancel_llm_requested.connect(self.cancel_llm_inference)
+        self.dashboard.llm_started.connect(self._start_llm_timeout)
+        self.dashboard.llm_toggle_button.toggled.connect(self.update_wind_status)
         self.dashboard.wind_mode_select.currentIndexChanged.connect(
             self.update_wind_status
         )
@@ -77,6 +85,11 @@ class MainWindow(QMainWindow):
 
         self.pipeline_thread = None
         self.pipeline_worker = None
+        self._detached_pipeline_threads = []
+        self.llm_timeout_timer = QTimer(self)
+        self.llm_timeout_timer.setSingleShot(True)
+        self.llm_timeout_timer.setInterval(LLM_TIMEOUT_MS)
+        self.llm_timeout_timer.timeout.connect(self.timeout_llm_inference)
         self.system_monitor = SystemMonitor(parent=self)
         self.system_monitor.stats_updated.connect(self.update_system_stats)
         self.system_monitor.start()
@@ -85,6 +98,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(label_filter=self.dashboard.selected_image_filter())
@@ -93,6 +107,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(fixed_image_path=image_path)
@@ -102,6 +117,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None or image_path is None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(
@@ -121,6 +137,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            llm_enabled=self.dashboard.llm_inference_enabled(),
             yolo_input_mode=self.dashboard.selected_yolo_input_mode(),
             fixed_image_path=fixed_image_path,
             label_filter=label_filter,
@@ -134,6 +151,7 @@ class MainWindow(QMainWindow):
         self.pipeline_worker.image_selected.connect(self.dashboard.set_selected_image)
         self.pipeline_worker.wind_updated.connect(self.update_generated_wind)
         self.pipeline_worker.event_received.connect(self.dashboard.handle_pipeline_event)
+        self.pipeline_worker.event_received.connect(self._handle_pipeline_event)
         self.pipeline_worker.failed.connect(self.dashboard.set_pipeline_error)
         self.pipeline_worker.finished.connect(self.pipeline_thread.quit)
         self.pipeline_worker.finished.connect(self.pipeline_worker.deleteLater)
@@ -141,10 +159,82 @@ class MainWindow(QMainWindow):
         self.pipeline_thread.finished.connect(self._demo_finished)
         self.pipeline_thread.start()
 
+    def cancel_llm_inference(self):
+        self._stop_active_llm("cancelled")
+
+    def timeout_llm_inference(self):
+        self._stop_active_llm("timed_out")
+
+    def _stop_active_llm(self, status: str):
+        if self.pipeline_worker is None or self.pipeline_thread is None:
+            return
+
+        self.llm_timeout_timer.stop()
+        worker = self.pipeline_worker
+        thread = self.pipeline_thread
+        worker.cancel_llm_inference()
+        self._detach_worker_from_dashboard(worker, thread)
+        self._detached_pipeline_threads.append(thread)
+        thread.finished.connect(lambda t=thread: self._forget_detached_thread(t))
+        self.pipeline_thread = None
+        self.pipeline_worker = None
+        self.dashboard.cancel_llm_immediately(status)
+        if thread.isRunning():
+            self.dashboard.set_llm_background_stopping(True)
+            self._set_top_mode("LLM STOPPING")
+        else:
+            self.dashboard.set_llm_background_stopping(False)
+            self._set_top_mode("OFFLINE MODE")
+
     def _demo_finished(self):
+        self.llm_timeout_timer.stop()
         self.dashboard.set_demo_finished()
         self.pipeline_thread = None
         self.pipeline_worker = None
+        self._set_top_mode("OFFLINE MODE")
+
+    def _detach_worker_from_dashboard(self, worker: PipelineWorker, thread: QThread):
+        connections = (
+            (worker.image_selected, self.dashboard.set_selected_image),
+            (worker.wind_updated, self.update_generated_wind),
+            (worker.event_received, self.dashboard.handle_pipeline_event),
+            (worker.event_received, self._handle_pipeline_event),
+            (worker.failed, self.dashboard.set_pipeline_error),
+            (thread.finished, self._demo_finished),
+        )
+        for signal, slot in connections:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+
+    def _forget_detached_thread(self, thread: QThread):
+        if thread in self._detached_pipeline_threads:
+            self._detached_pipeline_threads.remove(thread)
+        if self.pipeline_thread is None and not self._detached_pipeline_threads:
+            self.dashboard.set_llm_background_stopping(False)
+            self._set_top_mode("OFFLINE MODE")
+
+    def _start_llm_timeout(self):
+        if self.pipeline_worker is not None and self.pipeline_thread is not None:
+            self.llm_timeout_timer.start()
+
+    def _handle_pipeline_event(self, event):
+        result = getattr(event, "result", None)
+        if result is not None and result.stage_name == "llm_reasoning":
+            self.llm_timeout_timer.stop()
+
+    def _warn_if_llm_background_active(self):
+        if not any(thread.isRunning() for thread in self._detached_pipeline_threads):
+            return
+        QMessageBox.warning(
+            self,
+            "LLM Still Stopping",
+            (
+                "A cancelled LLM request is still stopping in the background.\n\n"
+                "Starting another run now may make local Ollama inference slower."
+            ),
+        )
 
     def update_system_stats(self, stats):
         self.top_bar.set_system_stats(

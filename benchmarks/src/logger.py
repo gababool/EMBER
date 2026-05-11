@@ -19,6 +19,7 @@ RESULT_COLUMNS = [
     'response_text',
     'word_count',
     'eval_count',
+    'prompt_eval_count',
     'tokens_per_sec',
     'prompt_eval_duration_s',
     'eval_duration_s',

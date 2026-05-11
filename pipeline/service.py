@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 from pipeline.object_detection.detections import (
     format_detection_context,
@@ -13,7 +13,8 @@ from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUT
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "c1v1prompt.txt"
+DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "latest.txt"
+DEFAULT_SYSTEM_CONTENT_FILE = SCRIPT_DIR / "llm" / "prompts" / "system_content" / "system_content_latest.txt"
 
 
 @dataclass
@@ -160,14 +161,18 @@ class LLMReasoningStage:
         self,
         model_name: str = "ministral",
         prompt_file: str | Path = DEFAULT_PROMPT_FILE,
+        system_content_file: str | Path = DEFAULT_SYSTEM_CONTENT_FILE,
         additional_context: str | None = None,
         context_file: str | Path | None = None,
         yolo_input_mode: str | None = None,
         use_annotation: bool | None = None,
         operational_context: OperationalContext | None = None,
+        should_cancel: Callable[[], bool] | None = None,
+        timeout_seconds: float | None = None,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
+        self.system_content_file = Path(system_content_file)
         self.additional_context = additional_context
         self.context_file = Path(context_file) if context_file else None
         self.yolo_input_mode = resolve_yolo_input_mode(
@@ -175,9 +180,17 @@ class LLMReasoningStage:
             use_annotation=use_annotation,
         )
         self.operational_context = operational_context
+        self.should_cancel = should_cancel
+        self.timeout_seconds = timeout_seconds
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
-        from pipeline.llm.inference import load_system_prompt, run_llm_inference
+        from pipeline.llm.inference import (
+            LLMInferenceCancelled,
+            LLMInferenceTimedOut,
+            load_system_content,
+            load_system_prompt,
+            run_llm_inference,
+        )
 
         if self.yolo_input_mode == "annotated_image":
             image_path = context.get_output("annotated_image_path", context.image_path)
@@ -196,16 +209,40 @@ class LLMReasoningStage:
                 self.additional_context,
                 detection_context,
             )
+
         system_prompt = load_system_prompt(str(self.prompt_file))
-        result = run_llm_inference(
-            model_name=self.model_name,
-            image_path=str(image_path),
-            system_prompt=system_prompt,
-            prompt_file=str(self.prompt_file),
-            additional_context=additional_context,
-            context_file=str(self.context_file) if self.context_file else None,
-            operational_context=self.operational_context,
-        )
+        system_content = load_system_content(str(self.system_content_file))
+        try:
+            result = run_llm_inference(
+                model_name=self.model_name,
+                image_path=str(image_path),
+                system_prompt=system_prompt,
+                system_content=system_content,
+                prompt_file=str(self.prompt_file),
+                additional_context=additional_context,
+                context_file=str(self.context_file) if self.context_file else None,
+                operational_context=self.operational_context,
+                should_cancel=self.should_cancel,
+                timeout_seconds=self.timeout_seconds,
+            )
+        except LLMInferenceCancelled:
+            result = {
+                "model_name": self.model_name,
+                "prompt_file": str(self.prompt_file),
+                "context_file": str(self.context_file) if self.context_file else None,
+                "parsed": {},
+                "raw_response": "",
+                "status": "cancelled",
+            }
+        except LLMInferenceTimedOut:
+            result = {
+                "model_name": self.model_name,
+                "prompt_file": str(self.prompt_file),
+                "context_file": str(self.context_file) if self.context_file else None,
+                "parsed": {},
+                "raw_response": "",
+                "status": "timed_out",
+            }
         result["yolo_input_mode"] = self.yolo_input_mode
         context.set_output(self.name, result)
 
@@ -275,9 +312,13 @@ def create_default_pipeline(
     yolo_model: str = "best",
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
+    system_content_file: str | Path = DEFAULT_SYSTEM_CONTENT_FILE,
     context_file: str | Path | None = None,
     operational_context: OperationalContext | None = None,
     skip_quality_screening: bool = False,
+    llm_enabled: bool = True,
+    should_cancel_llm: Callable[[], bool] | None = None,
+    llm_timeout_seconds: float | None = None,
     yolo_input_mode: str | None = None,
     use_annotation: bool | None = None,
 ) -> PipelineRunner:
@@ -295,13 +336,17 @@ def create_default_pipeline(
                 yolo_input_mode=resolved_yolo_input_mode,
             )
         )
-    stages.append(LLMReasoningStage(
-        model_name=llm_model,
-        prompt_file=prompt_file,
-        context_file=context_file,
-        yolo_input_mode=resolved_yolo_input_mode,
-        operational_context=operational_context,
-    ))
+    if llm_enabled:
+        stages.append(LLMReasoningStage(
+            model_name=llm_model,
+            prompt_file=prompt_file,
+            system_content_file=system_content_file,
+            context_file=context_file,
+            yolo_input_mode=resolved_yolo_input_mode,
+            operational_context=operational_context,
+            should_cancel=should_cancel_llm,
+            timeout_seconds=llm_timeout_seconds,
+        ))
     return PipelineRunner(stages=stages)
 
 

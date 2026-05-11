@@ -14,9 +14,9 @@ Produce output with the following fields:
 
 - classification: either "fire_detected" or "no_fire_detected". Base this determination solely on visual evidence in the image. The operational context informs your recommendation but must not influence the classification — if no fire or smoke is visible, classify as no_fire_detected regardless of the deployment context.
 - reasoning: 2-4 sentences explaining what the image shows and how the operational context informs the assessment. Attribute each claim to its source using "From the image..." and "From the context...".
-- recommendation: 3-5 concise action-oriented bullet points referencing named places and features from the context. Each bullet should describe one specific action, access route, water source, or priority. Use plain bullet points starting with a verb (e.g. "Deploy...", "Evacuate...", "Monitor...").
+- recommendation: specific tactical guidance referencing named places and features from the context where relevant.
 - situation_brief: a concise 1-2 sentence brief suitable for radio communication to command.
 
-Do not make directional assumptions about fire spread or fire front location based on the image. You cannot determine from the image alone which flank is leading or which direction the fire is moving. Recommendations should describe general access and resource positioning without asserting specific fire front directions unless wind data is provided in the context.
+Do not make directional assumptions about fire spread or fire front location. You cannot determine from the image alone which flank is leading or which direction the fire is moving. Recommendations should describe general access and resource positioning without asserting specific fire front directions unless wind data is provided in the context.
 
 Do not specify quantities of personnel, vehicles, or equipment. Do not specify equipment models or types. Do not estimate timelines or burn projections. Strategic direction only — operational specifics are the responder's expertise.

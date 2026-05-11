@@ -2,7 +2,8 @@ import argparse
 import base64
 import json
 from pathlib import Path
-from typing import Literal
+import time
+from typing import Callable, Literal
 
 import ollama
 from pydantic import BaseModel, ValidationError
@@ -13,6 +14,7 @@ from pipeline.context.schemas import OperationalContext
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 DEFAULT_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
+DEFAULT_SYSTEM_CONTENT_FILE = PROMPTS_DIR / "system_content" / "system_content_latest.txt"
 
 MODELS = {
     "ministral": "ministral-3:3b",
@@ -35,7 +37,15 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str | None = None
-    tactical_priority: str | None = None
+
+
+class LLMInferenceCancelled(RuntimeError):
+    """Raised when an in-flight LLM request is cancelled by the caller."""
+
+
+class LLMInferenceTimedOut(RuntimeError):
+    """Raised when an in-flight LLM request exceeds its timeout."""
+
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()
@@ -50,10 +60,11 @@ def load_text_file(file_path: str, label: str) -> str:
         raise FileNotFoundError(f"{label} not found at {path}")
     return path.read_text(encoding="utf-8")
 
-
 def load_system_prompt(file_path: str) -> str:
     return load_text_file(file_path, "Prompt file")
 
+def load_system_content(file_path: str) -> str:
+    return load_text_file(file_path, "System content file")
 
 def load_context(file_path: str) -> str:
     return load_text_file(file_path, "Context file")
@@ -83,10 +94,13 @@ def run_llm_inference(
     model_name: str,
     image_path: str,
     system_prompt: str,
+    system_content: str,
     prompt_file: str,
     additional_context: str | None = None,
     context_file: str | None = None,
     operational_context: OperationalContext | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -96,6 +110,7 @@ def run_llm_inference(
     model_tag = MODELS[model_name]
     image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
 
     if operational_context is None and context_file is not None:
         context_path = resolve_path(context_file)
@@ -106,27 +121,50 @@ def run_llm_inference(
             operational_context = OperationalContext(**data)
 
     user_content = build_user_content(additional_context, operational_context)
+    if should_cancel and should_cancel():
+        raise LLMInferenceCancelled("LLM inference cancelled.")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise LLMInferenceTimedOut("LLM inference timed out.")
 
     messages = [
         {
             "role": "system",
-            "content": system_prompt,
+            "content": f"{system_content}"
         },
         {
             "role": "user",
-            "content": user_content,
+            "content": f"{system_prompt}\n\n{user_content}",
             "images": [image_b64],
         },
     ]
 
-    response = ollama.chat(
+    response_stream = ollama.chat(
         model=model_tag,
         messages=messages,
         format=LLMInferenceResult.model_json_schema(),
         options={"temperature": 0},
+        stream=True,
     )
 
-    raw_content = response.message.content
+    raw_parts = []
+    for chunk in response_stream:
+        if should_cancel and should_cancel():
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceCancelled("LLM inference cancelled.")
+        if deadline is not None and time.monotonic() >= deadline:
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceTimedOut("LLM inference timed out.")
+
+        message = getattr(chunk, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        if content:
+            raw_parts.append(content)
+
+    raw_content = "".join(raw_parts)
 
     try:
         parsed = LLMInferenceResult.model_validate_json(raw_content)
@@ -197,6 +235,7 @@ def main() -> None:
 
     prompt_path = resolve_path(args.prompt_file)
     system_prompt = load_system_prompt(str(prompt_path))
+    system_content = load_system_content(str(DEFAULT_SYSTEM_CONTENT_FILE))
 
     additional_context = None
     context_path = None
@@ -221,6 +260,7 @@ def main() -> None:
             model_name=model_name,
             image_path=args.image,
             system_prompt=system_prompt,
+            system_content=system_content,
             prompt_file=str(prompt_path),
             additional_context=additional_context,
             context_file=str(context_path) if context_path else None,

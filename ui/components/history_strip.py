@@ -171,10 +171,7 @@ class HistoryItem(QPushButton):
         self.title_label = QLabel(f"{index + 1}. {expected}")
         self.title_label.setFont(app_font(FONT_SIZE_SM, bold=True))
 
-        model = run_record.get("llm_model", "")
-        status = run_record.get("classification", "pending").replace("_", " ")
-        status = f"{model} · {status}" if model else status
-        self.subtitle_label = QLabel(status)
+        self.subtitle_label = QLabel(self._status_text(run_record))
         self.subtitle_label.setFont(app_font(FONT_SIZE_XS))
         self.subtitle_label.setWordWrap(True)
 
@@ -263,6 +260,12 @@ class HistoryItem(QPushButton):
             self.guess_icon_label.setPixmap(load_svg_icon("flame.svg", self.theme.accent_orange, 14))
         elif classification == "no_fire_detected":
             self.guess_icon_label.setPixmap(load_svg_icon("shield-check.svg", self.theme.accent_green, 14))
+        elif classification == "cancelled":
+            self.guess_icon_label.setPixmap(load_svg_icon("circle-x.svg", self.theme.danger, 14))
+        elif classification == "timed_out":
+            self.guess_icon_label.setPixmap(load_svg_icon("triangle-alert.svg", self.theme.danger, 14))
+        elif classification == "disabled":
+            self.guess_icon_label.setPixmap(load_svg_icon("triangle-alert.svg", self.theme.text_muted, 14))
         else:
             self.guess_icon_label.setPixmap(QPixmap())
 
@@ -314,6 +317,20 @@ class HistoryItem(QPushButton):
 
     def _quality_failed(self):
         return bool(self.run_record.get("quality_failed"))
+
+    @staticmethod
+    def _status_text(run_record: dict) -> str:
+        classification = run_record.get("classification", "pending")
+        if classification == "cancelled":
+            return "LLM cancelled"
+        if classification == "timed_out":
+            return "LLM timed out"
+        if classification == "disabled":
+            return "LLM skipped"
+
+        model = run_record.get("llm_model", "")
+        status = classification.replace("_", " ")
+        return f"{model} · {status}" if model else status
 
     @staticmethod
     def _label_style(color: str) -> str:
