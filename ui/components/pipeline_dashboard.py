@@ -183,12 +183,13 @@ class PipelineDashboard(QWidget):
         self.skip_quality_button.setCheckable(True)
         self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
 
-        self.llm_enabled_button = QPushButton("LLM: ON")
-        self.llm_enabled_button.setFont(app_font(FONT_SIZE_MD, bold=True))
-        self.llm_enabled_button.setCursor(Qt.PointingHandCursor)
-        self.llm_enabled_button.setFixedHeight(36)
-        self.llm_enabled_button.setCheckable(True)
-        self.llm_enabled_button.toggled.connect(self._on_llm_enabled_toggled)
+        self.llm_toggle_button = QPushButton("LLM: ON")
+        self.llm_toggle_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.llm_toggle_button.setCursor(Qt.PointingHandCursor)
+        self.llm_toggle_button.setFixedHeight(36)
+        self.llm_toggle_button.setCheckable(True)
+        self.llm_toggle_button.setChecked(True)
+        self.llm_toggle_button.toggled.connect(self._on_llm_enabled_toggled)
 
         self.context_select = ModelComboBox(theme)
         self.context_select.setMinimumWidth(150)
@@ -226,7 +227,7 @@ class PipelineDashboard(QWidget):
         controls_row_layout.addWidget(self.image_filter_select)
         controls_row_layout.addWidget(self.yolo_mode_select)
         controls_row_layout.addWidget(self.skip_quality_button)
-        controls_row_layout.addWidget(self.llm_enabled_button)
+        controls_row_layout.addWidget(self.llm_toggle_button)
         controls_row_layout.addStretch(1)
         controls_row_layout.addWidget(self.context_select)
         controls_row_layout.addWidget(self.prompt_select)
@@ -327,7 +328,7 @@ class PipelineDashboard(QWidget):
         self.context_select.setEnabled(False)
         self.image_filter_select.setEnabled(False)
         self.skip_quality_button.setEnabled(False)
-        self.llm_enabled_button.setEnabled(False)
+        self.llm_toggle_button.setEnabled(False)
         self.stop_llm_button.setEnabled(False)
         self._set_llm_cancel_visible(False)
         self.start_button.setText("Running")
@@ -372,15 +373,13 @@ class PipelineDashboard(QWidget):
         self.start_button.setEnabled(True)
         self.rerun_button.setEnabled(self.last_image_path is not None)
         self.pick_button.setEnabled(True)
-        self.model_select.setEnabled(True)
         self.wind_mode_select.setEnabled(True)
         self._sync_wind_controls()
-        self.prompt_select.setEnabled(True)
         self.yolo_mode_select.setEnabled(True)
-        self.context_select.setEnabled(True)
         self.image_filter_select.setEnabled(True)
         self.skip_quality_button.setEnabled(True)
-        self.llm_enabled_button.setEnabled(True)
+        self.llm_toggle_button.setEnabled(True)
+        self._sync_llm_controls()
         self.stop_llm_button.setEnabled(False)
         self._set_llm_cancel_visible(False)
         self.start_button.setText("Test Image")
@@ -391,7 +390,7 @@ class PipelineDashboard(QWidget):
         return self.model_select.currentData()
 
     def llm_inference_enabled(self) -> bool:
-        return not self.llm_enabled_button.isChecked()
+        return self.llm_toggle_button.isChecked()
 
     def selected_wind_config(self) -> dict:
         return {
@@ -437,7 +436,7 @@ class PipelineDashboard(QWidget):
         return self.prompt_select.currentData()
 
     def selected_context_file(self) -> str | None:
-        if not self.context_select.isVisible():
+        if not self.llm_inference_enabled() or not self.context_select.isVisible():
             return None
         return self.context_select.currentData()
 
@@ -451,6 +450,7 @@ class PipelineDashboard(QWidget):
         self.context_select.setVisible(
             _prompt_requires_context(self.prompt_select.currentData() or "")
         )
+        self._sync_llm_controls()
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()
@@ -477,9 +477,10 @@ class PipelineDashboard(QWidget):
         self._style_skip_quality_button(self.theme)
 
     def _on_llm_enabled_toggled(self, checked: bool):
-        self.llm_enabled_button.setText("LLM: OFF" if checked else "LLM: ON")
-        self._style_llm_enabled_button(self.theme)
-        if checked and self.current_run is None:
+        self.llm_toggle_button.setText("LLM: ON" if checked else "LLM: OFF")
+        self._style_llm_toggle_button(self.theme)
+        self._sync_llm_controls()
+        if not checked and self.current_run is None:
             self.classification_badge.set_classification("disabled")
             self.correctness_badge.reset()
             self.reasoning_text.setPlainText(
@@ -488,6 +489,12 @@ class PipelineDashboard(QWidget):
         elif self.current_run is None:
             self.classification_badge.set_classification("pending")
             self.reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
+
+    def _sync_llm_controls(self):
+        enabled = self.llm_inference_enabled() and self.llm_toggle_button.isEnabled()
+        self.model_select.setEnabled(enabled)
+        self.prompt_select.setEnabled(enabled)
+        self.context_select.setEnabled(enabled and self.context_select.isVisible())
 
     def _request_llm_cancel(self):
         self.stop_llm_button.setEnabled(False)
@@ -734,7 +741,7 @@ class PipelineDashboard(QWidget):
         self.image_filter_select.apply_theme(theme)
         self.yolo_mode_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
-        self._style_llm_enabled_button(theme)
+        self._style_llm_toggle_button(theme)
         self._style_stop_llm_button(theme)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
@@ -970,11 +977,11 @@ class PipelineDashboard(QWidget):
             }}
         """)
 
-    def _style_llm_enabled_button(self, theme: Theme):
-        checked = self.llm_enabled_button.isChecked()
-        border_color = theme.danger if checked else theme.border
-        text_color = theme.danger if checked else theme.text_primary
-        self.llm_enabled_button.setStyleSheet(f"""
+    def _style_llm_toggle_button(self, theme: Theme):
+        enabled = self.llm_toggle_button.isChecked()
+        border_color = theme.border if enabled else theme.danger
+        text_color = theme.text_primary if enabled else theme.danger
+        self.llm_toggle_button.setStyleSheet(f"""
             QPushButton {{
                 color: {text_color};
                 background-color: {theme.bg_panel_alt};
@@ -983,8 +990,8 @@ class PipelineDashboard(QWidget):
                 padding: 6px 14px;
             }}
             QPushButton:hover {{
-                border-color: {theme.danger};
-                color: {theme.danger};
+                border-color: {theme.accent_orange if enabled else theme.danger};
+                color: {theme.text_primary if enabled else theme.danger};
             }}
             QPushButton:disabled {{
                 color: {theme.text_muted};
