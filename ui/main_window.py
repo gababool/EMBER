@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
         self.dashboard.image_picked.connect(self.run_picked_image)
         self.dashboard.cancel_llm_requested.connect(self.cancel_llm_inference)
+        self.dashboard.llm_toggle_button.toggled.connect(self.update_wind_status)
         self.dashboard.wind_mode_select.currentIndexChanged.connect(
             self.update_wind_status
         )

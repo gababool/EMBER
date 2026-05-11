@@ -400,6 +400,10 @@ class PipelineDashboard(QWidget):
         }
 
     def wind_status_text(self) -> str:
+        if not self.llm_inference_enabled():
+            self._generated_mock_wind = None
+            return "NO WIND"
+
         config = self.selected_wind_config()
         if config["mode"] == "none":
             self._generated_mock_wind = None
@@ -501,6 +505,7 @@ class PipelineDashboard(QWidget):
         self.model_select.setEnabled(enabled)
         self.prompt_select.setEnabled(enabled)
         self.context_select.setEnabled(enabled and context_visible)
+        self._sync_wind_controls()
 
     def _request_llm_cancel(self):
         self.stop_llm_button.setEnabled(False)
@@ -782,10 +787,14 @@ class PipelineDashboard(QWidget):
         return row
 
     def _sync_wind_controls(self):
+        llm_visible = self.llm_inference_enabled()
+        wind_enabled = llm_visible and self.llm_toggle_button.isEnabled()
         manual = self.wind_mode_select.currentData() == "manual"
-        controls_enabled = manual and self.wind_mode_select.isEnabled()
-        self.wind_direction_select.setVisible(manual)
-        self.wind_speed_input.setVisible(manual)
+        controls_enabled = wind_enabled and manual
+        self.wind_mode_select.setVisible(llm_visible)
+        self.wind_direction_select.setVisible(llm_visible and manual)
+        self.wind_speed_input.setVisible(llm_visible and manual)
+        self.wind_mode_select.setEnabled(wind_enabled)
         self.wind_direction_select.setEnabled(controls_enabled)
         self.wind_speed_input.setEnabled(controls_enabled)
 
