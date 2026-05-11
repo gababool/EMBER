@@ -13,7 +13,8 @@ from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUT
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "c1v1prompt.txt"
+DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "latest.txt"
+DEFAULT_SYSTEM_CONTENT_FILE = SCRIPT_DIR / "llm" / "prompts" / "system_content" / "system_content_latest.txt"
 
 
 @dataclass
@@ -160,6 +161,7 @@ class LLMReasoningStage:
         self,
         model_name: str = "ministral",
         prompt_file: str | Path = DEFAULT_PROMPT_FILE,
+        system_content_file: str | Path = DEFAULT_SYSTEM_CONTENT_FILE,
         additional_context: str | None = None,
         context_file: str | Path | None = None,
         yolo_input_mode: str | None = None,
@@ -170,6 +172,7 @@ class LLMReasoningStage:
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
+        self.system_content_file = Path(system_content_file)
         self.additional_context = additional_context
         self.context_file = Path(context_file) if context_file else None
         self.yolo_input_mode = resolve_yolo_input_mode(
@@ -184,6 +187,7 @@ class LLMReasoningStage:
         from pipeline.llm.inference import (
             LLMInferenceCancelled,
             LLMInferenceTimedOut,
+            load_system_content,
             load_system_prompt,
             run_llm_inference,
         )
@@ -205,12 +209,15 @@ class LLMReasoningStage:
                 self.additional_context,
                 detection_context,
             )
+
         system_prompt = load_system_prompt(str(self.prompt_file))
+        system_content = load_system_content(str(self.system_content_file))
         try:
             result = run_llm_inference(
                 model_name=self.model_name,
                 image_path=str(image_path),
                 system_prompt=system_prompt,
+                system_content=system_content,
                 prompt_file=str(self.prompt_file),
                 additional_context=additional_context,
                 context_file=str(self.context_file) if self.context_file else None,
@@ -305,6 +312,7 @@ def create_default_pipeline(
     yolo_model: str = "best",
     llm_model: str = "ministral",
     prompt_file: str | Path = DEFAULT_PROMPT_FILE,
+    system_content_file: str | Path = DEFAULT_SYSTEM_CONTENT_FILE,
     context_file: str | Path | None = None,
     operational_context: OperationalContext | None = None,
     skip_quality_screening: bool = False,
@@ -332,6 +340,7 @@ def create_default_pipeline(
         stages.append(LLMReasoningStage(
             model_name=llm_model,
             prompt_file=prompt_file,
+            system_content_file=system_content_file,
             context_file=context_file,
             yolo_input_mode=resolved_yolo_input_mode,
             operational_context=operational_context,

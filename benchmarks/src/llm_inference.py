@@ -16,18 +16,17 @@ from typing import Literal
 import ollama
 from pydantic import BaseModel, ValidationError
 
+_BENCHMARKS_DIR = Path(__file__).resolve().parent.parent
+_PROMPTS_DIR = _BENCHMARKS_DIR.parent / "pipeline" / "llm" / "prompts"
+_DEFAULT_SYSTEM_CONTENT_FILE = _PROMPTS_DIR / "system_content" / "system_content_latest.txt"
+
 
 class LLMInferenceResult(BaseModel):
-    """Schema for the LLM's structured JSON output.
-
-    Kept in sync with the pipeline's corresponding schema.
-    Binary classification only — 'uncertain' is not a valid output.
-    """
+    """ Schema for the LLM's structured JSON output."""
     classification: Literal["fire_detected", "no_fire_detected"]
     reasoning: str
     recommendation: str
     situation_brief: str
-    tactical_priority: Literal["suppress", "contain", "evacuate", "monitor"]
 
 
 def load_prompt_file(filepath):
@@ -35,17 +34,13 @@ def load_prompt_file(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
         return f.read()
 
-
-# Kept for backward compatibility with existing callers.
 def load_system_prompt(filepath):
     return load_prompt_file(filepath)
-
 
 def load_image_b64(image_path):
     """Read an image file and return its base64-encoded string."""
     with open(image_path, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
-
 
 def load_operational_context(context_file):
     """Load and format an OperationalContext JSON file as a prompt-ready text block.
@@ -58,8 +53,6 @@ def load_operational_context(context_file):
     if not path.exists():
         return None
 
-    # Import here to avoid circular dependency issues and keep the benchmark
-    # module self-contained where possible.
     from pipeline.context.schemas import OperationalContext
     from pipeline.context.format import format_context
 
@@ -68,20 +61,37 @@ def load_operational_context(context_file):
     return format_context(context)
 
 
-def call_llm(model_name, image_path, system_prompt, context_file=None, additional_context=None):
+def _load_system_content() -> str:
+    """Load system role content from system_content.txt.
+
+    Falls back to a minimal inline string if the file is not found, so the
+    benchmark can run even if the prompts directory is not on the path.
+    """
+    if _DEFAULT_SYSTEM_CONTENT_FILE.exists():
+        return _DEFAULT_SYSTEM_CONTENT_FILE.read_text(encoding='utf-8').strip()
+    return "You are a wildfire analyst. You must respond strictly in JSON format."
+
+
+def call_llm(model_name, image_path, system_prompt, context_file=None,
+             additional_context=None):
     """
     Call Ollama with structured JSON output enforced via Pydantic schema.
 
+    The system role carries a concise role definition loaded from
+    pipeline/llm/prompts/system_content.txt. The full task prompt and
+    operational context are passed in the user role alongside the image,
+    which reduces context exhaustion failures observed with Qwen3-VL when
+    long instructions are placed in the system role.
+
     Args:
-        model_name:    Ollama model tag (e.g. 'ministral-3:3b')
-        image_path:    Path to the image to analyze
-        system_prompt: System prompt text (already loaded)
-        context_file:  Optional path to a scenario JSON file. When provided,
-                       the formatted operational context is appended to the
-                       user message before the image is sent to the LLM.
-        additional_context:
-                       Optional extra text context, such as structured YOLO
-                       detection metadata.
+        model_name:         Ollama model tag (e.g. 'ministral-3:3b')
+        image_path:         Path to the image to analyze
+        system_prompt:      Full task prompt text (already loaded from file)
+        context_file:       Optional path to a scenario JSON file. When
+                            provided, the formatted operational context is
+                            prepended to the user message.
+        additional_context: Optional extra text appended after the context
+                            block (e.g. structured YOLO detection metadata).
 
     Returns:
         dict with keys:
@@ -97,9 +107,7 @@ def call_llm(model_name, image_path, system_prompt, context_file=None, additiona
 
     image_b64 = load_image_b64(image_path)
 
-    # Build user message content. Operational context is prepended as text
-    # when a context file is provided, so the model sees the context block
-    # before the image content.
+    # Build user message: operational context + any additional context.
     user_content_parts = []
     operational_context_text = load_operational_context(context_file)
     if operational_context_text:
@@ -108,11 +116,20 @@ def call_llm(model_name, image_path, system_prompt, context_file=None, additiona
         user_content_parts.append(additional_context.strip())
     user_content = "\n\n".join(user_content_parts)
 
+    system_content = _load_system_content()
+
     response = ollama.chat(
         model=model_name,
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content, "images": [image_b64]},
+            {
+                "role": "system",
+                "content": system_content,
+            },
+            {
+                "role": "user",
+                "content": f"{system_prompt}\n\n{user_content}",
+                "images": [image_b64],
+            },
         ],
         format=LLMInferenceResult.model_json_schema(),
         options={"temperature": 0},
@@ -120,13 +137,11 @@ def call_llm(model_name, image_path, system_prompt, context_file=None, additiona
 
     raw_content = response['message']['content']
 
-    raw_content = response['message']['content']
-
     if not raw_content.strip():
         raise ValueError(
-            f"Model returned empty response. This may indicate context window "
-            f"exhaustion due to thinking mode (observed with qwen3-vl on complex "
-            f"images with long prompts). Consider a simpler image or shorter prompt."
+            "Model returned empty response. This may indicate context window "
+            "exhaustion due to thinking mode (observed with qwen3-vl on complex "
+            "images with long prompts). Consider a simpler image or shorter prompt."
         )
 
     try:
