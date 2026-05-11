@@ -487,6 +487,7 @@ class ScenarioMap(QWidget):
             self._detail_center_merc.x() - delta.x() / self._detail_scale,
             self._detail_center_merc.y() + delta.y() / self._detail_scale,
         )
+        self._clamp_detail_center(self._detail_map_rect(QRectF(self.rect()).adjusted(18, 18, -18, -18)))
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -630,6 +631,7 @@ class ScenarioMap(QWidget):
             anchor.y() + (anchor_pos.y() - detail_rect.center().y()) / next_scale,
         )
         self._detail_scale = next_scale
+        self._clamp_detail_center(detail_rect)
         self.update()
 
     def _load_selected_scenario(self):
@@ -762,9 +764,9 @@ class ScenarioMap(QWidget):
     def _visible_layers_for_scale(self) -> tuple[str, ...]:
         scale = self._detail_scale or 0
         if scale < 120_000:
-            return ("water", "road_major", "settlement")
+            return ("water", "road_major")
         if scale < 360_000:
-            return ("protected", "water", "waterway", "road_minor", "road_major", "power", "settlement")
+            return ("protected", "water", "waterway", "road_minor", "road_major", "power")
         return ("protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
 
     def _geometry_for_scale(self, feature: VectorFeature) -> list[tuple[float, float]]:
@@ -873,13 +875,7 @@ class ScenarioMap(QWidget):
         if self._detail_center_merc is not None and self._detail_scale is not None:
             return
 
-        if self._vector_data and self._vector_data.bounds:
-            min_lon, min_lat, max_lon, max_lat = self._vector_data.bounds
-        else:
-            min_lon = self.loaded_scenario.longitude - 0.25
-            max_lon = self.loaded_scenario.longitude + 0.25
-            min_lat = self.loaded_scenario.latitude - 0.16
-            max_lat = self.loaded_scenario.latitude + 0.16
+        min_lon, min_lat, max_lon, max_lat = self._initial_detail_bounds()
 
         min_merc = self._mercator_project(min_lon, min_lat)
         max_merc = self._mercator_project(max_lon, max_lat)
@@ -890,6 +886,72 @@ class ScenarioMap(QWidget):
             (min_merc.y() + max_merc.y()) / 2,
         )
         self._detail_scale = min(rect.width() / width, rect.height() / height) * 0.92
+        self._clamp_detail_center(rect)
+
+    def _initial_detail_bounds(self) -> tuple[float, float, float, float]:
+        context = self._loaded_context or {}
+        max_distance_m = 12_000
+        metadata = context.get("extraction_metadata") or {}
+        for key in ("water_source_radius_m", "track_radius_m", "assets_radius_m"):
+            value = metadata.get(key)
+            if isinstance(value, (int, float)):
+                max_distance_m = max(max_distance_m, min(float(value), 15_000))
+
+        lat_padding = max_distance_m / 111_320
+        lon_padding = max_distance_m / (
+            111_320 * max(math.cos(math.radians(self.loaded_scenario.latitude)), 0.2)
+        )
+        return (
+            self.loaded_scenario.longitude - lon_padding,
+            self.loaded_scenario.latitude - lat_padding,
+            self.loaded_scenario.longitude + lon_padding,
+            self.loaded_scenario.latitude + lat_padding,
+        )
+
+    def _clamp_detail_center(self, rect: QRectF):
+        if self._detail_center_merc is None or self._detail_scale is None:
+            return
+
+        bounds = self._scenario_bounds()
+        if bounds is None:
+            return
+
+        min_lon, min_lat, max_lon, max_lat = bounds
+        min_merc = self._mercator_project(min_lon, min_lat)
+        max_merc = self._mercator_project(max_lon, max_lat)
+        min_x = min(min_merc.x(), max_merc.x())
+        max_x = max(min_merc.x(), max_merc.x())
+        min_y = min(min_merc.y(), max_merc.y())
+        max_y = max(min_merc.y(), max_merc.y())
+
+        half_width = rect.width() / (2 * self._detail_scale)
+        half_height = rect.height() / (2 * self._detail_scale)
+        center_x = self._clamp_axis(self._detail_center_merc.x(), min_x + half_width, max_x - half_width, min_x, max_x)
+        center_y = self._clamp_axis(self._detail_center_merc.y(), min_y + half_height, max_y - half_height, min_y, max_y)
+        self._detail_center_merc = QPointF(center_x, center_y)
+
+    def _scenario_bounds(self) -> tuple[float, float, float, float] | None:
+        bounds = self._vector_data.bounds if self._vector_data else None
+        if bounds is None and self.loaded_scenario is not None:
+            bounds = (
+                self.loaded_scenario.longitude - 0.25,
+                self.loaded_scenario.latitude - 0.16,
+                self.loaded_scenario.longitude + 0.25,
+                self.loaded_scenario.latitude + 0.16,
+            )
+        if bounds is None:
+            return None
+
+        min_lon, min_lat, max_lon, max_lat = bounds
+        lon_pad = max((max_lon - min_lon) * 0.04, 0.01)
+        lat_pad = max((max_lat - min_lat) * 0.04, 0.01)
+        return min_lon - lon_pad, min_lat - lat_pad, max_lon + lon_pad, max_lat + lat_pad
+
+    @staticmethod
+    def _clamp_axis(value: float, lower: float, upper: float, min_value: float, max_value: float) -> float:
+        if lower > upper:
+            return (min_value + max_value) / 2
+        return max(lower, min(upper, value))
 
     def _geo_to_screen(self, lon: float, lat: float, rect: QRectF) -> QPointF:
         merc = self._mercator_project(lon, lat)
