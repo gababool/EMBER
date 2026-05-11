@@ -98,6 +98,20 @@ class ClassificationBadge(QFrame):
                 "uncertain",
                 "triangle-alert.svg",
             )
+        if self.classification == "disabled":
+            return (
+                self.theme.text_muted,
+                "LLM Disabled",
+                "reasoning skipped",
+                None,
+            )
+        if self.classification == "cancelled":
+            return (
+                self.theme.danger,
+                "LLM Cancelled",
+                "reasoning stopped",
+                "circle-x.svg",
+            )
         return (
             self.theme.text_muted,
             "Awaiting Result",

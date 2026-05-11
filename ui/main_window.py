@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
         self.dashboard.start_button.clicked.connect(self.start_demo)
         self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
         self.dashboard.image_picked.connect(self.run_picked_image)
+        self.dashboard.cancel_llm_requested.connect(self.cancel_llm_inference)
         self.dashboard.wind_mode_select.currentIndexChanged.connect(
             self.update_wind_status
         )
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
 
         self.pipeline_thread = None
         self.pipeline_worker = None
+        self._detached_pipeline_threads = []
         self.system_monitor = SystemMonitor(parent=self)
         self.system_monitor.stats_updated.connect(self.update_system_stats)
         self.system_monitor.start()
@@ -121,6 +123,7 @@ class MainWindow(QMainWindow):
             prompt_file=self.dashboard.selected_prompt_file(),
             context_file=self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
+            llm_enabled=self.dashboard.llm_inference_enabled(),
             yolo_input_mode=self.dashboard.selected_yolo_input_mode(),
             fixed_image_path=fixed_image_path,
             label_filter=label_filter,
@@ -141,10 +144,44 @@ class MainWindow(QMainWindow):
         self.pipeline_thread.finished.connect(self._demo_finished)
         self.pipeline_thread.start()
 
+    def cancel_llm_inference(self):
+        if self.pipeline_worker is None or self.pipeline_thread is None:
+            return
+
+        worker = self.pipeline_worker
+        thread = self.pipeline_thread
+        worker.cancel_llm_inference()
+        self._detach_worker_from_dashboard(worker, thread)
+        self._detached_pipeline_threads.append(thread)
+        thread.finished.connect(lambda t=thread: self._forget_detached_thread(t))
+        self.pipeline_thread = None
+        self.pipeline_worker = None
+        self.dashboard.cancel_llm_immediately()
+        self._set_top_mode("OFFLINE MODE")
+
     def _demo_finished(self):
         self.dashboard.set_demo_finished()
         self.pipeline_thread = None
         self.pipeline_worker = None
+        self._set_top_mode("OFFLINE MODE")
+
+    def _detach_worker_from_dashboard(self, worker: PipelineWorker, thread: QThread):
+        connections = (
+            (worker.image_selected, self.dashboard.set_selected_image),
+            (worker.wind_updated, self.update_generated_wind),
+            (worker.event_received, self.dashboard.handle_pipeline_event),
+            (worker.failed, self.dashboard.set_pipeline_error),
+            (thread.finished, self._demo_finished),
+        )
+        for signal, slot in connections:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+
+    def _forget_detached_thread(self, thread: QThread):
+        if thread in self._detached_pipeline_threads:
+            self._detached_pipeline_threads.remove(thread)
 
     def update_system_stats(self, stats):
         self.top_bar.set_system_stats(
