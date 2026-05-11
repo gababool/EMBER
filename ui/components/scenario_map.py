@@ -326,6 +326,16 @@ class ScenarioMap(QWidget):
         self.load_scenario_button.setFont(app_font(FONT_SIZE_XS, bold=True))
         self.load_scenario_button.clicked.connect(self._load_selected_scenario)
 
+        self.zoom_in_button = QPushButton("+", self)
+        self.zoom_out_button = QPushButton("-", self)
+        for button in (self.zoom_in_button, self.zoom_out_button):
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFont(app_font(FONT_SIZE_SM, bold=True))
+            button.setFixedSize(34, 30)
+            button.setVisible(False)
+        self.zoom_in_button.clicked.connect(lambda: self._zoom_detail(1.25))
+        self.zoom_out_button.clicked.connect(lambda: self._zoom_detail(1 / 1.25))
+
         self.setMinimumSize(420, 360)
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
@@ -365,6 +375,22 @@ class ScenarioMap(QWidget):
                 border-color: {theme.accent_blue};
             }}
         """)
+        zoom_style = f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_orange};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+        """
+        self.zoom_in_button.setStyleSheet(zoom_style)
+        self.zoom_out_button.setStyleSheet(zoom_style)
         self.update()
 
     def paintEvent(self, event):
@@ -383,6 +409,9 @@ class ScenarioMap(QWidget):
             self.load_scenario_button.setVisible(self.selected_scenario is not None)
         else:
             self.load_scenario_button.setVisible(False)
+            self._position_zoom_buttons(content)
+            self.zoom_in_button.setVisible(True)
+            self.zoom_out_button.setVisible(True)
             self._draw_detail_view(painter, content)
 
     def mousePressEvent(self, event):
@@ -434,24 +463,17 @@ class ScenarioMap(QWidget):
         if self.loaded_scenario is None:
             super().wheelEvent(event)
             return
-        if self._detail_scale is None or self._detail_center_merc is None:
-            return
 
         content = QRectF(self.rect()).adjusted(18, 18, -18, -18)
         detail_rect = self._detail_map_rect(content)
+        self._initialize_detail_view(detail_rect)
         pos = QPointF(event.position())
         if not detail_rect.contains(pos):
             return
 
-        anchor = self._screen_to_merc(pos, detail_rect)
         factor = 1.22 if event.angleDelta().y() > 0 else 1 / 1.22
-        next_scale = max(3_000, min(7_000_000, self._detail_scale * factor))
-        self._detail_center_merc = QPointF(
-            anchor.x() - (pos.x() - detail_rect.center().x()) / next_scale,
-            anchor.y() + (pos.y() - detail_rect.center().y()) / next_scale,
-        )
-        self._detail_scale = next_scale
-        self.update()
+        self._zoom_detail(factor, anchor_pos=pos)
+        event.accept()
 
     def _draw_overview_background(self, painter: QPainter, content: QRectF):
         painter.setPen(QPen(QColor(self.theme.border), 1))
@@ -535,6 +557,32 @@ class ScenarioMap(QWidget):
             108,
             34,
         )
+
+    def _position_zoom_buttons(self, content: QRectF):
+        left = int(content.left() + 22)
+        top = int(content.top() + 52)
+        self.zoom_in_button.move(left, top)
+        self.zoom_out_button.move(left, top + 34)
+
+    def _zoom_detail(self, factor: float, anchor_pos: QPointF | None = None):
+        if self.loaded_scenario is None:
+            return
+
+        content = QRectF(self.rect()).adjusted(18, 18, -18, -18)
+        detail_rect = self._detail_map_rect(content)
+        self._initialize_detail_view(detail_rect)
+        if self._detail_scale is None or self._detail_center_merc is None:
+            return
+
+        anchor_pos = anchor_pos or detail_rect.center()
+        anchor = self._screen_to_merc(anchor_pos, detail_rect)
+        next_scale = max(3_000, min(7_000_000, self._detail_scale * factor))
+        self._detail_center_merc = QPointF(
+            anchor.x() - (anchor_pos.x() - detail_rect.center().x()) / next_scale,
+            anchor.y() + (anchor_pos.y() - detail_rect.center().y()) / next_scale,
+        )
+        self._detail_scale = next_scale
+        self.update()
 
     def _load_selected_scenario(self):
         if self.selected_scenario is None:
