@@ -75,6 +75,7 @@ def _prompt_requires_context(prompt_path: str) -> bool:
 class PipelineDashboard(QWidget):
     image_picked = Signal(str)
     cancel_llm_requested = Signal()
+    llm_started = Signal()
 
     def __init__(self, theme: Theme = DEFAULT_THEME, parent=None):
         super().__init__(parent)
@@ -452,7 +453,6 @@ class PipelineDashboard(QWidget):
 
     def _on_prompt_changed(self, _index: int):
         self._sync_llm_controls()
-        self._sync_llm_controls()
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()
@@ -513,9 +513,9 @@ class PipelineDashboard(QWidget):
         self.reasoning_text.setPlainText("LLM inference cancelled.")
         self.cancel_llm_requested.emit()
 
-    def cancel_llm_immediately(self):
+    def cancel_llm_immediately(self, status: str = "cancelled"):
         self.set_reasoning_result({
-            "status": "cancelled",
+            "status": status,
             "parsed": {},
             "raw_response": "",
             "model_name": self.selected_llm_model(),
@@ -524,16 +524,22 @@ class PipelineDashboard(QWidget):
         self.set_demo_finished()
 
     def set_llm_background_stopping(self, stopping: bool):
-        if self.classification_badge.classification != "cancelled":
+        status = self.classification_badge.classification
+        if status not in {"cancelled", "timed_out"}:
             return
+        action_text = (
+            "LLM inference timed out after 2 minutes."
+            if status == "timed_out"
+            else "LLM inference cancelled."
+        )
         if stopping:
             self.reasoning_text.setPlainText(
-                "LLM inference cancelled. Existing quality screening and YOLO results were preserved.\n\n"
+                f"{action_text} Existing quality screening and YOLO results were preserved.\n\n"
                 "Ollama is still stopping in the background."
             )
         else:
             self.reasoning_text.setPlainText(
-                "LLM inference cancelled. Existing quality screening and YOLO results were preserved."
+                f"{action_text} Existing quality screening and YOLO results were preserved."
             )
 
     def _set_llm_cancel_visible(self, visible: bool):
@@ -643,6 +649,16 @@ class PipelineDashboard(QWidget):
             self.correctness_badge.reset()
             self.reasoning_text.setPlainText(
                 "LLM inference cancelled. Existing quality screening and YOLO results were preserved."
+            )
+            return
+        if status == "timed_out":
+            self.stop_llm_button.setEnabled(False)
+            self.stop_llm_button.setText("Stop LLM")
+            self._set_llm_cancel_visible(False)
+            self.classification_badge.set_classification("timed_out")
+            self.correctness_badge.reset()
+            self.reasoning_text.setPlainText(
+                "LLM inference timed out after 2 minutes. Existing quality screening and YOLO results were preserved."
             )
             return
 
@@ -860,6 +876,7 @@ class PipelineDashboard(QWidget):
             self.stop_llm_button.setText("Stop LLM")
             self.stop_llm_button.setEnabled(True)
             self._set_llm_cancel_visible(True)
+            self.llm_started.emit()
             self.reasoning_text.setPlainText("Running LLM reasoning...")
 
     def _save_current_run_to_history(self, quality_failed: bool = False):
@@ -963,7 +980,7 @@ class PipelineDashboard(QWidget):
     def _classification_from_run(run_record: dict) -> str:
         reasoning_result = run_record.get("reasoning_result") or {}
         status = reasoning_result.get("status")
-        if status in {"disabled", "cancelled"}:
+        if status in {"disabled", "cancelled", "timed_out"}:
             return status
         if run_record.get("llm_enabled") is False:
             return "disabled"

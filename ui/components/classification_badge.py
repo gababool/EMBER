@@ -112,6 +112,13 @@ class ClassificationBadge(QFrame):
                 "reasoning stopped",
                 "circle-x.svg",
             )
+        if self.classification == "timed_out":
+            return (
+                self.theme.danger,
+                "LLM Timed Out",
+                "2 minute limit",
+                "triangle-alert.svg",
+            )
         return (
             self.theme.text_muted,
             "Awaiting Result",

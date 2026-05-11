@@ -262,6 +262,8 @@ class HistoryItem(QPushButton):
             self.guess_icon_label.setPixmap(load_svg_icon("shield-check.svg", self.theme.accent_green, 14))
         elif classification == "cancelled":
             self.guess_icon_label.setPixmap(load_svg_icon("circle-x.svg", self.theme.danger, 14))
+        elif classification == "timed_out":
+            self.guess_icon_label.setPixmap(load_svg_icon("triangle-alert.svg", self.theme.danger, 14))
         elif classification == "disabled":
             self.guess_icon_label.setPixmap(load_svg_icon("triangle-alert.svg", self.theme.text_muted, 14))
         else:
@@ -321,6 +323,8 @@ class HistoryItem(QPushButton):
         classification = run_record.get("classification", "pending")
         if classification == "cancelled":
             return "LLM cancelled"
+        if classification == "timed_out":
+            return "LLM timed out"
         if classification == "disabled":
             return "LLM skipped"
 
