@@ -13,7 +13,7 @@ from pipeline.context.schemas import OperationalContext
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 DEFAULT_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
-DEFAULT_SYSTEM_CONTENT_FILE = PROMPTS_DIR / "system_content_latest.txt"
+DEFAULT_SYSTEM_CONTENT_FILE = PROMPTS_DIR / "system_content" / "system_content_latest.txt"
 
 MODELS = {
     "ministral": "ministral-3:3b",
@@ -36,7 +36,6 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str | None = None
-    tactical_priority: str | None = None
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()

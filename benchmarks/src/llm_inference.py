@@ -18,7 +18,7 @@ from pydantic import BaseModel, ValidationError
 
 _BENCHMARKS_DIR = Path(__file__).resolve().parent.parent
 _PROMPTS_DIR = _BENCHMARKS_DIR.parent / "pipeline" / "llm" / "prompts"
-_DEFAULT_SYSTEM_CONTENT_FILE = _PROMPTS_DIR / "system_content_latest.txt"
+_DEFAULT_SYSTEM_CONTENT_FILE = _PROMPTS_DIR / "system_content" / "system_content_latest.txt"
 
 
 class LLMInferenceResult(BaseModel):
