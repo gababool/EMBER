@@ -157,7 +157,12 @@ class MainWindow(QMainWindow):
         self.pipeline_thread = None
         self.pipeline_worker = None
         self.dashboard.cancel_llm_immediately()
-        self._set_top_mode("OFFLINE MODE")
+        if thread.isRunning():
+            self.dashboard.set_llm_background_stopping(True)
+            self._set_top_mode("LLM STOPPING")
+        else:
+            self.dashboard.set_llm_background_stopping(False)
+            self._set_top_mode("OFFLINE MODE")
 
     def _demo_finished(self):
         self.dashboard.set_demo_finished()
@@ -182,6 +187,9 @@ class MainWindow(QMainWindow):
     def _forget_detached_thread(self, thread: QThread):
         if thread in self._detached_pipeline_threads:
             self._detached_pipeline_threads.remove(thread)
+        if self.pipeline_thread is None and not self._detached_pipeline_threads:
+            self.dashboard.set_llm_background_stopping(False)
+            self._set_top_mode("OFFLINE MODE")
 
     def update_system_stats(self, stats):
         self.top_bar.set_system_stats(

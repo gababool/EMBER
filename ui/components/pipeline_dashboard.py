@@ -505,6 +505,19 @@ class PipelineDashboard(QWidget):
         })
         self.set_demo_finished()
 
+    def set_llm_background_stopping(self, stopping: bool):
+        if self.classification_badge.classification != "cancelled":
+            return
+        if stopping:
+            self.reasoning_text.setPlainText(
+                "LLM inference cancelled. Existing quality screening and YOLO results were preserved.\n\n"
+                "Ollama is still stopping in the background."
+            )
+        else:
+            self.reasoning_text.setPlainText(
+                "LLM inference cancelled. Existing quality screening and YOLO results were preserved."
+            )
+
     def _set_llm_cancel_visible(self, visible: bool):
         self.start_button.setVisible(not visible)
         self.stop_llm_button.setVisible(visible)
