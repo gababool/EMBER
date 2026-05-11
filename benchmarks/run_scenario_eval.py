@@ -89,7 +89,6 @@ SCENARIO_RESULT_COLUMNS = [
     'yolo_detection_count',
     'yolo_duration_s',
     'classification',
-    'tactical_priority',
     'reasoning',
     'recommendation',
     'situation_brief',
@@ -315,7 +314,6 @@ def run_scenario_eval(
                     'yolo_detection_count': yolo_detection_count,
                     'yolo_duration_s': yolo_duration_s,
                     'classification': parsed.get('classification'),
-                    'tactical_priority': parsed.get('tactical_priority'),
                     'reasoning': parsed.get('reasoning'),
                     'recommendation': parsed.get('recommendation'),
                     'situation_brief': parsed.get('situation_brief'),
@@ -333,7 +331,6 @@ def run_scenario_eval(
 
                 log_progress(
                     f"  {scenario_id} -> {parsed.get('classification')} | "
-                    f"priority: {parsed.get('tactical_priority')} | "
                     f"{result['tokens_per_sec']:.1f} tok/s"
                 )
 

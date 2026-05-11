@@ -13,6 +13,7 @@ from pipeline.context.schemas import OperationalContext
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROMPTS_DIR = SCRIPT_DIR / "prompts"
 DEFAULT_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
+DEFAULT_SYSTEM_CONTENT_FILE = PROMPTS_DIR / "system_content" / "system_content_latest.txt"
 
 MODELS = {
     "ministral": "ministral-3:3b",
@@ -35,7 +36,6 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str | None = None
-    tactical_priority: str | None = None
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()
@@ -50,10 +50,11 @@ def load_text_file(file_path: str, label: str) -> str:
         raise FileNotFoundError(f"{label} not found at {path}")
     return path.read_text(encoding="utf-8")
 
-
 def load_system_prompt(file_path: str) -> str:
     return load_text_file(file_path, "Prompt file")
 
+def load_system_content(file_path: str) -> str:
+    return load_text_file(file_path, "System content file")
 
 def load_context(file_path: str) -> str:
     return load_text_file(file_path, "Context file")
@@ -83,6 +84,7 @@ def run_llm_inference(
     model_name: str,
     image_path: str,
     system_prompt: str,
+    system_content: str,
     prompt_file: str,
     additional_context: str | None = None,
     context_file: str | None = None,
@@ -110,11 +112,11 @@ def run_llm_inference(
     messages = [
         {
             "role": "system",
-            "content": system_prompt,
+            "content": f"{system_content}"
         },
         {
             "role": "user",
-            "content": user_content,
+            "content": f"{system_prompt}\n\n{user_content}",
             "images": [image_b64],
         },
     ]
@@ -197,6 +199,7 @@ def main() -> None:
 
     prompt_path = resolve_path(args.prompt_file)
     system_prompt = load_system_prompt(str(prompt_path))
+    system_content = load_system_content(str(DEFAULT_SYSTEM_CONTENT_FILE))
 
     additional_context = None
     context_path = None
@@ -221,6 +224,7 @@ def main() -> None:
             model_name=model_name,
             image_path=args.image,
             system_prompt=system_prompt,
+            system_content=system_content,
             prompt_file=str(prompt_path),
             additional_context=additional_context,
             context_file=str(context_path) if context_path else None,
