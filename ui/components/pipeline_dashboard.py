@@ -447,9 +447,7 @@ class PipelineDashboard(QWidget):
         return self.selected_yolo_input_mode() == "annotated_image"
 
     def _on_prompt_changed(self, _index: int):
-        self.context_select.setVisible(
-            _prompt_requires_context(self.prompt_select.currentData() or "")
-        )
+        self._sync_llm_controls()
         self._sync_llm_controls()
 
     def selected_image_filter(self) -> str | None:
@@ -491,10 +489,18 @@ class PipelineDashboard(QWidget):
             self.reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
 
     def _sync_llm_controls(self):
-        enabled = self.llm_inference_enabled() and self.llm_toggle_button.isEnabled()
+        visible = self.llm_inference_enabled()
+        enabled = visible and self.llm_toggle_button.isEnabled()
+        context_visible = visible and _prompt_requires_context(
+            self.prompt_select.currentData() or ""
+        )
+
+        self.model_select.setVisible(visible)
+        self.prompt_select.setVisible(visible)
+        self.context_select.setVisible(context_visible)
         self.model_select.setEnabled(enabled)
         self.prompt_select.setEnabled(enabled)
-        self.context_select.setEnabled(enabled and self.context_select.isVisible())
+        self.context_select.setEnabled(enabled and context_visible)
 
     def _request_llm_cancel(self):
         self.stop_llm_button.setEnabled(False)
@@ -956,20 +962,22 @@ class PipelineDashboard(QWidget):
         return parsed.get("classification", "pending")
 
     def _style_skip_quality_button(self, theme: Theme):
-        checked = self.skip_quality_button.isChecked()
-        border_color = theme.danger if checked else theme.border
-        text_color = theme.danger if checked else theme.text_primary
+        skipped = self.skip_quality_button.isChecked()
+        border_color, text_color, background_color, hover_border, hover_text, hover_background = (
+            self._toggle_style_values(theme, active=not skipped)
+        )
         self.skip_quality_button.setStyleSheet(f"""
             QPushButton {{
                 color: {text_color};
-                background-color: {theme.bg_panel_alt};
+                background-color: {background_color};
                 border: 1px solid {border_color};
                 border-radius: 5px;
                 padding: 6px 14px;
             }}
             QPushButton:hover {{
-                border-color: {theme.danger};
-                color: {theme.danger};
+                color: {hover_text};
+                background-color: {hover_background};
+                border-color: {hover_border};
             }}
             QPushButton:disabled {{
                 color: {theme.text_muted};
@@ -979,25 +987,58 @@ class PipelineDashboard(QWidget):
 
     def _style_llm_toggle_button(self, theme: Theme):
         enabled = self.llm_toggle_button.isChecked()
-        border_color = theme.border if enabled else theme.danger
-        text_color = theme.text_primary if enabled else theme.danger
+        border_color, text_color, background_color, hover_border, hover_text, hover_background = (
+            self._toggle_style_values(theme, active=enabled)
+        )
         self.llm_toggle_button.setStyleSheet(f"""
             QPushButton {{
                 color: {text_color};
-                background-color: {theme.bg_panel_alt};
+                background-color: {background_color};
                 border: 1px solid {border_color};
                 border-radius: 5px;
                 padding: 6px 14px;
             }}
             QPushButton:hover {{
-                border-color: {theme.accent_orange if enabled else theme.danger};
-                color: {theme.text_primary if enabled else theme.danger};
+                color: {hover_text};
+                background-color: {hover_background};
+                border-color: {hover_border};
             }}
             QPushButton:disabled {{
                 color: {theme.text_muted};
                 border-color: {theme.border};
             }}
         """)
+
+    @staticmethod
+    def _toggle_style_values(theme: Theme, active: bool):
+        if active:
+            return (
+                theme.border,
+                theme.text_primary,
+                theme.bg_panel_alt,
+                theme.accent_orange,
+                theme.text_primary,
+                theme.bg_panel_alt,
+            )
+
+        if theme.name == "light":
+            return (
+                theme.danger,
+                theme.danger,
+                "#fff1f3",
+                theme.danger,
+                theme.danger,
+                "#ffe3e7",
+            )
+
+        return (
+            theme.danger,
+            theme.danger,
+            "rgba(255, 90, 102, 38)",
+            theme.danger,
+            theme.text_primary,
+            "rgba(255, 90, 102, 72)",
+        )
 
     def _style_stop_llm_button(self, theme: Theme):
         self.stop_llm_button.setStyleSheet(f"""
