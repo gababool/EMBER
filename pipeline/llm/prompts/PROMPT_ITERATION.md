@@ -108,6 +108,16 @@ Two changes from c2v6:
    when generating structured lists — documented as a model limitation, not
    addressed in the prompt.
 
+### qwen.txt
+Added for testing purposes. Qwen often fails with larger context, but part of it could be 
+the instruction to provide bullet point recommendations. It has worked previously, with free text.
+
+Content is same as latest.txt (c2v7), but without bullet points for recommendations. 
+It still has tactical_priority removed, and the initial role sentence.
+
+This system prompt seems to make Qwen work, but output may still be garbled or have missing fields
+such as "situation_brief"
+
 ---
 
 ## Key decisions
