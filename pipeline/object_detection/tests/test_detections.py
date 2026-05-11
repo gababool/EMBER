@@ -78,3 +78,13 @@ def test_disabled_mode_skips_object_detection_stage():
     )
 
     assert [stage.name for stage in runner.stages] == ["llm_reasoning"]
+
+
+def test_llm_disabled_keeps_object_detection_stage():
+    runner = create_default_pipeline(
+        yolo_input_mode="annotated_image",
+        skip_quality_screening=True,
+        llm_enabled=False,
+    )
+
+    assert [stage.name for stage in runner.stages] == ["object_detection"]

@@ -2,7 +2,8 @@ import argparse
 import base64
 import json
 from pathlib import Path
-from typing import Literal
+import time
+from typing import Callable, Literal
 
 import ollama
 from pydantic import BaseModel, ValidationError
@@ -36,6 +37,15 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str | None = None
+
+
+class LLMInferenceCancelled(RuntimeError):
+    """Raised when an in-flight LLM request is cancelled by the caller."""
+
+
+class LLMInferenceTimedOut(RuntimeError):
+    """Raised when an in-flight LLM request exceeds its timeout."""
+
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()
@@ -89,6 +99,8 @@ def run_llm_inference(
     additional_context: str | None = None,
     context_file: str | None = None,
     operational_context: OperationalContext | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -98,6 +110,7 @@ def run_llm_inference(
     model_tag = MODELS[model_name]
     image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
 
     if operational_context is None and context_file is not None:
         context_path = resolve_path(context_file)
@@ -108,6 +121,10 @@ def run_llm_inference(
             operational_context = OperationalContext(**data)
 
     user_content = build_user_content(additional_context, operational_context)
+    if should_cancel and should_cancel():
+        raise LLMInferenceCancelled("LLM inference cancelled.")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise LLMInferenceTimedOut("LLM inference timed out.")
 
     messages = [
         {
@@ -121,14 +138,33 @@ def run_llm_inference(
         },
     ]
 
-    response = ollama.chat(
+    response_stream = ollama.chat(
         model=model_tag,
         messages=messages,
         format=LLMInferenceResult.model_json_schema(),
         options={"temperature": 0},
+        stream=True,
     )
 
-    raw_content = response.message.content
+    raw_parts = []
+    for chunk in response_stream:
+        if should_cancel and should_cancel():
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceCancelled("LLM inference cancelled.")
+        if deadline is not None and time.monotonic() >= deadline:
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceTimedOut("LLM inference timed out.")
+
+        message = getattr(chunk, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        if content:
+            raw_parts.append(content)
+
+    raw_content = "".join(raw_parts)
 
     try:
         parsed = LLMInferenceResult.model_validate_json(raw_content)
