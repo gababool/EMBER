@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
+import tempfile
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 try:
     from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
@@ -15,6 +17,8 @@ except ImportError:
 
 
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
+OSM_DIR = Path(__file__).resolve().parents[2] / "data" / "gis" / "osm"
+VECTOR_CACHE_DIR = Path(tempfile.gettempdir()) / "ember_osm_vector_cache"
 SWEDEN_MAP_PATH = Path(__file__).resolve().parents[1] / "assets" / "Sweden_Map.png"
 
 SCENARIO_DESCRIPTIONS = {
@@ -33,6 +37,18 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
+VECTOR_CACHE_VERSION = 2
+MAX_DETAIL_FEATURE_POINTS = 120_000
+MAX_FEATURES_BY_LAYER = {
+    "settlement": 400,
+    "road_major": 2000,
+    "road_minor": 5000,
+    "track": 3000,
+    "waterway": 500,
+    "water": 500,
+    "power": 150,
+    "protected": 250,
+}
 
 
 
@@ -49,6 +65,26 @@ class Scenario:
     @property
     def marker_label(self) -> str:
         return str(int(self.scenario_id.replace("scenario_", "")))
+
+    @property
+    def osm_pbf_path(self) -> Path:
+        return OSM_DIR / f"{self.scenario_id}-50km.osm.pbf"
+
+
+@dataclass(frozen=True)
+class VectorFeature:
+    layer: str
+    geometry: list[tuple[float, float]]
+    name: str | None = None
+    closed: bool = False
+
+
+@dataclass(frozen=True)
+class ScenarioVectorData:
+    features: list[VectorFeature]
+    bounds: tuple[float, float, float, float] | None
+    source_path: Path
+    loaded_from_cache: bool = False
 
 
 def load_scenarios(contexts_dir: Path = CONTEXTS_DIR) -> list[Scenario]:
@@ -81,6 +117,187 @@ def load_scenarios(contexts_dir: Path = CONTEXTS_DIR) -> list[Scenario]:
     return scenarios
 
 
+def load_scenario_vector_data(scenario: Scenario) -> ScenarioVectorData:
+    source_path = scenario.osm_pbf_path
+    if not source_path.exists():
+        return ScenarioVectorData([], None, source_path)
+
+    cached = _read_vector_cache(source_path)
+    if cached is not None:
+        return cached
+
+    data = _extract_osm_vectors(source_path)
+    _write_vector_cache(data)
+    return data
+
+
+def _read_vector_cache(source_path: Path) -> ScenarioVectorData | None:
+    cache_path = _vector_cache_path(source_path)
+    if not cache_path.exists():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        if payload.get("cache_version") != VECTOR_CACHE_VERSION:
+            return None
+        if payload.get("source_mtime") != source_path.stat().st_mtime:
+            return None
+        features = [
+            VectorFeature(
+                layer=item["layer"],
+                geometry=[tuple(point) for point in item["geometry"]],
+                name=item.get("name"),
+                closed=bool(item.get("closed")),
+            )
+            for item in payload.get("features", [])
+        ]
+        bounds = payload.get("bounds")
+        return ScenarioVectorData(
+            features=features,
+            bounds=tuple(bounds) if bounds else None,
+            source_path=source_path,
+            loaded_from_cache=True,
+        )
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _write_vector_cache(data: ScenarioVectorData):
+    try:
+        VECTOR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "cache_version": VECTOR_CACHE_VERSION,
+            "source": str(data.source_path),
+            "source_mtime": data.source_path.stat().st_mtime,
+            "bounds": data.bounds,
+            "features": [
+                {
+                    "layer": feature.layer,
+                    "geometry": feature.geometry,
+                    "name": feature.name,
+                    "closed": feature.closed,
+                }
+                for feature in data.features
+            ],
+        }
+        _vector_cache_path(data.source_path).write_text(json.dumps(payload), encoding="utf-8")
+    except OSError:
+        return
+
+
+def _vector_cache_path(source_path: Path) -> Path:
+    return VECTOR_CACHE_DIR / f"{source_path.stem}.vector.json"
+
+
+def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
+    import osmium
+
+    class OSMVectorHandler(osmium.SimpleHandler):
+        def __init__(self):
+            super().__init__()
+            self.features: list[VectorFeature] = []
+            self.bounds = None
+            self.point_count = 0
+            self.layer_counts: dict[str, int] = {}
+
+        def node(self, node):
+            tags = dict(node.tags)
+            place = tags.get("place")
+            if place not in {"city", "town", "village", "hamlet", "isolated_dwelling"}:
+                return
+            name = tags.get("name")
+            if not name:
+                return
+            self._add_feature(
+                VectorFeature(
+                    layer="settlement",
+                    geometry=[(float(node.location.lon), float(node.location.lat))],
+                    name=name,
+                )
+            )
+
+        def way(self, way):
+            if self.point_count >= MAX_DETAIL_FEATURE_POINTS:
+                return
+
+            tags = dict(way.tags)
+            layer = self._layer_for_way(tags)
+            if layer is None:
+                return
+
+            geometry = []
+            try:
+                for node in way.nodes:
+                    geometry.append((float(node.lon), float(node.lat)))
+            except Exception:
+                return
+
+            if len(geometry) < 2:
+                return
+
+            closed = geometry[0] == geometry[-1]
+            self._add_feature(
+                VectorFeature(
+                    layer=layer,
+                    geometry=_thin_geometry(geometry, layer),
+                    name=tags.get("name"),
+                    closed=closed,
+                )
+            )
+
+        def _add_feature(self, feature: VectorFeature):
+            layer_count = self.layer_counts.get(feature.layer, 0)
+            layer_limit = MAX_FEATURES_BY_LAYER.get(feature.layer)
+            if layer_limit is not None and layer_count >= layer_limit:
+                return
+            self.features.append(feature)
+            self.layer_counts[feature.layer] = layer_count + 1
+            self.point_count += len(feature.geometry)
+            for lon, lat in feature.geometry:
+                if self.bounds is None:
+                    self.bounds = (lon, lat, lon, lat)
+                else:
+                    min_lon, min_lat, max_lon, max_lat = self.bounds
+                    self.bounds = (
+                        min(min_lon, lon),
+                        min(min_lat, lat),
+                        max(max_lon, lon),
+                        max(max_lat, lat),
+                    )
+
+        @staticmethod
+        def _layer_for_way(tags: dict) -> str | None:
+            highway = tags.get("highway")
+            if highway in {"motorway", "trunk", "primary", "secondary"}:
+                return "road_major"
+            if highway in {"tertiary", "unclassified", "residential", "service"}:
+                return "road_minor"
+            if highway in {"track", "path", "footway", "cycleway", "bridleway"}:
+                return "track"
+            if tags.get("natural") == "water" or tags.get("landuse") in {"reservoir", "basin"}:
+                return "water"
+            if "waterway" in tags:
+                return "waterway"
+            if tags.get("power") in {"line", "minor_line"}:
+                return "power"
+            if tags.get("boundary") == "protected_area" or tags.get("leisure") == "nature_reserve":
+                return "protected"
+            return None
+
+    handler = OSMVectorHandler()
+    handler.apply_file(str(source_path), locations=True)
+    return ScenarioVectorData(handler.features, handler.bounds, source_path)
+
+
+def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tuple[float, float]]:
+    if layer in {"road_major", "road_minor", "water"} or len(geometry) <= 120:
+        return geometry
+    step = max(1, len(geometry) // 120)
+    thinned = geometry[::step]
+    if thinned[-1] != geometry[-1]:
+        thinned.append(geometry[-1])
+    return thinned
+
+
 class ScenarioMap(QWidget):
     scenario_selected = Signal(object)
     scenario_loaded = Signal(object)
@@ -97,6 +314,10 @@ class ScenarioMap(QWidget):
         self.selected_scenario = self.scenarios[0] if self.scenarios else None
         self.loaded_scenario = None
         self._loaded_context = None
+        self._vector_data = None
+        self._detail_center_merc = None
+        self._detail_scale = None
+        self._drag_last_pos = None
         self._marker_points: dict[str, QPointF] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
@@ -168,6 +389,11 @@ class ScenarioMap(QWidget):
         if event.button() != Qt.LeftButton:
             return
 
+        if self.loaded_scenario is not None:
+            self._drag_last_pos = QPointF(event.position())
+            self.setCursor(Qt.ClosedHandCursor)
+            return
+
         click_pos = QPointF(event.position())
         nearest = None
         nearest_distance = 18.0
@@ -184,6 +410,48 @@ class ScenarioMap(QWidget):
             self.selected_scenario = nearest
             self.scenario_selected.emit(nearest)
             self.update()
+
+    def mouseMoveEvent(self, event):
+        if self.loaded_scenario is None or self._drag_last_pos is None:
+            return
+        if self._detail_scale is None or self._detail_center_merc is None:
+            return
+        pos = QPointF(event.position())
+        delta = pos - self._drag_last_pos
+        self._drag_last_pos = pos
+        self._detail_center_merc = QPointF(
+            self._detail_center_merc.x() - delta.x() / self._detail_scale,
+            self._detail_center_merc.y() + delta.y() / self._detail_scale,
+        )
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self.loaded_scenario is not None and event.button() == Qt.LeftButton:
+            self._drag_last_pos = None
+            self.setCursor(Qt.OpenHandCursor)
+
+    def wheelEvent(self, event):
+        if self.loaded_scenario is None:
+            super().wheelEvent(event)
+            return
+        if self._detail_scale is None or self._detail_center_merc is None:
+            return
+
+        content = QRectF(self.rect()).adjusted(18, 18, -18, -18)
+        detail_rect = self._detail_map_rect(content)
+        pos = QPointF(event.position())
+        if not detail_rect.contains(pos):
+            return
+
+        anchor = self._screen_to_merc(pos, detail_rect)
+        factor = 1.22 if event.angleDelta().y() > 0 else 1 / 1.22
+        next_scale = max(3_000, min(7_000_000, self._detail_scale * factor))
+        self._detail_center_merc = QPointF(
+            anchor.x() - (pos.x() - detail_rect.center().x()) / next_scale,
+            anchor.y() + (pos.y() - detail_rect.center().y()) / next_scale,
+        )
+        self._detail_scale = next_scale
+        self.update()
 
     def _draw_overview_background(self, painter: QPainter, content: QRectF):
         painter.setPen(QPen(QColor(self.theme.border), 1))
@@ -271,15 +539,27 @@ class ScenarioMap(QWidget):
     def _load_selected_scenario(self):
         if self.selected_scenario is None:
             return
+        self.load_scenario_button.setEnabled(False)
+        self.load_scenario_button.setText("Loading...")
+        QApplication.processEvents()
         self.loaded_scenario = self.selected_scenario
         self._loaded_context = self._read_context(self.loaded_scenario)
-        self.scenario_loaded.emit(self.loaded_scenario)
-        self.update()
+        try:
+            self._vector_data = load_scenario_vector_data(self.loaded_scenario)
+            self._detail_center_merc = None
+            self._detail_scale = None
+            self.setCursor(Qt.OpenHandCursor)
+            self.scenario_loaded.emit(self.loaded_scenario)
+        finally:
+            self.load_scenario_button.setText("Load Scenario")
+            self.load_scenario_button.setEnabled(True)
+            self.update()
 
     def _draw_detail_view(self, painter: QPainter, content: QRectF):
         scenario = self.loaded_scenario
         context = self._loaded_context or {}
-        detail_rect = content.adjusted(12, 40, -12, -92)
+        detail_rect = self._detail_map_rect(content)
+        self._initialize_detail_view(detail_rect)
 
         painter.setPen(QPen(QColor(self.theme.border), 1))
         painter.setBrush(QColor(self.theme.bg_panel))
@@ -289,33 +569,8 @@ class ScenarioMap(QWidget):
         painter.setPen(QColor(self.theme.text_muted))
         painter.drawText(content.adjusted(12, 10, -12, -10), Qt.AlignTop | Qt.AlignLeft, "LOADED SCENARIO DETAIL")
 
-        painter.setPen(QPen(QColor(self.theme.border), 1))
-        painter.setBrush(QColor(self.theme.bg_main))
-        painter.drawRoundedRect(detail_rect, 5, 5)
-
-        center = detail_rect.center()
-        radius = min(detail_rect.width(), detail_rect.height()) * 0.34
-        for fraction, label in ((1.0, "10 km"), (0.5, "5 km"), (0.2, "2 km")):
-            ring_radius = radius * fraction
-            painter.setPen(QPen(QColor(self.theme.border), 1, Qt.DashLine))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawEllipse(center, ring_radius, ring_radius)
-            painter.setFont(app_font(FONT_SIZE_XS))
-            painter.setPen(QColor(self.theme.text_muted))
-            painter.drawText(
-                QRectF(center.x() + ring_radius + 4, center.y() - 10, 42, 20),
-                Qt.AlignLeft | Qt.AlignVCenter,
-                label,
-            )
-
-        self._draw_detail_features(painter, center, radius, context)
-
-        painter.setPen(QPen(QColor(self.theme.accent_orange), 3))
-        painter.setBrush(QColor(self.theme.accent_orange))
-        painter.drawEllipse(center, 8, 8)
-        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(QRectF(center.x() + 12, center.y() - 12, 96, 24), Qt.AlignLeft | Qt.AlignVCenter, "Ignition")
+        self._draw_vector_map(painter, detail_rect)
+        self._draw_context_overlays(painter, detail_rect, context)
 
         card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
@@ -332,25 +587,101 @@ class ScenarioMap(QWidget):
             self._detail_summary(context),
         )
 
-    def _draw_detail_features(self, painter: QPainter, center: QPointF, radius: float, context: dict):
-        for water in context.get("water_sources", [])[:5]:
-            self._draw_feature(
+    def _draw_vector_map(self, painter: QPainter, rect: QRectF):
+        painter.save()
+        painter.setClipRect(rect)
+        painter.setPen(QPen(QColor(self.theme.border), 1))
+        painter.setBrush(QColor("#16242a" if self.theme.name == "dark" else "#d9e7ef"))
+        painter.drawRoundedRect(rect, 5, 5)
+
+        if self._vector_data is None or not self._vector_data.features:
+            painter.setPen(QColor(self.theme.text_muted))
+            painter.drawText(rect, Qt.AlignCenter, f"No local OSM vector data found:\n{self.loaded_scenario.osm_pbf_path.name}")
+            painter.restore()
+            return
+
+        layer_order = ("protected", "water", "waterway", "building", "track", "road_minor", "road_major", "power", "settlement")
+        for layer in layer_order:
+            for feature in self._vector_data.features:
+                if feature.layer == layer:
+                    self._draw_vector_feature(painter, rect, feature)
+        painter.restore()
+
+    def _draw_vector_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature):
+        if feature.layer == "settlement":
+            point = self._geo_to_screen(*feature.geometry[0], rect)
+            painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+            painter.setBrush(QColor(self.theme.accent_green))
+            painter.drawEllipse(point, 4, 4)
+            if feature.name and self._detail_scale and self._detail_scale > 70_000:
+                painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+                painter.setPen(QColor(self.theme.text_primary))
+                painter.drawText(QRectF(point.x() + 7, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
+            return
+
+        path = QPainterPath()
+        first = self._geo_to_screen(*feature.geometry[0], rect)
+        path.moveTo(first)
+        for lon, lat in feature.geometry[1:]:
+            path.lineTo(self._geo_to_screen(lon, lat, rect))
+
+        if feature.layer == "water":
+            painter.setPen(QPen(QColor("#356f84" if self.theme.name == "dark" else "#65a9c1"), 1))
+            painter.setBrush(QColor("#244f62" if self.theme.name == "dark" else "#8fcbe0"))
+            painter.drawPath(path)
+        elif feature.layer == "protected":
+            painter.setPen(QPen(QColor("#4d8f5d" if self.theme.name == "dark" else "#6a9b72"), 1, Qt.DashLine))
+            painter.setBrush(QColor(73, 148, 91, 52))
+            painter.drawPath(path)
+        elif feature.layer == "building":
+            if self._detail_scale and self._detail_scale < 250_000:
+                return
+            painter.setPen(QPen(QColor("#7d6a55"), 1))
+            painter.setBrush(QColor("#7d6a55"))
+            painter.drawPath(path)
+        else:
+            pen = self._pen_for_layer(feature.layer)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(path)
+
+    def _pen_for_layer(self, layer: str) -> QPen:
+        if layer == "road_major":
+            return QPen(QColor("#f1b765"), 3.0)
+        if layer == "road_minor":
+            return QPen(QColor("#e8dcc4" if self.theme.name == "dark" else "#7b6d5b"), 1.8)
+        if layer == "track":
+            return QPen(QColor("#b9a98b" if self.theme.name == "dark" else "#9b8a6f"), 1.2, Qt.DashLine)
+        if layer == "power":
+            return QPen(QColor(self.theme.accent_purple), 1.1, Qt.DashLine)
+        if layer == "waterway":
+            return QPen(QColor(self.theme.accent_cyan), 1.4)
+        return QPen(QColor(self.theme.border), 1)
+
+    def _draw_context_overlays(self, painter: QPainter, rect: QRectF, context: dict):
+        scenario_point = self._geo_to_screen(self.loaded_scenario.longitude, self.loaded_scenario.latitude, rect)
+        painter.setPen(QPen(QColor(self.theme.bg_panel), 4))
+        painter.setBrush(QColor(self.theme.accent_orange))
+        painter.drawEllipse(scenario_point, 8, 8)
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Scenario")
+
+        for water in context.get("water_sources", [])[:4]:
+            self._draw_context_point(
                 painter,
-                center,
-                radius,
+                rect,
                 water.get("distance_m"),
                 water.get("bearing"),
                 QColor(self.theme.accent_cyan),
                 water.get("name") or water.get("source_type", "water"),
-                square=False,
             )
 
         primary = (context.get("roads") or {}).get("primary_access")
         if primary:
-            self._draw_feature(
+            self._draw_context_point(
                 painter,
-                center,
-                radius,
+                rect,
                 primary.get("distance_m"),
                 primary.get("bearing"),
                 QColor(self.theme.accent_orange),
@@ -358,45 +689,79 @@ class ScenarioMap(QWidget):
                 square=True,
             )
 
-        for settlement in context.get("settlements", [])[:4]:
-            self._draw_feature(
-                painter,
-                center,
-                radius,
-                settlement.get("distance_m"),
-                settlement.get("bearing"),
-                QColor(self.theme.accent_green),
-                settlement.get("name") or settlement.get("settlement_type", "settlement"),
-                square=True,
-            )
-
-    def _draw_feature(
+    def _draw_context_point(
         self,
         painter: QPainter,
-        center: QPointF,
-        radius: float,
+        rect: QRectF,
         distance_m: float | None,
         bearing: str | None,
         color: QColor,
         label: str,
-        square: bool,
+        square: bool = False,
     ):
-        point = self._relative_point(center, radius, distance_m, bearing)
+        lon, lat = self._offset_lon_lat(
+            self.loaded_scenario.longitude,
+            self.loaded_scenario.latitude,
+            distance_m or 0,
+            bearing,
+        )
+        point = self._geo_to_screen(lon, lat, rect)
         painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
         painter.setBrush(color)
         if square:
             painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
         else:
             painter.drawEllipse(point, 5, 5)
-
         painter.setFont(app_font(FONT_SIZE_XS))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(QRectF(point.x() + 8, point.y() - 10, 160, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
+        painter.drawText(QRectF(point.x() + 8, point.y() - 10, 150, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
 
     @staticmethod
-    def _relative_point(center: QPointF, radius: float, distance_m: float | None, bearing: str | None) -> QPointF:
-        import math
+    def _detail_map_rect(content: QRectF) -> QRectF:
+        return content.adjusted(12, 40, -12, -92)
 
+    def _initialize_detail_view(self, rect: QRectF):
+        if self._detail_center_merc is not None and self._detail_scale is not None:
+            return
+
+        if self._vector_data and self._vector_data.bounds:
+            min_lon, min_lat, max_lon, max_lat = self._vector_data.bounds
+        else:
+            min_lon = self.loaded_scenario.longitude - 0.25
+            max_lon = self.loaded_scenario.longitude + 0.25
+            min_lat = self.loaded_scenario.latitude - 0.16
+            max_lat = self.loaded_scenario.latitude + 0.16
+
+        min_merc = self._mercator_project(min_lon, min_lat)
+        max_merc = self._mercator_project(max_lon, max_lat)
+        width = max(abs(max_merc.x() - min_merc.x()), 0.0001)
+        height = max(abs(max_merc.y() - min_merc.y()), 0.0001)
+        self._detail_center_merc = QPointF(
+            (min_merc.x() + max_merc.x()) / 2,
+            (min_merc.y() + max_merc.y()) / 2,
+        )
+        self._detail_scale = min(rect.width() / width, rect.height() / height) * 0.92
+
+    def _geo_to_screen(self, lon: float, lat: float, rect: QRectF) -> QPointF:
+        merc = self._mercator_project(lon, lat)
+        return QPointF(
+            rect.center().x() + (merc.x() - self._detail_center_merc.x()) * self._detail_scale,
+            rect.center().y() - (merc.y() - self._detail_center_merc.y()) * self._detail_scale,
+        )
+
+    def _screen_to_merc(self, point: QPointF, rect: QRectF) -> QPointF:
+        return QPointF(
+            self._detail_center_merc.x() + (point.x() - rect.center().x()) / self._detail_scale,
+            self._detail_center_merc.y() - (point.y() - rect.center().y()) / self._detail_scale,
+        )
+
+    @staticmethod
+    def _mercator_project(lon: float, lat: float) -> QPointF:
+        lat = max(min(lat, 85.0), -85.0)
+        return QPointF(math.radians(lon), ScenarioMap._mercator_y(lat))
+
+    @staticmethod
+    def _offset_lon_lat(lon: float, lat: float, distance_m: float, bearing: str | None) -> tuple[float, float]:
         bearing_degrees = {
             "N": 0,
             "NE": 45,
@@ -407,12 +772,12 @@ class ScenarioMap(QWidget):
             "W": 270,
             "NW": 315,
         }.get(bearing or "N", 0)
-        distance_fraction = min((distance_m or 0) / 10000, 1.0)
-        angle = math.radians(bearing_degrees - 90)
-        return QPointF(
-            center.x() + math.cos(angle) * radius * distance_fraction,
-            center.y() + math.sin(angle) * radius * distance_fraction,
-        )
+        angle = math.radians(bearing_degrees)
+        north_m = math.cos(angle) * distance_m
+        east_m = math.sin(angle) * distance_m
+        lat_offset = north_m / 111_320
+        lon_offset = east_m / (111_320 * max(math.cos(math.radians(lat)), 0.2))
+        return lon + lon_offset, lat + lat_offset
 
     @staticmethod
     def _read_context(scenario: Scenario) -> dict:
