@@ -340,6 +340,7 @@ class PipelineDashboard(QWidget):
         self.scenario_map = ScenarioMap(self.scenarios, theme)
         self.scenario_map.scenario_selected.connect(self._on_scenario_selected)
         self.scenario_map.scenario_loaded.connect(self._on_scenario_loaded)
+        self.scenario_map.scenario_unloaded.connect(self._on_scenario_unloaded)
         self.map_panel = ResultPanel(
             "Scenario Map",
             "Select the operational context used for inference.",
@@ -634,6 +635,15 @@ class PipelineDashboard(QWidget):
         self._set_context_select_to_path(str(scenario.context_path))
         self.run_scenario_button.setVisible(True)
         self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
+
+    def _on_scenario_unloaded(self):
+        self.selected_context_path = None
+        self.run_scenario_button.setVisible(False)
+        if self.scenario_map.selected_scenario is not None:
+            scenario = self.scenario_map.selected_scenario
+            self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
+        else:
+            self.subtitle_label.setText("Select a scenario and run the wildfire reasoning pipeline.")
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()

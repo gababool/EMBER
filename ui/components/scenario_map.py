@@ -37,13 +37,10 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
-VECTOR_CACHE_VERSION = 2
-MAX_DETAIL_FEATURE_POINTS = 120_000
+VECTOR_CACHE_VERSION = 3
+MAX_DETAIL_FEATURE_POINTS = 420_000
 MAX_FEATURES_BY_LAYER = {
     "settlement": 400,
-    "road_major": 2000,
-    "road_minor": 5000,
-    "track": 3000,
     "waterway": 500,
     "water": 500,
     "power": 150,
@@ -77,6 +74,7 @@ class VectorFeature:
     geometry: list[tuple[float, float]]
     name: str | None = None
     closed: bool = False
+    bounds: tuple[float, float, float, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +145,7 @@ def _read_vector_cache(source_path: Path) -> ScenarioVectorData | None:
                 geometry=[tuple(point) for point in item["geometry"]],
                 name=item.get("name"),
                 closed=bool(item.get("closed")),
+                bounds=tuple(item["bounds"]) if item.get("bounds") else None,
             )
             for item in payload.get("features", [])
         ]
@@ -175,6 +174,7 @@ def _write_vector_cache(data: ScenarioVectorData):
                     "geometry": feature.geometry,
                     "name": feature.name,
                     "closed": feature.closed,
+                    "bounds": feature.bounds,
                 }
                 for feature in data.features
             ],
@@ -235,12 +235,14 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                 return
 
             closed = geometry[0] == geometry[-1]
+            thinned_geometry = _thin_geometry(geometry, layer)
             self._add_feature(
                 VectorFeature(
                     layer=layer,
-                    geometry=_thin_geometry(geometry, layer),
+                    geometry=thinned_geometry,
                     name=tags.get("name"),
                     closed=closed,
+                    bounds=_geometry_bounds(thinned_geometry),
                 )
             )
 
@@ -269,7 +271,20 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
             highway = tags.get("highway")
             if highway in {"motorway", "trunk", "primary", "secondary"}:
                 return "road_major"
-            if highway in {"tertiary", "unclassified", "residential", "service"}:
+            if highway in {
+                "motorway_link",
+                "trunk_link",
+                "primary_link",
+                "secondary_link",
+                "tertiary",
+                "tertiary_link",
+                "unclassified",
+                "residential",
+                "living_street",
+                "service",
+                "pedestrian",
+                "road",
+            }:
                 return "road_minor"
             if highway in {"track", "path", "footway", "cycleway", "bridleway"}:
                 return "track"
@@ -288,6 +303,12 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
     return ScenarioVectorData(handler.features, handler.bounds, source_path)
 
 
+def _geometry_bounds(geometry: list[tuple[float, float]]) -> tuple[float, float, float, float]:
+    lons = [point[0] for point in geometry]
+    lats = [point[1] for point in geometry]
+    return min(lons), min(lats), max(lons), max(lats)
+
+
 def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tuple[float, float]]:
     if layer in {"road_major", "road_minor", "water"} or len(geometry) <= 120:
         return geometry
@@ -301,6 +322,7 @@ def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tupl
 class ScenarioMap(QWidget):
     scenario_selected = Signal(object)
     scenario_loaded = Signal(object)
+    scenario_unloaded = Signal()
 
     def __init__(
         self,
@@ -336,6 +358,13 @@ class ScenarioMap(QWidget):
             button.setVisible(False)
         self.zoom_in_button.clicked.connect(lambda: self._zoom_detail(1.25))
         self.zoom_out_button.clicked.connect(lambda: self._zoom_detail(1 / 1.25))
+
+        self.exit_detail_button = QPushButton("Back", self)
+        self.exit_detail_button.setCursor(Qt.PointingHandCursor)
+        self.exit_detail_button.setFont(app_font(FONT_SIZE_XS, bold=True))
+        self.exit_detail_button.setFixedSize(70, 30)
+        self.exit_detail_button.setVisible(False)
+        self.exit_detail_button.clicked.connect(self._exit_detail_view)
 
         self.setMinimumSize(420, 360)
         self.setMouseTracking(True)
@@ -392,6 +421,7 @@ class ScenarioMap(QWidget):
         """
         self.zoom_in_button.setStyleSheet(zoom_style)
         self.zoom_out_button.setStyleSheet(zoom_style)
+        self.exit_detail_button.setStyleSheet(zoom_style)
         self.update()
 
     def paintEvent(self, event):
@@ -408,11 +438,15 @@ class ScenarioMap(QWidget):
             self._draw_markers(painter, image_rect)
             self._draw_selected_card(painter, content)
             self.load_scenario_button.setVisible(self.selected_scenario is not None)
+            self.zoom_in_button.setVisible(False)
+            self.zoom_out_button.setVisible(False)
+            self.exit_detail_button.setVisible(False)
         else:
             self.load_scenario_button.setVisible(False)
             self._position_zoom_buttons(content)
             self.zoom_in_button.setVisible(True)
             self.zoom_out_button.setVisible(True)
+            self.exit_detail_button.setVisible(True)
             self._draw_detail_view(painter, content)
 
     def mousePressEvent(self, event):
@@ -564,6 +598,19 @@ class ScenarioMap(QWidget):
         top = int(content.top() + 52)
         self.zoom_in_button.move(left, top)
         self.zoom_out_button.move(left, top + 34)
+        self.exit_detail_button.move(int(content.right() - 92), top)
+
+    def _exit_detail_view(self):
+        self.loaded_scenario = None
+        self._loaded_context = None
+        self._vector_data = None
+        self._features_by_layer = {}
+        self._detail_center_merc = None
+        self._detail_scale = None
+        self._drag_last_pos = None
+        self.setCursor(Qt.PointingHandCursor)
+        self.scenario_unloaded.emit()
+        self.update()
 
     def _zoom_detail(self, factor: float, anchor_pos: QPointF | None = None):
         if self.loaded_scenario is None:
@@ -751,10 +798,14 @@ class ScenarioMap(QWidget):
     @staticmethod
     def _feature_in_view(feature: VectorFeature, bounds: tuple[float, float, float, float]) -> bool:
         min_lon, min_lat, max_lon, max_lat = bounds
-        for lon, lat in feature.geometry[:: max(1, len(feature.geometry) // 12)]:
-            if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
-                return True
-        return False
+        feature_bounds = feature.bounds or _geometry_bounds(feature.geometry)
+        feature_min_lon, feature_min_lat, feature_max_lon, feature_max_lat = feature_bounds
+        return not (
+            feature_max_lon < min_lon
+            or feature_min_lon > max_lon
+            or feature_max_lat < min_lat
+            or feature_min_lat > max_lat
+        )
 
     def _draw_context_overlays(self, painter: QPainter, rect: QRectF, context: dict):
         scenario_point = self._geo_to_screen(self.loaded_scenario.longitude, self.loaded_scenario.latitude, rect)
