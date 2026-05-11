@@ -1,6 +1,7 @@
 from pathlib import Path
 import random
 import sys
+import threading
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -46,6 +47,7 @@ class PipelineWorker(QObject):
         prompt_file: str | None = None,
         context_file: str | None = None,
         skip_quality_screening: bool = False,
+        llm_enabled: bool = True,
         yolo_input_mode: str = "annotated_image",
         use_annotation: bool | None = None,
         fixed_image_path: str | None = None,
@@ -63,12 +65,14 @@ class PipelineWorker(QObject):
         self.prompt_file = prompt_file
         self.context_file = context_file
         self.skip_quality_screening = skip_quality_screening
+        self.llm_enabled = llm_enabled
         if use_annotation is not None:
             yolo_input_mode = "annotated_image" if use_annotation else "context_summary"
         self.yolo_input_mode = yolo_input_mode
         self.fixed_image_path = Path(fixed_image_path) if fixed_image_path else None
         self.label_filter = label_filter
         self.max_quality_retries = max_quality_retries
+        self._cancel_llm_event = threading.Event()
 
     @Slot()
     def run(self):
@@ -107,6 +111,10 @@ class PipelineWorker(QObject):
         finally:
             self.finished.emit()
 
+    @Slot()
+    def cancel_llm_inference(self):
+        self._cancel_llm_event.set()
+
     def _build_runner(self, image_path: Path):
         operational_context = self._build_operational_context(image_path)
         self.wind_updated.emit(self._wind_status_payload(operational_context))
@@ -115,6 +123,8 @@ class PipelineWorker(QObject):
             yolo_model=self.yolo_model,
             llm_model=self.llm_model,
             skip_quality_screening=self.skip_quality_screening,
+            llm_enabled=self.llm_enabled,
+            should_cancel_llm=self._cancel_llm_event.is_set,
             yolo_input_mode=self.yolo_input_mode,
             operational_context=operational_context,
         )

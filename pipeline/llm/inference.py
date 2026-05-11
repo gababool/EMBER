@@ -2,7 +2,7 @@ import argparse
 import base64
 import json
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import ollama
 from pydantic import BaseModel, ValidationError
@@ -36,6 +36,11 @@ class LLMInferenceResult(BaseModel):
     recommendation: str
     situation_brief: str | None = None
     tactical_priority: str | None = None
+
+
+class LLMInferenceCancelled(RuntimeError):
+    """Raised when an in-flight LLM request is cancelled by the caller."""
+
 
 def resolve_path(path_str: str) -> Path:
     path = Path(path_str).expanduser()
@@ -87,6 +92,7 @@ def run_llm_inference(
     additional_context: str | None = None,
     context_file: str | None = None,
     operational_context: OperationalContext | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -106,6 +112,8 @@ def run_llm_inference(
             operational_context = OperationalContext(**data)
 
     user_content = build_user_content(additional_context, operational_context)
+    if should_cancel and should_cancel():
+        raise LLMInferenceCancelled("LLM inference cancelled.")
 
     messages = [
         {
@@ -119,14 +127,28 @@ def run_llm_inference(
         },
     ]
 
-    response = ollama.chat(
+    response_stream = ollama.chat(
         model=model_tag,
         messages=messages,
         format=LLMInferenceResult.model_json_schema(),
         options={"temperature": 0},
+        stream=True,
     )
 
-    raw_content = response.message.content
+    raw_parts = []
+    for chunk in response_stream:
+        if should_cancel and should_cancel():
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceCancelled("LLM inference cancelled.")
+
+        message = getattr(chunk, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        if content:
+            raw_parts.append(content)
+
+    raw_content = "".join(raw_parts)
 
     try:
         parsed = LLMInferenceResult.model_validate_json(raw_content)
