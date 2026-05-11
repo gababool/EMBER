@@ -819,28 +819,6 @@ class PipelineDashboard(QWidget):
             return
 
         self._load_image_into_processed_box(annotated_path)
-        pixmap = QPixmap(annotated_path)
-        if pixmap.isNull():
-            self.image_placeholder.setText(f"Could not load image:\n{annotated_path}")
-            self.compact_image_placeholder.setText(f"Could not load image:\n{annotated_path}")
-            return
-
-        self.image_placeholder.setText("")
-        self.image_placeholder.setPixmap(
-            pixmap.scaled(
-                self.image_placeholder.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
-        self.compact_image_placeholder.setText("")
-        self.compact_image_placeholder.setPixmap(
-            pixmap.scaled(
-                self.compact_image_placeholder.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
 
     def set_reasoning_result(self, result: dict):
         if self.current_run is not None:
@@ -1268,6 +1246,8 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.setPixmap(QPixmap())
         self.image_placeholder.setText(message)
         self.image_placeholder.unsetCursor()
+        self.compact_image_placeholder.setPixmap(QPixmap())
+        self.compact_image_placeholder.setText(message)
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self.open_preview_button.setEnabled(False)
@@ -1284,7 +1264,7 @@ class PipelineDashboard(QWidget):
         )
         self.compact_image_placeholder.setText("")
         self.compact_image_placeholder.setPixmap(
-            pixmap.scaled(
+            self._current_preview_pixmap.scaled(
                 self.compact_image_placeholder.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
