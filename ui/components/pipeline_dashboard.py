@@ -149,6 +149,7 @@ class PipelineDashboard(QWidget):
         self.run_scenario_button.setCursor(Qt.PointingHandCursor)
         self.run_scenario_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
         self.run_scenario_button.clicked.connect(self.start_button.click)
+        self.run_scenario_button.setVisible(False)
 
         self.stop_llm_button = QPushButton("Stop LLM")
         self.stop_llm_button.setFont(app_font(FONT_SIZE_MD, bold=True))
@@ -338,6 +339,7 @@ class PipelineDashboard(QWidget):
 
         self.scenario_map = ScenarioMap(self.scenarios, theme)
         self.scenario_map.scenario_selected.connect(self._on_scenario_selected)
+        self.scenario_map.scenario_loaded.connect(self._on_scenario_loaded)
         self.map_panel = ResultPanel(
             "Scenario Map",
             "Select the operational context used for inference.",
@@ -601,13 +603,13 @@ class PipelineDashboard(QWidget):
         self.scenario_map.set_selected_context_file(self.selected_context_path)
 
     def _on_scenario_selected(self, scenario):
-        self.selected_context_path = str(scenario.context_path)
         self._set_context_select_to_path(str(scenario.context_path))
         self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
+        loaded_scenario = getattr(self.scenario_map, "loaded_scenario", None)
+        self.run_scenario_button.setVisible(loaded_scenario == scenario)
 
     def _sync_context_from_map(self):
         if self.scenario_map.selected_context_file():
-            self.selected_context_path = self.scenario_map.selected_context_file()
             self._set_context_select_to_path(self.scenario_map.selected_context_file())
 
     def _set_context_select_to_path(self, context_path: str | None):
@@ -627,36 +629,11 @@ class PipelineDashboard(QWidget):
         self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
         self._apply_responsive_layout()
 
-    def _on_context_changed(self, _index: int):
-        self.selected_context_path = self.context_select.currentData()
-        self.scenario_map.set_selected_context_file(self.selected_context_path)
-
-    def _on_scenario_selected(self, scenario):
+    def _on_scenario_loaded(self, scenario):
         self.selected_context_path = str(scenario.context_path)
         self._set_context_select_to_path(str(scenario.context_path))
-        self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
-
-    def _sync_context_from_map(self):
-        if self.scenario_map.selected_context_file():
-            self.selected_context_path = self.scenario_map.selected_context_file()
-            self._set_context_select_to_path(self.scenario_map.selected_context_file())
-
-    def _set_context_select_to_path(self, context_path: str | None):
-        if not context_path:
-            return
-        for index, (_text, data) in enumerate(self.context_select.items):
-            if Path(data).resolve() == Path(context_path).resolve():
-                if self.context_select.current_index != index:
-                    self.context_select.setCurrentIndex(index)
-                return
-
-    def toggle_detail_view(self):
-        self.detail_view_expanded = not self.detail_view_expanded
-        self.content_stack.setCurrentWidget(
-            self.full_page if self.detail_view_expanded else self.operational_page
-        )
-        self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
-        self._apply_responsive_layout()
+        self.run_scenario_button.setVisible(True)
+        self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()

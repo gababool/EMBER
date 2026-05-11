@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QPushButton, QWidget
 
 try:
     from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
@@ -83,6 +83,7 @@ def load_scenarios(contexts_dir: Path = CONTEXTS_DIR) -> list[Scenario]:
 
 class ScenarioMap(QWidget):
     scenario_selected = Signal(object)
+    scenario_loaded = Signal(object)
 
     def __init__(
         self,
@@ -94,11 +95,20 @@ class ScenarioMap(QWidget):
         self.theme = theme
         self.scenarios = scenarios or load_scenarios()
         self.selected_scenario = self.scenarios[0] if self.scenarios else None
+        self.loaded_scenario = None
+        self._loaded_context = None
         self._marker_points: dict[str, QPointF] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
+
+        self.load_scenario_button = QPushButton("Load Scenario", self)
+        self.load_scenario_button.setCursor(Qt.PointingHandCursor)
+        self.load_scenario_button.setFont(app_font(FONT_SIZE_XS, bold=True))
+        self.load_scenario_button.clicked.connect(self._load_selected_scenario)
+
         self.setMinimumSize(420, 360)
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
+        self.apply_theme(theme)
 
     def selected_context_file(self) -> str | None:
         if self.selected_scenario is None:
@@ -117,6 +127,23 @@ class ScenarioMap(QWidget):
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
+        self.load_scenario_button.setStyleSheet(f"""
+            QPushButton {{
+                color: #ffffff;
+                background-color: {theme.accent_orange};
+                border: 1px solid {theme.accent_orange};
+                border-radius: 4px;
+                padding: 5px 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.accent_cyan};
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.accent_blue};
+                border-color: {theme.accent_blue};
+            }}
+        """)
         self.update()
 
     def paintEvent(self, event):
@@ -125,13 +152,17 @@ class ScenarioMap(QWidget):
         painter.fillRect(self.rect(), QColor(self.theme.bg_panel_alt))
 
         content = QRectF(self.rect()).adjusted(18, 18, -18, -18)
-        map_rect = content.adjusted(10, 28, -10, -104)
-        image_rect = self._image_rect(map_rect)
-
-        self._draw_overview_background(painter, content)
-        self._draw_sweden_map(painter, image_rect)
-        self._draw_markers(painter, image_rect)
-        self._draw_selected_card(painter, content)
+        if self.loaded_scenario is None:
+            map_rect = content.adjusted(10, 28, -10, -104)
+            image_rect = self._image_rect(map_rect)
+            self._draw_overview_background(painter, content)
+            self._draw_sweden_map(painter, image_rect)
+            self._draw_markers(painter, image_rect)
+            self._draw_selected_card(painter, content)
+            self.load_scenario_button.setVisible(self.selected_scenario is not None)
+        else:
+            self.load_scenario_button.setVisible(False)
+            self._draw_detail_view(painter, content)
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -215,6 +246,7 @@ class ScenarioMap(QWidget):
 
         scenario = self.selected_scenario
         card = QRectF(content.left() + 12, content.bottom() - 86, content.width() - 24, 70)
+        self._position_load_button(card)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
         painter.setBrush(QColor(self.theme.bg_panel_alt))
         painter.drawRoundedRect(card, 5, 5)
@@ -226,7 +258,178 @@ class ScenarioMap(QWidget):
         painter.setFont(app_font(FONT_SIZE_XS))
         painter.setPen(QColor(self.theme.text_muted))
         details = f"{scenario.region} | {scenario.description}"
-        painter.drawText(card.adjusted(12, 32, -12, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
+        painter.drawText(card.adjusted(12, 32, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
+
+    def _position_load_button(self, card: QRectF):
+        self.load_scenario_button.setGeometry(
+            int(card.right() - 124),
+            int(card.top() + 18),
+            108,
+            34,
+        )
+
+    def _load_selected_scenario(self):
+        if self.selected_scenario is None:
+            return
+        self.loaded_scenario = self.selected_scenario
+        self._loaded_context = self._read_context(self.loaded_scenario)
+        self.scenario_loaded.emit(self.loaded_scenario)
+        self.update()
+
+    def _draw_detail_view(self, painter: QPainter, content: QRectF):
+        scenario = self.loaded_scenario
+        context = self._loaded_context or {}
+        detail_rect = content.adjusted(12, 40, -12, -92)
+
+        painter.setPen(QPen(QColor(self.theme.border), 1))
+        painter.setBrush(QColor(self.theme.bg_panel))
+        painter.drawRoundedRect(content, 5, 5)
+
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_muted))
+        painter.drawText(content.adjusted(12, 10, -12, -10), Qt.AlignTop | Qt.AlignLeft, "LOADED SCENARIO DETAIL")
+
+        painter.setPen(QPen(QColor(self.theme.border), 1))
+        painter.setBrush(QColor(self.theme.bg_main))
+        painter.drawRoundedRect(detail_rect, 5, 5)
+
+        center = detail_rect.center()
+        radius = min(detail_rect.width(), detail_rect.height()) * 0.34
+        for fraction, label in ((1.0, "10 km"), (0.5, "5 km"), (0.2, "2 km")):
+            ring_radius = radius * fraction
+            painter.setPen(QPen(QColor(self.theme.border), 1, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, ring_radius, ring_radius)
+            painter.setFont(app_font(FONT_SIZE_XS))
+            painter.setPen(QColor(self.theme.text_muted))
+            painter.drawText(
+                QRectF(center.x() + ring_radius + 4, center.y() - 10, 42, 20),
+                Qt.AlignLeft | Qt.AlignVCenter,
+                label,
+            )
+
+        self._draw_detail_features(painter, center, radius, context)
+
+        painter.setPen(QPen(QColor(self.theme.accent_orange), 3))
+        painter.setBrush(QColor(self.theme.accent_orange))
+        painter.drawEllipse(center, 8, 8)
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(QRectF(center.x() + 12, center.y() - 12, 96, 24), Qt.AlignLeft | Qt.AlignVCenter, "Ignition")
+
+        card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
+        painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
+        painter.setBrush(QColor(self.theme.bg_panel_alt))
+        painter.drawRoundedRect(card, 5, 5)
+        painter.setFont(app_font(FONT_SIZE_SM, bold=True))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(card.adjusted(12, 6, -12, -34), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
+        painter.setFont(app_font(FONT_SIZE_XS))
+        painter.setPen(QColor(self.theme.text_muted))
+        painter.drawText(
+            card.adjusted(12, 28, -12, -6),
+            Qt.AlignLeft | Qt.TextWordWrap,
+            self._detail_summary(context),
+        )
+
+    def _draw_detail_features(self, painter: QPainter, center: QPointF, radius: float, context: dict):
+        for water in context.get("water_sources", [])[:5]:
+            self._draw_feature(
+                painter,
+                center,
+                radius,
+                water.get("distance_m"),
+                water.get("bearing"),
+                QColor(self.theme.accent_cyan),
+                water.get("name") or water.get("source_type", "water"),
+                square=False,
+            )
+
+        primary = (context.get("roads") or {}).get("primary_access")
+        if primary:
+            self._draw_feature(
+                painter,
+                center,
+                radius,
+                primary.get("distance_m"),
+                primary.get("bearing"),
+                QColor(self.theme.accent_orange),
+                primary.get("name") or "primary road",
+                square=True,
+            )
+
+        for settlement in context.get("settlements", [])[:4]:
+            self._draw_feature(
+                painter,
+                center,
+                radius,
+                settlement.get("distance_m"),
+                settlement.get("bearing"),
+                QColor(self.theme.accent_green),
+                settlement.get("name") or settlement.get("settlement_type", "settlement"),
+                square=True,
+            )
+
+    def _draw_feature(
+        self,
+        painter: QPainter,
+        center: QPointF,
+        radius: float,
+        distance_m: float | None,
+        bearing: str | None,
+        color: QColor,
+        label: str,
+        square: bool,
+    ):
+        point = self._relative_point(center, radius, distance_m, bearing)
+        painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+        painter.setBrush(color)
+        if square:
+            painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
+        else:
+            painter.drawEllipse(point, 5, 5)
+
+        painter.setFont(app_font(FONT_SIZE_XS))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(QRectF(point.x() + 8, point.y() - 10, 160, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
+
+    @staticmethod
+    def _relative_point(center: QPointF, radius: float, distance_m: float | None, bearing: str | None) -> QPointF:
+        import math
+
+        bearing_degrees = {
+            "N": 0,
+            "NE": 45,
+            "E": 90,
+            "SE": 135,
+            "S": 180,
+            "SW": 225,
+            "W": 270,
+            "NW": 315,
+        }.get(bearing or "N", 0)
+        distance_fraction = min((distance_m or 0) / 10000, 1.0)
+        angle = math.radians(bearing_degrees - 90)
+        return QPointF(
+            center.x() + math.cos(angle) * radius * distance_fraction,
+            center.y() + math.sin(angle) * radius * distance_fraction,
+        )
+
+    @staticmethod
+    def _read_context(scenario: Scenario) -> dict:
+        try:
+            return json.loads(scenario.context_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    @staticmethod
+    def _detail_summary(context: dict) -> str:
+        assets = context.get("assets_at_risk") or {}
+        roads = context.get("roads") or {}
+        water_count = len(context.get("water_sources", []))
+        building_count = assets.get("buildings_within_radius", 0)
+        primary = roads.get("primary_access") or {}
+        primary_name = primary.get("name") or "primary access route"
+        return f"{water_count} water sources | {building_count} buildings in radius | {primary_name}"
 
     @staticmethod
     def _project(lon: float, lat: float, rect: QRectF) -> QPointF:
