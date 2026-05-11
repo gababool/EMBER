@@ -12,8 +12,8 @@ from pipeline.context.schemas import OperationalContext
 from pipeline.object_detection.config import ANNOTATED_OUTPUT_DIR, ANNOTATED_OUTPUT_FILENAME
 
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "c1v1prompt.txt"
+SCRIPT_DIR = Path(__file__).resolve().parent  
+DEFAULT_PROMPT_FILE = SCRIPT_DIR / "llm" / "prompts" / "latest.txt"     
 
 
 @dataclass
