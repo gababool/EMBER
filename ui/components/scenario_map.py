@@ -315,6 +315,7 @@ class ScenarioMap(QWidget):
         self.loaded_scenario = None
         self._loaded_context = None
         self._vector_data = None
+        self._features_by_layer: dict[str, list[VectorFeature]] = {}
         self._detail_center_merc = None
         self._detail_scale = None
         self._drag_last_pos = None
@@ -594,6 +595,7 @@ class ScenarioMap(QWidget):
         self._loaded_context = self._read_context(self.loaded_scenario)
         try:
             self._vector_data = load_scenario_vector_data(self.loaded_scenario)
+            self._features_by_layer = self._group_features_by_layer(self._vector_data.features)
             self._detail_center_merc = None
             self._detail_scale = None
             self.setCursor(Qt.OpenHandCursor)
@@ -648,29 +650,33 @@ class ScenarioMap(QWidget):
             painter.restore()
             return
 
-        layer_order = ("protected", "water", "waterway", "building", "track", "road_minor", "road_major", "power", "settlement")
+        layer_order = self._visible_layers_for_scale()
+        viewport = self._visible_geo_bounds(rect)
         for layer in layer_order:
-            for feature in self._vector_data.features:
-                if feature.layer == layer:
+            for feature in self._features_by_layer.get(layer, []):
+                if self._feature_in_view(feature, viewport):
                     self._draw_vector_feature(painter, rect, feature)
         painter.restore()
 
     def _draw_vector_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature):
         if feature.layer == "settlement":
             point = self._geo_to_screen(*feature.geometry[0], rect)
+            if not rect.adjusted(-12, -12, 12, 12).contains(point):
+                return
             painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
             painter.setBrush(QColor(self.theme.accent_green))
             painter.drawEllipse(point, 4, 4)
-            if feature.name and self._detail_scale and self._detail_scale > 70_000:
+            if feature.name and self._detail_scale and self._detail_scale > 220_000:
                 painter.setFont(app_font(FONT_SIZE_XS, bold=True))
                 painter.setPen(QColor(self.theme.text_primary))
                 painter.drawText(QRectF(point.x() + 7, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
             return
 
         path = QPainterPath()
-        first = self._geo_to_screen(*feature.geometry[0], rect)
+        geometry = self._geometry_for_scale(feature)
+        first = self._geo_to_screen(*geometry[0], rect)
         path.moveTo(first)
-        for lon, lat in feature.geometry[1:]:
+        for lon, lat in geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
         if feature.layer == "water":
@@ -705,6 +711,50 @@ class ScenarioMap(QWidget):
         if layer == "waterway":
             return QPen(QColor(self.theme.accent_cyan), 1.4)
         return QPen(QColor(self.theme.border), 1)
+
+    def _visible_layers_for_scale(self) -> tuple[str, ...]:
+        scale = self._detail_scale or 0
+        if scale < 120_000:
+            return ("water", "road_major", "settlement")
+        if scale < 360_000:
+            return ("protected", "water", "waterway", "road_minor", "road_major", "power", "settlement")
+        return ("protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
+
+    def _geometry_for_scale(self, feature: VectorFeature) -> list[tuple[float, float]]:
+        scale = self._detail_scale or 0
+        if scale >= 360_000 or len(feature.geometry) <= 16:
+            return feature.geometry
+        step = 4 if scale < 120_000 else 2
+        geometry = feature.geometry[::step]
+        if geometry[-1] != feature.geometry[-1]:
+            geometry.append(feature.geometry[-1])
+        return geometry
+
+    @staticmethod
+    def _group_features_by_layer(features: list[VectorFeature]) -> dict[str, list[VectorFeature]]:
+        grouped: dict[str, list[VectorFeature]] = {}
+        for feature in features:
+            grouped.setdefault(feature.layer, []).append(feature)
+        return grouped
+
+    def _visible_geo_bounds(self, rect: QRectF) -> tuple[float, float, float, float]:
+        top_left = self._screen_to_lon_lat(rect.topLeft(), rect)
+        bottom_right = self._screen_to_lon_lat(rect.bottomRight(), rect)
+        min_lon = min(top_left[0], bottom_right[0])
+        max_lon = max(top_left[0], bottom_right[0])
+        min_lat = min(top_left[1], bottom_right[1])
+        max_lat = max(top_left[1], bottom_right[1])
+        lon_pad = (max_lon - min_lon) * 0.08
+        lat_pad = (max_lat - min_lat) * 0.08
+        return min_lon - lon_pad, min_lat - lat_pad, max_lon + lon_pad, max_lat + lat_pad
+
+    @staticmethod
+    def _feature_in_view(feature: VectorFeature, bounds: tuple[float, float, float, float]) -> bool:
+        min_lon, min_lat, max_lon, max_lat = bounds
+        for lon, lat in feature.geometry[:: max(1, len(feature.geometry) // 12)]:
+            if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
+                return True
+        return False
 
     def _draw_context_overlays(self, painter: QPainter, rect: QRectF, context: dict):
         scenario_point = self._geo_to_screen(self.loaded_scenario.longitude, self.loaded_scenario.latitude, rect)
@@ -803,6 +853,10 @@ class ScenarioMap(QWidget):
             self._detail_center_merc.y() - (point.y() - rect.center().y()) / self._detail_scale,
         )
 
+    def _screen_to_lon_lat(self, point: QPointF, rect: QRectF) -> tuple[float, float]:
+        merc = self._screen_to_merc(point, rect)
+        return math.degrees(merc.x()), self._inverse_mercator_y(merc.y())
+
     @staticmethod
     def _mercator_project(lon: float, lat: float) -> QPointF:
         lat = max(min(lat, 85.0), -85.0)
@@ -875,7 +929,9 @@ class ScenarioMap(QWidget):
 
     @staticmethod
     def _mercator_y(lat: float) -> float:
-        import math
-
         radians = math.radians(lat)
         return math.log(math.tan(math.pi / 4 + radians / 2))
+
+    @staticmethod
+    def _inverse_mercator_y(y: float) -> float:
+        return math.degrees(2 * math.atan(math.exp(y)) - math.pi / 2)
