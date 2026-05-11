@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QThread
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
+    QMessageBox,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -87,6 +88,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(label_filter=self.dashboard.selected_image_filter())
@@ -95,6 +97,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(fixed_image_path=image_path)
@@ -104,6 +107,7 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is not None or image_path is None:
             return
 
+        self._warn_if_llm_background_active()
         self.dashboard.reset_demo()
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(
@@ -190,6 +194,18 @@ class MainWindow(QMainWindow):
         if self.pipeline_thread is None and not self._detached_pipeline_threads:
             self.dashboard.set_llm_background_stopping(False)
             self._set_top_mode("OFFLINE MODE")
+
+    def _warn_if_llm_background_active(self):
+        if not any(thread.isRunning() for thread in self._detached_pipeline_threads):
+            return
+        QMessageBox.warning(
+            self,
+            "LLM Still Stopping",
+            (
+                "A cancelled LLM request is still stopping in the background.\n\n"
+                "Starting another run now may make local Ollama inference slower."
+            ),
+        )
 
     def update_system_stats(self, stats):
         self.top_bar.set_system_stats(
