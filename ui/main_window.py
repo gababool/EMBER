@@ -15,20 +15,22 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-LLM_TIMEOUT_MS = 120_000
-
 try:
     from ui.assets.design import DARK_THEME, LIGHT_THEME, Theme
     from ui.components.pipeline_dashboard import PipelineDashboard
     from ui.components.top_bar import TopBar
-    from ui.pipeline_worker import PipelineWorker
+    from ui.pipeline_worker import DEFAULT_LLM_TIMEOUT_SECONDS, PipelineWorker
     from ui.system_monitor import SystemMonitor
 except ImportError:
     from assets.design import DARK_THEME, LIGHT_THEME, Theme
     from components.pipeline_dashboard import PipelineDashboard
     from components.top_bar import TopBar
-    from pipeline_worker import PipelineWorker
+    from pipeline_worker import DEFAULT_LLM_TIMEOUT_SECONDS, PipelineWorker
     from system_monitor import SystemMonitor
+
+
+LLM_TIMEOUT_MS = int(DEFAULT_LLM_TIMEOUT_SECONDS * 1000)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
