@@ -166,6 +166,7 @@ class LLMReasoningStage:
         use_annotation: bool | None = None,
         operational_context: OperationalContext | None = None,
         should_cancel: Callable[[], bool] | None = None,
+        timeout_seconds: float | None = None,
     ):
         self.model_name = model_name
         self.prompt_file = Path(prompt_file)
@@ -177,10 +178,12 @@ class LLMReasoningStage:
         )
         self.operational_context = operational_context
         self.should_cancel = should_cancel
+        self.timeout_seconds = timeout_seconds
 
     def run(self, context: PipelineContext) -> PipelineStageResult:
         from pipeline.llm.inference import (
             LLMInferenceCancelled,
+            LLMInferenceTimedOut,
             load_system_prompt,
             run_llm_inference,
         )
@@ -213,6 +216,7 @@ class LLMReasoningStage:
                 context_file=str(self.context_file) if self.context_file else None,
                 operational_context=self.operational_context,
                 should_cancel=self.should_cancel,
+                timeout_seconds=self.timeout_seconds,
             )
         except LLMInferenceCancelled:
             result = {
@@ -222,6 +226,15 @@ class LLMReasoningStage:
                 "parsed": {},
                 "raw_response": "",
                 "status": "cancelled",
+            }
+        except LLMInferenceTimedOut:
+            result = {
+                "model_name": self.model_name,
+                "prompt_file": str(self.prompt_file),
+                "context_file": str(self.context_file) if self.context_file else None,
+                "parsed": {},
+                "raw_response": "",
+                "status": "timed_out",
             }
         result["yolo_input_mode"] = self.yolo_input_mode
         context.set_output(self.name, result)
@@ -297,6 +310,7 @@ def create_default_pipeline(
     skip_quality_screening: bool = False,
     llm_enabled: bool = True,
     should_cancel_llm: Callable[[], bool] | None = None,
+    llm_timeout_seconds: float | None = None,
     yolo_input_mode: str | None = None,
     use_annotation: bool | None = None,
 ) -> PipelineRunner:
@@ -322,6 +336,7 @@ def create_default_pipeline(
             yolo_input_mode=resolved_yolo_input_mode,
             operational_context=operational_context,
             should_cancel=should_cancel_llm,
+            timeout_seconds=llm_timeout_seconds,
         ))
     return PipelineRunner(stages=stages)
 

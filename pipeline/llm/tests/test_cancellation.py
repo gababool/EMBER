@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pipeline.llm.inference import LLMInferenceCancelled
+from pipeline.llm.inference import LLMInferenceCancelled, LLMInferenceTimedOut
 from pipeline.service import LLMReasoningStage, PipelineContext
 
 
@@ -24,4 +24,27 @@ def test_llm_stage_returns_cancelled_result(monkeypatch, tmp_path):
     assert result.passed is True
     assert result.stop_pipeline is False
     assert result.output["status"] == "cancelled"
+    assert result.output["parsed"] == {}
+
+
+def test_llm_stage_returns_timed_out_result(monkeypatch, tmp_path):
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("system prompt", encoding="utf-8")
+    image_file = tmp_path / "image.jpg"
+    image_file.write_bytes(b"fake image")
+
+    def timed_out_inference(**_kwargs):
+        raise LLMInferenceTimedOut("timed out")
+
+    monkeypatch.setattr(
+        "pipeline.llm.inference.run_llm_inference",
+        timed_out_inference,
+    )
+
+    stage = LLMReasoningStage(prompt_file=prompt_file, timeout_seconds=120)
+    result = stage.run(PipelineContext(image_path=Path(image_file)))
+
+    assert result.passed is True
+    assert result.stop_pipeline is False
+    assert result.output["status"] == "timed_out"
     assert result.output["parsed"] == {}

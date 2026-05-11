@@ -27,6 +27,7 @@ DEFAULT_PROMPT_FILE = REPO_ROOT / "pipeline" / "llm" / "prompts" / "c2v4prompt.t
 WIND_MODE_NONE = "none"
 WIND_MODE_MANUAL = "manual"
 WIND_MODE_MOCKED = "mocked"
+DEFAULT_LLM_TIMEOUT_SECONDS = 120
 
 
 class PipelineWorker(QObject):
@@ -48,6 +49,7 @@ class PipelineWorker(QObject):
         context_file: str | None = None,
         skip_quality_screening: bool = False,
         llm_enabled: bool = True,
+        llm_timeout_seconds: float | None = DEFAULT_LLM_TIMEOUT_SECONDS,
         yolo_input_mode: str = "annotated_image",
         use_annotation: bool | None = None,
         fixed_image_path: str | None = None,
@@ -66,6 +68,7 @@ class PipelineWorker(QObject):
         self.context_file = context_file
         self.skip_quality_screening = skip_quality_screening
         self.llm_enabled = llm_enabled
+        self.llm_timeout_seconds = llm_timeout_seconds
         if use_annotation is not None:
             yolo_input_mode = "annotated_image" if use_annotation else "context_summary"
         self.yolo_input_mode = yolo_input_mode
@@ -125,6 +128,7 @@ class PipelineWorker(QObject):
             skip_quality_screening=self.skip_quality_screening,
             llm_enabled=self.llm_enabled,
             should_cancel_llm=self._cancel_llm_event.is_set,
+            llm_timeout_seconds=self.llm_timeout_seconds,
             yolo_input_mode=self.yolo_input_mode,
             operational_context=operational_context,
         )

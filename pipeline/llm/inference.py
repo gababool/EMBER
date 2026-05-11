@@ -2,6 +2,7 @@ import argparse
 import base64
 import json
 from pathlib import Path
+import time
 from typing import Callable, Literal
 
 import ollama
@@ -40,6 +41,10 @@ class LLMInferenceResult(BaseModel):
 
 class LLMInferenceCancelled(RuntimeError):
     """Raised when an in-flight LLM request is cancelled by the caller."""
+
+
+class LLMInferenceTimedOut(RuntimeError):
+    """Raised when an in-flight LLM request exceeds its timeout."""
 
 
 def resolve_path(path_str: str) -> Path:
@@ -93,6 +98,7 @@ def run_llm_inference(
     context_file: str | None = None,
     operational_context: OperationalContext | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict:
     if model_name not in MODELS:
         raise ValueError(
@@ -102,6 +108,7 @@ def run_llm_inference(
     model_tag = MODELS[model_name]
     image_path_resolved = str(resolve_path(image_path))
     image_b64 = load_image(image_path)
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds else None
 
     if operational_context is None and context_file is not None:
         context_path = resolve_path(context_file)
@@ -114,6 +121,8 @@ def run_llm_inference(
     user_content = build_user_content(additional_context, operational_context)
     if should_cancel and should_cancel():
         raise LLMInferenceCancelled("LLM inference cancelled.")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise LLMInferenceTimedOut("LLM inference timed out.")
 
     messages = [
         {
@@ -142,6 +151,11 @@ def run_llm_inference(
             if close is not None:
                 close()
             raise LLMInferenceCancelled("LLM inference cancelled.")
+        if deadline is not None and time.monotonic() >= deadline:
+            close = getattr(response_stream, "close", None)
+            if close is not None:
+                close()
+            raise LLMInferenceTimedOut("LLM inference timed out.")
 
         message = getattr(chunk, "message", None)
         content = getattr(message, "content", None) if message is not None else None
