@@ -32,6 +32,8 @@ If quality screening fails, the app immediately loads another random image. The 
 
 - `Test Image`: runs one random dataset image through the pipeline.
 - model dropdown: selects the LLM model for the next run.
+- `LLM: ON/OFF`: enables or skips LLM reasoning for the next run.
+- `Stop LLM`: cancels an active LLM reasoning request while preserving completed quality and YOLO results.
 - wind dropdown: selects no wind, manually entered wind, or mocked wind for the operational context.
 - wind direction and speed inputs: enabled only for manual wind.
 - theme button: toggles light/dark mode.
