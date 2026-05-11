@@ -221,11 +221,9 @@ class PipelineDashboard(QWidget):
         self.wind_speed_input.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
         controls_row_layout.addWidget(self.yolo_mode_select)
-        controls_row_layout.addWidget(self.skip_quality_button)
         controls_row_layout.addWidget(self.rerun_button)
         controls_row_layout.addStretch(1)
         controls_row_layout.addWidget(self.context_select)
-        controls_row_layout.addWidget(self.prompt_select)
         controls_row_layout.addWidget(self.model_select)
         controls_row_layout.addWidget(self.wind_mode_select)
         controls_row_layout.addWidget(self.wind_direction_select)
@@ -331,6 +329,8 @@ class PipelineDashboard(QWidget):
         pipeline_demo_layout.addStretch(1)
         pipeline_demo_layout.addWidget(self.image_filter_select)
         pipeline_demo_layout.addWidget(self.pick_button)
+        pipeline_demo_layout.addWidget(self.skip_quality_button)
+        pipeline_demo_layout.addWidget(self.prompt_select)
         pipeline_demo_layout.addWidget(self.start_button)
 
         self.compact_pipeline_body = QWidget()
