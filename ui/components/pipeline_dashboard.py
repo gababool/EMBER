@@ -30,6 +30,7 @@ try:
     )
     from ui.components.classification_badge import ClassificationBadge, CorrectnessBadge
     from ui.components.history_strip import HistoryStrip
+    from ui.components.image_preview_dialog import ImagePreviewDialog
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
     from pipeline.context.wind import build_mock_wind
@@ -49,6 +50,7 @@ except ImportError:
     )
     from components.classification_badge import ClassificationBadge, CorrectnessBadge
     from components.history_strip import HistoryStrip
+    from components.image_preview_dialog import ImagePreviewDialog
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
     from pipeline.context.wind import build_mock_wind
@@ -83,6 +85,8 @@ class PipelineDashboard(QWidget):
         self.run_history = []
         self.compact_layout = False
         self.last_image_path = None
+        self.current_preview_image_path = None
+        self._current_preview_pixmap = QPixmap()
         self._generated_mock_wind = None
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
@@ -238,9 +242,24 @@ class PipelineDashboard(QWidget):
             quality_layout.addWidget(row)
         quality_layout.addStretch()
 
-        self.image_placeholder = QLabel("Processed image will appear here")
+        self.image_placeholder = ClickableImageLabel("Processed image will appear here")
         self.image_placeholder.setAlignment(Qt.AlignCenter)
         self.image_placeholder.setMinimumSize(360, 220)
+        self.image_placeholder.clicked.connect(self._open_image_preview)
+
+        self.open_preview_button = QPushButton("Open Preview")
+        self.open_preview_button.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.open_preview_button.setCursor(Qt.PointingHandCursor)
+        self.open_preview_button.setFixedHeight(32)
+        self.open_preview_button.setEnabled(False)
+        self.open_preview_button.clicked.connect(self._open_image_preview)
+
+        self.image_body = QWidget()
+        image_layout = QVBoxLayout(self.image_body)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        image_layout.setSpacing(10)
+        image_layout.addWidget(self.image_placeholder, 1)
+        image_layout.addWidget(self.open_preview_button, 0, Qt.AlignRight)
 
         self.reasoning_text = QTextEdit()
         self.reasoning_text.setReadOnly(True)
@@ -267,7 +286,7 @@ class PipelineDashboard(QWidget):
         self.image_panel = ResultPanel(
             "Processed Image",
             "Detection output with bounding boxes.",
-            self.image_placeholder,
+            self.image_body,
             theme,
         )
         self.reasoning_panel = ResultPanel(
@@ -333,8 +352,7 @@ class PipelineDashboard(QWidget):
         self.quality_panel.setVisible(not skip_quality)
         for row in self.quality_rows:
             row.set_state("pending")
-        self.image_placeholder.setPixmap(QPixmap())
-        self.image_placeholder.setText("Processed image will appear here")
+        self._clear_processed_image("Processed image will appear here")
         self.classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
@@ -500,28 +518,15 @@ class PipelineDashboard(QWidget):
         if self.current_run is not None:
             self.current_run["detection_result"] = result
         if not result.get("passed"):
-            self.image_placeholder.setPixmap(QPixmap())
-            self.image_placeholder.setText(result.get("error", "Object detection failed"))
+            self._clear_processed_image(result.get("error", "Object detection failed"))
             return
 
         annotated_path = result.get("annotated_image_path")
         if not annotated_path:
-            self.image_placeholder.setText("No annotated image returned")
+            self._clear_processed_image("No annotated image returned")
             return
 
-        pixmap = QPixmap(annotated_path)
-        if pixmap.isNull():
-            self.image_placeholder.setText(f"Could not load image:\n{annotated_path}")
-            return
-
-        self.image_placeholder.setText("")
-        self.image_placeholder.setPixmap(
-            pixmap.scaled(
-                self.image_placeholder.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
+        self._load_image_into_processed_box(annotated_path)
 
     def set_reasoning_result(self, result: dict):
         if self.current_run is not None:
@@ -620,6 +625,25 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.border};
             }}
         """)
+        self.open_preview_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 5px 12px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
         self.model_select.apply_theme(theme)
         self.wind_mode_select.apply_theme(theme)
         self.wind_direction_select.apply_theme(theme)
@@ -642,9 +666,8 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
-                background-color: {theme.bg_panel_alt};
-                border: 1px dashed {theme.border};
-                border-radius: 4px;
+                background-color: transparent;
+                border: none;
             }}
         """)
         self.reasoning_text.setStyleSheet(f"""
@@ -680,6 +703,7 @@ class PipelineDashboard(QWidget):
     def resizeEvent(self, event):
         self.close_open_popups()
         super().resizeEvent(event)
+        self._refresh_processed_pixmap()
         self._apply_responsive_layout()
 
     def _apply_responsive_layout(self):
@@ -724,8 +748,7 @@ class PipelineDashboard(QWidget):
             for row in self.quality_rows:
                 row.set_state("running")
         elif stage_name == "object_detection":
-            self.image_placeholder.setPixmap(QPixmap())
-            self.image_placeholder.setText("Running object detection...")
+            self._clear_processed_image("Running object detection...")
         elif stage_name == "llm_reasoning":
             self.reasoning_text.setPlainText("Running LLM reasoning...")
 
@@ -788,8 +811,7 @@ class PipelineDashboard(QWidget):
     def reset_loaded_state(self, expected_label: str | None):
         for row in self.quality_rows:
             row.set_state("pending")
-        self.image_placeholder.setPixmap(QPixmap())
-        self.image_placeholder.setText("Processed image will appear here")
+        self._clear_processed_image("Processed image will appear here")
         self.classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         if expected_label:
@@ -799,16 +821,47 @@ class PipelineDashboard(QWidget):
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
         if pixmap.isNull():
-            self.image_placeholder.setText(f"Could not load image:\n{image_path}")
+            self._clear_processed_image(f"Could not load image:\n{image_path}")
             return
+        self.current_preview_image_path = image_path
+        self._current_preview_pixmap = pixmap
         self.image_placeholder.setText("")
+        self.image_placeholder.setCursor(Qt.PointingHandCursor)
+        self.open_preview_button.setEnabled(True)
+        self._refresh_processed_pixmap()
+
+    def _clear_processed_image(self, message: str):
+        self.image_placeholder.setPixmap(QPixmap())
+        self.image_placeholder.setText(message)
+        self.image_placeholder.unsetCursor()
+        self.current_preview_image_path = None
+        self._current_preview_pixmap = QPixmap()
+        self.open_preview_button.setEnabled(False)
+
+    def _refresh_processed_pixmap(self):
+        if self._current_preview_pixmap.isNull():
+            return
         self.image_placeholder.setPixmap(
-            pixmap.scaled(
+            self._current_preview_pixmap.scaled(
                 self.image_placeholder.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )
         )
+
+    def _open_image_preview(self):
+        if not self.current_preview_image_path:
+            return
+        dialog = ImagePreviewDialog(self.current_preview_image_path, self.theme, self)
+        parent_window = self.window()
+        parent_geometry = parent_window.geometry()
+        dialog.resize(
+            max(900, int(parent_geometry.width() * 0.9)),
+            max(640, int(parent_geometry.height() * 0.86)),
+        )
+        dialog.move(parent_geometry.center() - dialog.rect().center())
+        dialog.image_view.fit_image()
+        dialog.exec()
 
     @staticmethod
     def _copy_history_image(image_path: str | None):
@@ -861,6 +914,15 @@ class PipelineDashboard(QWidget):
                 border: none;
             }}
         """
+
+
+class ClickableImageLabel(QLabel):
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.pixmap() and not self.pixmap().isNull():
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
 
 
 class CheckRow(QFrame):
