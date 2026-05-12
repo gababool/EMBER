@@ -7,13 +7,15 @@ from pathlib import Path
 import tempfile
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 try:
     from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from ui.components.icon_utils import load_svg_icon
 except ImportError:
     from assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from components.icon_utils import load_svg_icon
 
 
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
@@ -362,6 +364,8 @@ class ScenarioMap(QWidget):
     scenario_selected = Signal(object)
     scenario_loaded = Signal(object)
     scenario_unloaded = Signal()
+    expand_requested = Signal()
+    minimize_requested = Signal()
 
     def __init__(
         self,
@@ -381,6 +385,7 @@ class ScenarioMap(QWidget):
         self._detail_scale = None
         self._drag_last_pos = None
         self._context_highlights_visible = False
+        self._expanded = False
         self._marker_points: dict[str, QPointF] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
@@ -405,6 +410,11 @@ class ScenarioMap(QWidget):
         self.exit_detail_button.setFixedSize(70, 30)
         self.exit_detail_button.setVisible(False)
         self.exit_detail_button.clicked.connect(self._exit_detail_view)
+
+        self.expand_map_button = QPushButton(self)
+        self.expand_map_button.setCursor(Qt.PointingHandCursor)
+        self.expand_map_button.setFixedSize(34, 30)
+        self.expand_map_button.clicked.connect(self._toggle_map_expansion)
 
         self.setMinimumSize(420, 360)
         self.setMouseTracking(True)
@@ -462,10 +472,17 @@ class ScenarioMap(QWidget):
         self.zoom_in_button.setStyleSheet(zoom_style)
         self.zoom_out_button.setStyleSheet(zoom_style)
         self.exit_detail_button.setStyleSheet(zoom_style)
+        self.expand_map_button.setStyleSheet(zoom_style)
+        self._update_expand_map_icon()
         self.update()
 
     def set_context_highlights_visible(self, visible: bool):
         self._context_highlights_visible = visible
+        self.update()
+
+    def set_expanded(self, expanded: bool):
+        self._expanded = expanded
+        self._update_expand_map_icon()
         self.update()
 
     def paintEvent(self, event):
@@ -485,12 +502,16 @@ class ScenarioMap(QWidget):
             self.zoom_in_button.setVisible(False)
             self.zoom_out_button.setVisible(False)
             self.exit_detail_button.setVisible(False)
+            self.expand_map_button.setVisible(True)
+            self._position_expand_map_button(content, avoid_back_button=False)
         else:
             self.load_scenario_button.setVisible(False)
             self._position_zoom_buttons(content)
             self.zoom_in_button.setVisible(True)
             self.zoom_out_button.setVisible(True)
             self.exit_detail_button.setVisible(True)
+            self.expand_map_button.setVisible(True)
+            self._position_expand_map_button(content, avoid_back_button=True)
             self._draw_detail_view(painter, content)
 
     def mousePressEvent(self, event):
@@ -644,6 +665,21 @@ class ScenarioMap(QWidget):
         self.zoom_in_button.move(left, top)
         self.zoom_out_button.move(left, top + 34)
         self.exit_detail_button.move(int(content.right() - 92), top)
+
+    def _position_expand_map_button(self, content: QRectF, avoid_back_button: bool):
+        right = content.right() - (132 if avoid_back_button else 40)
+        self.expand_map_button.move(int(right), int(content.top() + 52))
+
+    def _toggle_map_expansion(self):
+        if self._expanded:
+            self.minimize_requested.emit()
+        else:
+            self.expand_requested.emit()
+
+    def _update_expand_map_icon(self):
+        icon_name = "minimize.svg" if self._expanded else "expand.svg"
+        self.expand_map_button.setIcon(QIcon(load_svg_icon(icon_name, self.theme.text_primary, 18)))
+        self.expand_map_button.setToolTip("Minimize map" if self._expanded else "Expand map")
 
     def _exit_detail_view(self):
         self.loaded_scenario = None
