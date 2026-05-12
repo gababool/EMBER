@@ -717,7 +717,10 @@ class ScenarioMap(QWidget):
         painter.drawText(content.adjusted(12, 10, -12, -10), Qt.AlignTop | Qt.AlignLeft, "LOADED SCENARIO DETAIL")
 
         self._draw_vector_map(painter, detail_rect)
+        painter.save()
+        painter.setClipRect(detail_rect)
         self._draw_context_overlays(painter, detail_rect, context)
+        painter.restore()
 
         card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
