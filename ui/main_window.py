@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 
 from PySide6.QtCore import Qt, QThread, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -30,6 +31,11 @@ except ImportError:
 
 
 LLM_TIMEOUT_MS = int(DEFAULT_LLM_TIMEOUT_SECONDS * 1000)
+EMBER_ICON_PATH = Path(__file__).resolve().parent / "assets" / "icons" / "EMBER_LOGO.svg"
+
+
+def ember_app_icon() -> QIcon:
+    return QIcon(str(EMBER_ICON_PATH))
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +44,7 @@ class MainWindow(QMainWindow):
         self.theme = DARK_THEME
 
         self.setWindowTitle("EMBER")
+        self.setWindowIcon(ember_app_icon())
         screen = QApplication.primaryScreen().availableGeometry()
         if screen.width() < 1440 or screen.height() < 960:
             self.showMaximized()
@@ -305,6 +312,8 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication()
+    app.setApplicationName("EMBER")
+    app.setWindowIcon(ember_app_icon())
     window = MainWindow()
     window.show()
     app.exec()
