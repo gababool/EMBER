@@ -37,15 +37,7 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
-VECTOR_CACHE_VERSION = 3
-MAX_DETAIL_FEATURE_POINTS = 420_000
-MAX_FEATURES_BY_LAYER = {
-    "settlement": 400,
-    "waterway": 500,
-    "water": 500,
-    "power": 150,
-    "protected": 250,
-}
+VECTOR_CACHE_VERSION = 4
 
 
 
@@ -196,8 +188,7 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
             super().__init__()
             self.features: list[VectorFeature] = []
             self.bounds = None
-            self.point_count = 0
-            self.layer_counts: dict[str, int] = {}
+            self._wkb = osmium.geom.WKBFactory()
 
         def node(self, node):
             tags = dict(node.tags)
@@ -216,9 +207,6 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
             )
 
         def way(self, way):
-            if self.point_count >= MAX_DETAIL_FEATURE_POINTS:
-                return
-
             tags = dict(way.tags)
             layer = self._layer_for_way(tags)
             if layer is None:
@@ -246,14 +234,33 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                 )
             )
 
-        def _add_feature(self, feature: VectorFeature):
-            layer_count = self.layer_counts.get(feature.layer, 0)
-            layer_limit = MAX_FEATURES_BY_LAYER.get(feature.layer)
-            if layer_limit is not None and layer_count >= layer_limit:
+        def area(self, area):
+            tags = dict(area.tags)
+            layer = self._layer_for_area(tags)
+            if layer is None:
                 return
+
+            try:
+                geometry_parts = _multipolygon_geometry_parts(self._wkb.create_multipolygon(area))
+            except Exception:
+                return
+
+            for geometry in geometry_parts:
+                if len(geometry) < 3:
+                    continue
+                thinned_geometry = _thin_geometry(geometry, layer)
+                self._add_feature(
+                    VectorFeature(
+                        layer=layer,
+                        geometry=thinned_geometry,
+                        name=tags.get("name"),
+                        closed=True,
+                        bounds=_geometry_bounds(thinned_geometry),
+                    )
+                )
+
+        def _add_feature(self, feature: VectorFeature):
             self.features.append(feature)
-            self.layer_counts[feature.layer] = layer_count + 1
-            self.point_count += len(feature.geometry)
             for lon, lat in feature.geometry:
                 if self.bounds is None:
                     self.bounds = (lon, lat, lon, lat)
@@ -268,6 +275,11 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
 
         @staticmethod
         def _layer_for_way(tags: dict) -> str | None:
+            if "waterway" in tags:
+                return "waterway"
+            if tags.get("power") in {"line", "minor_line"}:
+                return "power"
+
             highway = tags.get("highway")
             if highway in {"motorway", "trunk", "primary", "secondary"}:
                 return "road_major"
@@ -288,12 +300,16 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                 return "road_minor"
             if highway in {"track", "path", "footway", "cycleway", "bridleway"}:
                 return "track"
-            if tags.get("natural") == "water" or tags.get("landuse") in {"reservoir", "basin"}:
+            return None
+
+        @staticmethod
+        def _layer_for_area(tags: dict) -> str | None:
+            if (
+                tags.get("natural") == "water"
+                or tags.get("landuse") in {"reservoir", "basin"}
+                or tags.get("waterway") == "riverbank"
+            ):
                 return "water"
-            if "waterway" in tags:
-                return "waterway"
-            if tags.get("power") in {"line", "minor_line"}:
-                return "power"
             if tags.get("boundary") == "protected_area" or tags.get("leisure") == "nature_reserve":
                 return "protected"
             return None
@@ -309,10 +325,26 @@ def _geometry_bounds(geometry: list[tuple[float, float]]) -> tuple[float, float,
     return min(lons), min(lats), max(lons), max(lats)
 
 
+def _multipolygon_geometry_parts(wkb_hex: str) -> list[list[tuple[float, float]]]:
+    from shapely import wkb as shapely_wkb
+
+    geometry = shapely_wkb.loads(wkb_hex, hex=True)
+    if geometry.geom_type == "Polygon":
+        return [_ring_to_points(geometry.exterior.coords)]
+    if geometry.geom_type == "MultiPolygon":
+        return [_ring_to_points(polygon.exterior.coords) for polygon in geometry.geoms]
+    return []
+
+
+def _ring_to_points(coords) -> list[tuple[float, float]]:
+    return [(float(lon), float(lat)) for lon, lat, *_ in coords]
+
+
 def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tuple[float, float]]:
-    if layer in {"road_major", "road_minor", "water"} or len(geometry) <= 120:
+    if layer in {"road_major", "road_minor"} or len(geometry) <= 120:
         return geometry
-    step = max(1, len(geometry) // 120)
+    target_points = 260 if layer in {"water", "protected"} else 120
+    step = max(1, len(geometry) // target_points)
     thinned = geometry[::step]
     if thinned[-1] != geometry[-1]:
         thinned.append(geometry[-1])
@@ -544,7 +576,7 @@ class ScenarioMap(QWidget):
             self._marker_points[scenario.scenario_id] = point
             selected = scenario == self.selected_scenario
             fill_color = QColor(self.theme.accent_orange if selected else self.theme.accent_cyan)
-            text_color = QColor("#ffffff" if selected else "#061018")
+            text_color = QColor(self.theme.bg_panel if selected else self.theme.bg_main)
             radius = 16 if selected else 13
 
             painter.setPen(QPen(QColor(self.theme.bg_panel), 4))
@@ -690,7 +722,7 @@ class ScenarioMap(QWidget):
         painter.save()
         painter.setClipRect(rect)
         painter.setPen(QPen(QColor(self.theme.border), 1))
-        painter.setBrush(QColor("#16242a" if self.theme.name == "dark" else "#d9e7ef"))
+        painter.setBrush(QColor(self.theme.map_bg))
         painter.drawRoundedRect(rect, 5, 5)
 
         if self._vector_data is None or not self._vector_data.features:
@@ -712,8 +744,8 @@ class ScenarioMap(QWidget):
             point = self._geo_to_screen(*feature.geometry[0], rect)
             if not rect.adjusted(-12, -12, 12, 12).contains(point):
                 return
-            painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
-            painter.setBrush(QColor(self.theme.accent_green))
+            painter.setPen(QPen(QColor(self.theme.map_bg), 2))
+            painter.setBrush(QColor(self.theme.map_settlement))
             painter.drawEllipse(point, 4, 4)
             if feature.name and self._detail_scale and self._detail_scale > 220_000:
                 painter.setFont(app_font(FONT_SIZE_XS, bold=True))
@@ -729,18 +761,18 @@ class ScenarioMap(QWidget):
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
         if feature.layer == "water":
-            painter.setPen(QPen(QColor("#356f84" if self.theme.name == "dark" else "#65a9c1"), 1))
-            painter.setBrush(QColor("#244f62" if self.theme.name == "dark" else "#8fcbe0"))
+            painter.setPen(QPen(QColor(self.theme.map_water_stroke), 1))
+            painter.setBrush(QColor(self.theme.map_water_fill))
             painter.drawPath(path)
         elif feature.layer == "protected":
-            painter.setPen(QPen(QColor("#4d8f5d" if self.theme.name == "dark" else "#6a9b72"), 1, Qt.DashLine))
-            painter.setBrush(QColor(73, 148, 91, 52))
+            painter.setPen(QPen(QColor(self.theme.map_protected_stroke), 1, Qt.DashLine))
+            painter.setBrush(self._theme_color(self.theme.map_protected_fill, 52))
             painter.drawPath(path)
         elif feature.layer == "building":
             if self._detail_scale and self._detail_scale < 250_000:
                 return
-            painter.setPen(QPen(QColor("#7d6a55"), 1))
-            painter.setBrush(QColor("#7d6a55"))
+            painter.setPen(QPen(QColor(self.theme.map_building), 1))
+            painter.setBrush(QColor(self.theme.map_building))
             painter.drawPath(path)
         else:
             pen = self._pen_for_layer(feature.layer)
@@ -750,24 +782,45 @@ class ScenarioMap(QWidget):
 
     def _pen_for_layer(self, layer: str) -> QPen:
         if layer == "road_major":
-            return QPen(QColor("#f1b765"), 3.0)
+            return QPen(QColor(self.theme.map_road_major), 3.0)
         if layer == "road_minor":
-            return QPen(QColor("#e8dcc4" if self.theme.name == "dark" else "#7b6d5b"), 1.8)
+            return QPen(QColor(self.theme.map_road_minor), 1.8)
         if layer == "track":
-            return QPen(QColor("#b9a98b" if self.theme.name == "dark" else "#9b8a6f"), 1.2, Qt.DashLine)
+            return QPen(QColor(self.theme.map_track), 1.2, Qt.DashLine)
         if layer == "power":
-            return QPen(QColor(self.theme.accent_purple), 1.1, Qt.DashLine)
+            return QPen(QColor(self.theme.map_power), 1.1, Qt.DashLine)
         if layer == "waterway":
-            return QPen(QColor(self.theme.accent_cyan), 1.4)
+            return QPen(QColor(self.theme.map_waterway), 1.4)
         return QPen(QColor(self.theme.border), 1)
+
+    @staticmethod
+    def _theme_color(value: str, alpha: int | None = None) -> QColor:
+        color = QColor(value)
+        if alpha is not None:
+            color.setAlpha(alpha)
+        return color
 
     def _visible_layers_for_scale(self) -> tuple[str, ...]:
         scale = self._detail_scale or 0
-        if scale < 120_000:
-            return ("water", "road_major")
-        if scale < 360_000:
-            return ("protected", "water", "waterway", "road_minor", "road_major", "power")
+        return tuple(layer for layer in self._layer_draw_order() if scale >= self._minimum_scale_for_layer(layer))
+
+    @staticmethod
+    def _layer_draw_order() -> tuple[str, ...]:
         return ("protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
+
+    @staticmethod
+    def _minimum_scale_for_layer(layer: str) -> int:
+        thresholds = {
+            "protected": 120_000,
+            "water": 0,
+            "waterway": 120_000,
+            "track": 360_000,
+            "road_minor": 120_000,
+            "road_major": 0,
+            "power": 120_000,
+            "settlement": 360_000,
+        }
+        return thresholds.get(layer, 0)
 
     def _geometry_for_scale(self, feature: VectorFeature) -> list[tuple[float, float]]:
         scale = self._detail_scale or 0
@@ -890,22 +943,48 @@ class ScenarioMap(QWidget):
 
     def _initial_detail_bounds(self) -> tuple[float, float, float, float]:
         context = self._loaded_context or {}
-        max_distance_m = 12_000
-        metadata = context.get("extraction_metadata") or {}
-        for key in ("water_source_radius_m", "track_radius_m", "assets_radius_m"):
-            value = metadata.get(key)
-            if isinstance(value, (int, float)):
-                max_distance_m = max(max_distance_m, min(float(value), 15_000))
+        points = [(self.loaded_scenario.longitude, self.loaded_scenario.latitude)]
+        for water in context.get("water_sources", []):
+            distance_m = water.get("distance_m")
+            bearing = water.get("bearing")
+            if not isinstance(distance_m, (int, float)):
+                continue
+            points.append(
+                self._offset_lon_lat(
+                    self.loaded_scenario.longitude,
+                    self.loaded_scenario.latitude,
+                    float(distance_m),
+                    bearing,
+                )
+            )
 
-        lat_padding = max_distance_m / 111_320
-        lon_padding = max_distance_m / (
+        if len(points) == 1:
+            fallback_radius_m = 4_000
+            lat_padding = fallback_radius_m / 111_320
+            lon_padding = fallback_radius_m / (
+                111_320 * max(math.cos(math.radians(self.loaded_scenario.latitude)), 0.2)
+            )
+            return (
+                self.loaded_scenario.longitude - lon_padding,
+                self.loaded_scenario.latitude - lat_padding,
+                self.loaded_scenario.longitude + lon_padding,
+                self.loaded_scenario.latitude + lat_padding,
+            )
+
+        min_lon = min(point[0] for point in points)
+        max_lon = max(point[0] for point in points)
+        min_lat = min(point[1] for point in points)
+        max_lat = max(point[1] for point in points)
+        padding_m = 900
+        lat_padding = padding_m / 111_320
+        lon_padding = padding_m / (
             111_320 * max(math.cos(math.radians(self.loaded_scenario.latitude)), 0.2)
         )
         return (
-            self.loaded_scenario.longitude - lon_padding,
-            self.loaded_scenario.latitude - lat_padding,
-            self.loaded_scenario.longitude + lon_padding,
-            self.loaded_scenario.latitude + lat_padding,
+            min_lon - lon_padding,
+            min_lat - lat_padding,
+            max_lon + lon_padding,
+            max_lat + lat_padding,
         )
 
     def _clamp_detail_center(self, rect: QRectF):
