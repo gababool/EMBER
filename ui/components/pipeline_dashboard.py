@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import uuid
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -68,6 +68,8 @@ COMPACT_HEADER_CONTROL_WIDTH = 118
 HEADER_CONTROL_HEIGHT = 40
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
 _CONTEXT_MARKER = "structured operational context block"
+SCENARIO_PROMPT_FILE = PROMPTS_DIR / "c2v6prompt.txt"
+SCENARIO_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
 def _prompt_requires_context(prompt_path: str) -> bool:
@@ -148,7 +150,6 @@ class PipelineDashboard(QWidget):
         self.run_scenario_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.run_scenario_button.setCursor(Qt.PointingHandCursor)
         self.run_scenario_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
-        self.run_scenario_button.clicked.connect(self.start_button.click)
         self.run_scenario_button.setVisible(False)
 
         self.stop_llm_button = QPushButton("Stop LLM")
@@ -341,12 +342,19 @@ class PipelineDashboard(QWidget):
         self.scenario_map.scenario_selected.connect(self._on_scenario_selected)
         self.scenario_map.scenario_loaded.connect(self._on_scenario_loaded)
         self.scenario_map.scenario_unloaded.connect(self._on_scenario_unloaded)
+        self.scenario_map.expand_requested.connect(self.expand_map)
+        self.scenario_map.minimize_requested.connect(self.minimize_map)
         self.map_panel = ResultPanel(
             "Scenario Map",
             "Select the operational context used for inference.",
             self.scenario_map,
             theme,
         )
+        self._map_placeholder = QWidget()
+        self._map_placeholder.setVisible(False)
+        self._map_overlay = None
+        self._map_overlay_layout = None
+        self._map_expanded = False
 
         self.expand_button = QPushButton("Expand")
         self.expand_button.setFont(app_font(FONT_SIZE_MD, bold=True))
@@ -452,8 +460,8 @@ class PipelineDashboard(QWidget):
         self._sync_wind_controls()
         self._sync_context_from_map()
 
-    def reset_demo(self):
-        self.subtitle_label.setText("Selecting a random wildfire dataset image...")
+    def reset_demo(self, status_text: str = "Selecting a random wildfire dataset image..."):
+        self.subtitle_label.setText(status_text)
         self.scenario_map.set_context_highlights_visible(True)
         self.start_button.setEnabled(False)
         self.run_scenario_button.setEnabled(False)
@@ -584,11 +592,27 @@ class PipelineDashboard(QWidget):
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
 
+    def scenario_prompt_file(self) -> str:
+        return str(SCENARIO_PROMPT_FILE)
+
     def selected_context_file(self) -> str | None:
         if not self.llm_inference_enabled() or self.selected_context_path:
             return self.selected_context_path
         if self.context_select.isVisible():
             return self.context_select.currentData()
+        return None
+
+    def selected_scenario_image_path(self) -> str | None:
+        scenario = getattr(self.scenario_map, "loaded_scenario", None)
+        if scenario is None:
+            return None
+
+        scenario_dir = scenario.context_path.parent
+        scenario_stem = scenario.context_path.stem
+        for suffix in SCENARIO_IMAGE_SUFFIXES:
+            candidate = scenario_dir / f"{scenario_stem}{suffix}"
+            if candidate.exists():
+                return str(candidate)
         return None
 
     def selected_yolo_input_mode(self) -> str:
@@ -622,6 +646,77 @@ class PipelineDashboard(QWidget):
                 if self.context_select.current_index != index:
                     self.context_select.setCurrentIndex(index)
                 return
+
+    def expand_map(self):
+        if self._map_expanded:
+            return
+        self.close_open_popups()
+        self._ensure_map_overlay()
+        self._map_placeholder.setMinimumSize(self.scenario_map.size())
+        self.map_panel.layout.replaceWidget(self.scenario_map, self._map_placeholder)
+        self.map_panel.body = self._map_placeholder
+        self._map_placeholder.show()
+        self._map_overlay_layout.addWidget(self.scenario_map)
+        self.scenario_map.set_expanded(True)
+        self._map_expanded = True
+        self._position_map_overlay()
+        self._map_overlay.show()
+        self._map_overlay.raise_()
+        window = self.window()
+        if window is not None:
+            window.installEventFilter(self)
+
+    def minimize_map(self):
+        if not self._map_expanded:
+            return
+        if self._map_overlay_layout is not None:
+            self._map_overlay_layout.removeWidget(self.scenario_map)
+        self.map_panel.layout.replaceWidget(self._map_placeholder, self.scenario_map)
+        self.map_panel.body = self.scenario_map
+        self._map_placeholder.hide()
+        self.scenario_map.set_expanded(False)
+        self._map_expanded = False
+        if self._map_overlay is not None:
+            self._map_overlay.hide()
+        window = self.window()
+        if window is not None:
+            window.removeEventFilter(self)
+
+    def _ensure_map_overlay(self):
+        if self._map_overlay is not None:
+            return
+        parent = self.window()
+        self._map_overlay = QFrame(parent)
+        self._map_overlay.setObjectName("ExpandedMapOverlay")
+        self._map_overlay.setAutoFillBackground(True)
+        self._map_overlay_layout = QVBoxLayout(self._map_overlay)
+        self._map_overlay_layout.setContentsMargins(12, 12, 12, 12)
+        self._map_overlay_layout.setSpacing(0)
+        self._style_map_overlay(self.theme)
+
+    def _position_map_overlay(self):
+        if self._map_overlay is None:
+            return
+        parent = self._map_overlay.parentWidget()
+        if parent is None:
+            return
+        self._map_overlay.setGeometry(parent.rect().adjusted(28, 28, -28, -28))
+
+    def _style_map_overlay(self, theme: Theme):
+        if self._map_overlay is None:
+            return
+        self._map_overlay.setStyleSheet(f"""
+            QFrame#ExpandedMapOverlay {{
+                background-color: {theme.bg_panel};
+                border: 1px solid {theme.accent_orange};
+                border-radius: 8px;
+            }}
+        """)
+
+    def eventFilter(self, watched, event):
+        if self._map_expanded and watched is self.window() and event.type() == QEvent.Resize:
+            self._position_map_overlay()
+        return super().eventFilter(watched, event)
 
     def toggle_detail_view(self):
         self.detail_view_expanded = not self.detail_view_expanded
@@ -1008,6 +1103,7 @@ class PipelineDashboard(QWidget):
         self.map_panel.apply_theme(theme)
         self.compact_pipeline_panel.apply_theme(theme)
         self.scenario_map.apply_theme(theme)
+        self._style_map_overlay(theme)
         self.pipeline_demo_label.setStyleSheet(self._label_style(theme.text_primary))
         self.detail_title_label.setStyleSheet(self._label_style(theme.text_primary))
         self.pipeline_demo_controls.setStyleSheet("background: transparent; border: none;")

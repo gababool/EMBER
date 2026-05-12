@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
 
         self.dashboard = PipelineDashboard(self.theme)
         self.dashboard.start_button.clicked.connect(self.start_demo)
+        self.dashboard.run_scenario_button.clicked.connect(self.start_scenario)
         self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
         self.dashboard.image_picked.connect(self.run_picked_image)
         self.dashboard.cancel_llm_requested.connect(self.cancel_llm_inference)
@@ -110,6 +111,30 @@ class MainWindow(QMainWindow):
         self._set_top_mode("RUNNING DEMO")
         self._start_worker(label_filter=self.dashboard.selected_image_filter())
 
+    def start_scenario(self):
+        if self.pipeline_thread is not None:
+            return
+
+        image_path = self.dashboard.selected_scenario_image_path()
+        context_file = self.dashboard.selected_context_file()
+        prompt_file = self.dashboard.scenario_prompt_file()
+        if image_path is None or context_file is None:
+            QMessageBox.warning(
+                self,
+                "Scenario Not Ready",
+                "Load a scenario with a paired image before running it.",
+            )
+            return
+
+        self._warn_if_llm_background_active()
+        self.dashboard.reset_demo("Running selected scenario through the wildfire pipeline...")
+        self._set_top_mode("RUNNING SCENARIO")
+        self._start_worker(
+            fixed_image_path=image_path,
+            prompt_file=prompt_file,
+            context_file=context_file,
+        )
+
     def run_picked_image(self, image_path: str):
         if self.pipeline_thread is not None:
             return
@@ -136,13 +161,15 @@ class MainWindow(QMainWindow):
         self,
         fixed_image_path: str | None = None,
         label_filter: str | None = None,
+        prompt_file: str | None = None,
+        context_file: str | None = None,
     ):
         wind_config = self.dashboard.selected_wind_config()
         self.pipeline_thread = QThread(self)
         self.pipeline_worker = PipelineWorker(
             llm_model=self.dashboard.selected_llm_model(),
-            prompt_file=self.dashboard.selected_prompt_file(),
-            context_file=self.dashboard.selected_context_file(),
+            prompt_file=prompt_file or self.dashboard.selected_prompt_file(),
+            context_file=context_file or self.dashboard.selected_context_file(),
             skip_quality_screening=self.dashboard.skip_quality_screening(),
             llm_enabled=self.dashboard.llm_inference_enabled(),
             yolo_input_mode=self.dashboard.selected_yolo_input_mode(),
