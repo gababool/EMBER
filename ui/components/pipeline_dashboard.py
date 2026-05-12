@@ -454,6 +454,7 @@ class PipelineDashboard(QWidget):
 
     def reset_demo(self):
         self.subtitle_label.setText("Selecting a random wildfire dataset image...")
+        self.scenario_map.set_context_highlights_visible(True)
         self.start_button.setEnabled(False)
         self.run_scenario_button.setEnabled(False)
         self.rerun_button.setEnabled(False)
@@ -633,11 +634,13 @@ class PipelineDashboard(QWidget):
     def _on_scenario_loaded(self, scenario):
         self.selected_context_path = str(scenario.context_path)
         self._set_context_select_to_path(str(scenario.context_path))
+        self.scenario_map.set_context_highlights_visible(False)
         self.run_scenario_button.setVisible(True)
         self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
 
     def _on_scenario_unloaded(self):
         self.selected_context_path = None
+        self.scenario_map.set_context_highlights_visible(False)
         self.run_scenario_button.setVisible(False)
         if self.scenario_map.selected_scenario is not None:
             scenario = self.scenario_map.selected_scenario
@@ -1198,10 +1201,13 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result")
         if reasoning_result:
             self.set_reasoning_result(reasoning_result)
+            self.scenario_map.set_context_highlights_visible(True)
         elif run_record.get("llm_enabled") is False:
             self.set_reasoning_result({"status": "disabled"})
+            self.scenario_map.set_context_highlights_visible(True)
         elif run_record.get("error"):
             self.reasoning_text.setPlainText(f"Pipeline error:\n{run_record['error']}")
+            self.scenario_map.set_context_highlights_visible(True)
 
         self.current_run = None
 

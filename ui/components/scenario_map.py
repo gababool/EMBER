@@ -325,6 +325,13 @@ def _geometry_bounds(geometry: list[tuple[float, float]]) -> tuple[float, float,
     return min(lons), min(lats), max(lons), max(lats)
 
 
+def _geometry_centroid(geometry: list[tuple[float, float]]) -> tuple[float, float]:
+    lon_sum = sum(point[0] for point in geometry)
+    lat_sum = sum(point[1] for point in geometry)
+    count = max(len(geometry), 1)
+    return lon_sum / count, lat_sum / count
+
+
 def _multipolygon_geometry_parts(wkb_hex: str) -> list[list[tuple[float, float]]]:
     from shapely import wkb as shapely_wkb
 
@@ -373,6 +380,7 @@ class ScenarioMap(QWidget):
         self._detail_center_merc = None
         self._detail_scale = None
         self._drag_last_pos = None
+        self._context_highlights_visible = False
         self._marker_points: dict[str, QPointF] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
@@ -454,6 +462,10 @@ class ScenarioMap(QWidget):
         self.zoom_in_button.setStyleSheet(zoom_style)
         self.zoom_out_button.setStyleSheet(zoom_style)
         self.exit_detail_button.setStyleSheet(zoom_style)
+        self.update()
+
+    def set_context_highlights_visible(self, visible: bool):
+        self._context_highlights_visible = visible
         self.update()
 
     def paintEvent(self, event):
@@ -641,6 +653,7 @@ class ScenarioMap(QWidget):
         self._detail_center_merc = None
         self._detail_scale = None
         self._drag_last_pos = None
+        self._context_highlights_visible = False
         self.setCursor(Qt.PointingHandCursor)
         self.scenario_unloaded.emit()
         self.update()
@@ -680,6 +693,7 @@ class ScenarioMap(QWidget):
             self._features_by_layer = self._group_features_by_layer(self._vector_data.features)
             self._detail_center_merc = None
             self._detail_scale = None
+            self._context_highlights_visible = False
             self.setCursor(Qt.OpenHandCursor)
             self.scenario_loaded.emit(self.loaded_scenario)
         finally:
@@ -873,44 +887,82 @@ class ScenarioMap(QWidget):
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Scenario")
 
-        for water in context.get("water_sources", [])[:4]:
+        if not self._context_highlights_visible:
+            return
+
+        self._draw_context_road_highlights(painter, rect, context)
+
+        for water in context.get("water_sources", []):
+            label = water.get("name") or water.get("source_type", "water")
+            coordinates = self._context_water_coordinates(water)
             self._draw_context_point(
                 painter,
                 rect,
-                water.get("distance_m"),
-                water.get("bearing"),
+                coordinates[0],
+                coordinates[1],
                 QColor(self.theme.accent_cyan),
-                water.get("name") or water.get("source_type", "water"),
+                label,
             )
 
+    def _draw_context_road_highlights(self, painter: QPainter, rect: QRectF, context: dict):
         primary = (context.get("roads") or {}).get("primary_access")
-        if primary:
+        if not primary:
+            return
+
+        label = primary.get("name") or "primary road"
+        features = self._named_features(("road_major", "road_minor", "track"), primary.get("name"))
+        if not features:
             self._draw_context_point(
                 painter,
                 rect,
-                primary.get("distance_m"),
-                primary.get("bearing"),
+                *self._context_offset_coordinates(primary),
                 QColor(self.theme.accent_orange),
-                primary.get("name") or "primary road",
+                label,
                 square=True,
             )
+            return
+
+        for feature in features:
+            self._draw_highlighted_line_feature(painter, rect, feature, QColor(self.theme.accent_orange))
+
+        label_feature = min(features, key=self._feature_distance_to_scenario)
+        label_lon, label_lat = self._feature_label_coordinates(label_feature)
+        self._draw_context_label(
+            painter,
+            rect,
+            label_lon,
+            label_lat,
+            QColor(self.theme.accent_orange),
+            label,
+            square=True,
+        )
+
+    def _draw_highlighted_line_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature, color: QColor):
+        if len(feature.geometry) < 2:
+            return
+
+        path = QPainterPath()
+        first = self._geo_to_screen(*feature.geometry[0], rect)
+        path.moveTo(first)
+        for lon, lat in feature.geometry[1:]:
+            path.lineTo(self._geo_to_screen(lon, lat, rect))
+
+        painter.setPen(QPen(QColor(self.theme.bg_panel), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(path)
+        painter.setPen(QPen(color, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(path)
 
     def _draw_context_point(
         self,
         painter: QPainter,
         rect: QRectF,
-        distance_m: float | None,
-        bearing: str | None,
+        lon: float,
+        lat: float,
         color: QColor,
         label: str,
         square: bool = False,
     ):
-        lon, lat = self._offset_lon_lat(
-            self.loaded_scenario.longitude,
-            self.loaded_scenario.latitude,
-            distance_m or 0,
-            bearing,
-        )
         point = self._geo_to_screen(lon, lat, rect)
         painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
         painter.setBrush(color)
@@ -921,6 +973,73 @@ class ScenarioMap(QWidget):
         painter.setFont(app_font(FONT_SIZE_XS))
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(point.x() + 8, point.y() - 10, 150, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
+
+    def _draw_context_label(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        lon: float,
+        lat: float,
+        color: QColor,
+        label: str,
+        square: bool = False,
+    ):
+        point = self._geo_to_screen(lon, lat, rect)
+        painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+        painter.setBrush(color)
+        if square:
+            painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
+        else:
+            painter.drawEllipse(point, 5, 5)
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
+
+    def _context_water_coordinates(self, water: dict) -> tuple[float, float]:
+        name = water.get("name")
+        if name:
+            feature = self._named_feature("water", name)
+            if feature is not None:
+                return self._feature_label_coordinates(feature)
+        return self._context_offset_coordinates(water)
+
+    def _context_offset_coordinates(self, item: dict) -> tuple[float, float]:
+        return self._offset_lon_lat(
+            self.loaded_scenario.longitude,
+            self.loaded_scenario.latitude,
+            item.get("distance_m") or 0,
+            item.get("bearing"),
+        )
+
+    def _named_feature(self, layer: str, name: str) -> VectorFeature | None:
+        features = self._named_features((layer,), name)
+        return features[0] if features else None
+
+    def _named_features(self, layers: tuple[str, ...], name: str | None) -> list[VectorFeature]:
+        if not name:
+            return []
+        target = self._normalize_feature_name(name)
+        matches = []
+        for layer in layers:
+            for feature in self._features_by_layer.get(layer, []):
+                if feature.name and self._normalize_feature_name(feature.name) == target:
+                    matches.append(feature)
+        return matches
+
+    @staticmethod
+    def _normalize_feature_name(name: str) -> str:
+        return " ".join(name.casefold().split())
+
+    @staticmethod
+    def _feature_label_coordinates(feature: VectorFeature) -> tuple[float, float]:
+        if feature.bounds is not None:
+            min_lon, min_lat, max_lon, max_lat = feature.bounds
+            return (min_lon + max_lon) / 2, (min_lat + max_lat) / 2
+        return _geometry_centroid(feature.geometry)
+
+    def _feature_distance_to_scenario(self, feature: VectorFeature) -> float:
+        lon, lat = self._feature_label_coordinates(feature)
+        return (lon - self.loaded_scenario.longitude) ** 2 + (lat - self.loaded_scenario.latitude) ** 2
 
     @staticmethod
     def _detail_map_rect(content: QRectF) -> QRectF:
