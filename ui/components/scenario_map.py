@@ -997,9 +997,10 @@ class ScenarioMap(QWidget):
         for lon, lat in feature.geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
-        painter.setPen(QPen(QColor(self.theme.bg_panel), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawPath(path)
+        if self.theme.name == "dark":
+            painter.setPen(QPen(QColor(self.theme.bg_panel), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPath(path)
         painter.setPen(QPen(color, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
 
@@ -1018,7 +1019,7 @@ class ScenarioMap(QWidget):
         if icon_name:
             self._draw_icon_marker(painter, point, icon_name, color, size=20)
         elif square:
-            painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+            painter.setPen(self._marker_outline_pen())
             painter.setBrush(color)
             painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
         else:
@@ -1038,7 +1039,7 @@ class ScenarioMap(QWidget):
         square: bool = False,
     ):
         point = self._geo_to_screen(lon, lat, rect)
-        painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+        painter.setPen(self._marker_outline_pen())
         painter.setBrush(color)
         if square:
             painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
@@ -1049,19 +1050,25 @@ class ScenarioMap(QWidget):
         painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
 
     def _draw_icon_marker(self, painter: QPainter, point: QPointF, icon_name: str, color: QColor, size: int):
-        halo_size = size + 6
-        halo = self._map_icon(icon_name, QColor(self.theme.bg_panel), halo_size)
+        if self.theme.name == "dark":
+            halo_size = size + 6
+            halo = self._map_icon(icon_name, QColor(self.theme.bg_panel), halo_size)
+            painter.drawPixmap(
+                int(point.x() - halo_size / 2),
+                int(point.y() - halo_size / 2),
+                halo,
+            )
         icon = self._map_icon(icon_name, color, size)
-        painter.drawPixmap(
-            int(point.x() - halo_size / 2),
-            int(point.y() - halo_size / 2),
-            halo,
-        )
         painter.drawPixmap(
             int(point.x() - size / 2),
             int(point.y() - size / 2),
             icon,
         )
+
+    def _marker_outline_pen(self) -> QPen:
+        if self.theme.name == "dark":
+            return QPen(QColor(self.theme.bg_panel), 2)
+        return QPen(Qt.NoPen)
 
     def _map_icon(self, icon_name: str, color: QColor, size: int) -> QPixmap:
         key = (icon_name, color.name(), size)
