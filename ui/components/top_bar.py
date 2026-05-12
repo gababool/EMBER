@@ -81,7 +81,7 @@ class TopBar(QWidget):
         status_layout.setContentsMargins(0, 0, 0, 0)
         status_layout.setSpacing(18)
 
-        self.wind_item = StatusItem("⇄", "5m/s nw", icon_color=theme.accent_cyan)
+        self.wind_item = StatusItem("", "5m/s nw", icon_color=theme.accent_cyan, icon_name="wind.svg")
         self.cpu_meter = StatMeter("CPU", "cpu.svg", theme.accent_cyan, theme)
         self.ram_meter = StatMeter("RAM", "memory-stick.svg", theme.accent_green, theme)
         self.gpu_meter = StatMeter("GPU", "gpu.svg", theme.accent_purple, theme)
