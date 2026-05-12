@@ -42,20 +42,25 @@ def load_csvs(directory, compare_yolo=False):
     Load CSV files from a directory.
 
     Returns:
-        (rows_noyolo, rows_yolo)
+        (rows_noyolo, rows_yolo, errors_noyolo, errors_yolo)
 
     Default mode (compare_yolo=False): only loads files whose names contain
-    '_noyolo'. The yolo list is empty.
+    '_noyolo'. The yolo lists are empty.
 
     Compare mode (compare_yolo=True): loads both '_noyolo' and '_yolo' files
     into separate lists.
+
+    Error rows (empty llm_classification) are collected separately so charts
+    can display them as their own category rather than silently dropping them.
     """
     rows_noyolo = []
     rows_yolo = []
+    errors_noyolo = []
+    errors_yolo = []
 
     path = Path(directory)
     if not path.exists():
-        return rows_noyolo, rows_yolo
+        return rows_noyolo, rows_yolo, errors_noyolo, errors_yolo
 
     for csv_file in sorted(path.glob('*.csv')):
         name = csv_file.name
@@ -73,38 +78,13 @@ def load_csvs(directory, compare_yolo=False):
         with open(csv_file, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Skip rows where inference failed (empty classification).
-                if not row.get('llm_classification', '').strip():
-                    continue
+                is_error = not row.get('llm_classification', '').strip()
                 if is_yolo:
-                    rows_yolo.append(row)
+                    (errors_yolo if is_error else rows_yolo).append(row)
                 else:
-                    rows_noyolo.append(row)
+                    (errors_noyolo if is_error else rows_noyolo).append(row)
 
-    return rows_noyolo, rows_yolo
-
-
-def count_errors(directory):
-    """Count rows with missing classification (inference failures).
-
-    Returns (total_rows, error_rows) across all CSV files in the directory.
-    Used to report how many inference failures were skipped during analysis.
-    """
-    total = 0
-    errors = 0
-    path = Path(directory)
-    if not path.exists():
-        return 0, 0
-    for csv_file in sorted(path.glob('*.csv')):
-        name = csv_file.name
-        if '_noyolo' not in name and '_yolo' not in name:
-            continue
-        with open(csv_file, 'r', encoding='utf-8') as f:
-            for row in csv.DictReader(f):
-                total += 1
-                if not row.get('llm_classification', '').strip():
-                    errors += 1
-    return total, errors
+    return rows_noyolo, rows_yolo, errors_noyolo, errors_yolo
 
 
 def group_by_model(rows):
@@ -392,72 +372,62 @@ def chart_mcc(rows_noyolo, rows_yolo, output_dir, compare_yolo):
     )
 
 
-def chart_confusion(rows_noyolo, rows_yolo, output_dir, compare_yolo):
-    """TP, TN, FP, FN counts per model.
+def chart_confusion(rows_noyolo, rows_yolo, output_dir, compare_yolo,
+                    errors_noyolo=None, errors_yolo=None):
+    """TP, TN, FP, FN, and Error counts per model.
 
     In compare-yolo mode, two charts side by side — one per variant.
     """
+    errors_noyolo = errors_noyolo or []
+    errors_yolo = errors_yolo or []
+
+    ERROR_COLOR = '#9E9E9E'
+    width = 0.18
+
+    def _draw(ax, groups, err_groups, variant=None):
+        models = sorted(groups.keys() | err_groups.keys())
+        metrics = {m: compute_metrics(groups.get(m, [])) for m in models}
+        x = np.arange(len(models))
+
+        tps = [metrics[m]['tp'] for m in models]
+        tns = [metrics[m]['tn'] for m in models]
+        fps = [metrics[m]['fp'] for m in models]
+        fns = [metrics[m]['fn'] for m in models]
+        errs = [len(err_groups.get(m, [])) for m in models]
+
+        ax.bar(x - 2 * width, tps, width, label='TP (correct fire)', color=CORRECT_COLOR)
+        ax.bar(x - 1 * width, tns, width, label='TN (correct no-fire)', color='#81C784')
+        ax.bar(x,             fps, width, label='FP (false alarm)', color='#FFC107')
+        ax.bar(x + 1 * width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
+        ax.bar(x + 2 * width, errs, width, label='Error (inference failed)', color=ERROR_COLOR)
+
+        title = 'Prediction Outcomes by Model'
+        if variant:
+            title += f' — {variant}'
+        ax.set_title(title)
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=25, ha='right')
+        ax.set_ylabel('Count')
+        return models
+
     if compare_yolo:
         groups_noyolo = group_by_model(rows_noyolo)
         groups_yolo = group_by_model(rows_yolo)
-        models = sorted(set(list(groups_noyolo.keys()) + list(groups_yolo.keys())))
+        err_groups_noyolo = group_by_model(errors_noyolo)
+        err_groups_yolo = group_by_model(errors_yolo)
 
         fig, axes = plt.subplots(1, 2, figsize=(20, 5), sharey=True)
-        for ax, (groups, variant) in zip(
-            axes,
-            [(groups_noyolo, 'no YOLO'), (groups_yolo, 'with YOLO')],
-        ):
-            metrics = {m: compute_metrics(groups.get(m, [])) for m in models}
-            x = np.arange(len(models))
-            width = 0.2
-
-            tps = [metrics[m]['tp'] for m in models]
-            tns = [metrics[m]['tn'] for m in models]
-            fps = [metrics[m]['fp'] for m in models]
-            fns = [metrics[m]['fn'] for m in models]
-
-            ax.bar(x - 1.5 * width, tps, width, label='TP (correct fire)',
-                   color=CORRECT_COLOR)
-            ax.bar(x - 0.5 * width, tns, width, label='TN (correct no-fire)',
-                   color='#81C784')
-            ax.bar(x + 0.5 * width, fps, width, label='FP (false alarm)',
-                   color='#FFC107')
-            ax.bar(x + 1.5 * width, fns, width, label='FN (missed fire)',
-                   color=INCORRECT_COLOR)
-
-            ax.set_title(f'Prediction Outcomes — {variant}')
-            ax.set_xticks(x)
-            ax.set_xticklabels(models, rotation=25, ha='right')
-            ax.set_ylabel('Count')
-
+        _draw(axes[0], groups_noyolo, err_groups_noyolo, 'no YOLO')
+        _draw(axes[1], groups_yolo, err_groups_yolo, 'with YOLO')
         axes[0].legend(loc='upper right', fontsize=8)
         save_chart(fig, output_dir, 'confusion_matrix.png')
         return
 
     groups = group_by_model(rows_noyolo)
-    models = sorted(groups.keys())
-    metrics = {m: compute_metrics(groups[m]) for m in models}
-
-    tps = [metrics[m]['tp'] for m in models]
-    fps = [metrics[m]['fp'] for m in models]
-    tns = [metrics[m]['tn'] for m in models]
-    fns = [metrics[m]['fn'] for m in models]
-
+    err_groups = group_by_model(errors_noyolo)
     fig, ax = plt.subplots(figsize=(11, 5))
-    x = np.arange(len(models))
-    width = 0.2
-
-    ax.bar(x - 1.5 * width, tps, width, label='TP (correct fire)', color=CORRECT_COLOR)
-    ax.bar(x - 0.5 * width, tns, width, label='TN (correct no-fire)', color='#81C784')
-    ax.bar(x + 0.5 * width, fps, width, label='FP (false alarm)', color='#FFC107')
-    ax.bar(x + 1.5 * width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
-
-    ax.set_ylabel('Count')
-    ax.set_title('Prediction Outcomes by Model')
-    ax.set_xticks(x)
-    ax.set_xticklabels(models, rotation=25, ha='right')
+    _draw(ax, groups, err_groups)
     ax.legend(loc='upper right', fontsize=8)
-
     save_chart(fig, output_dir, 'confusion_matrix.png')
 
 
@@ -719,18 +689,33 @@ def chart_model_sizes(output_dir, models=None):
 
 # ── Summary Table ────────────────────────────────────────────────────
 
-def print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, compare_yolo):
+def print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, compare_yolo,
+                  acc_err_noyolo=None, acc_err_yolo=None,
+                  perf_err_noyolo=None, perf_err_yolo=None):
     """Print a summary table to stdout. Paired rows when compare_yolo is True."""
+    acc_err_noyolo = acc_err_noyolo or []
+    acc_err_yolo = acc_err_yolo or []
+    perf_err_noyolo = perf_err_noyolo or []
+    perf_err_yolo = perf_err_yolo or []
+
     acc_groups_noyolo = group_by_model(acc_noyolo) if acc_noyolo else {}
     perf_groups_noyolo = group_by_model(perf_noyolo) if perf_noyolo else {}
     acc_groups_yolo = group_by_model(acc_yolo) if (compare_yolo and acc_yolo) else {}
     perf_groups_yolo = group_by_model(perf_yolo) if (compare_yolo and perf_yolo) else {}
+    acc_err_groups_noyolo = group_by_model(acc_err_noyolo)
+    acc_err_groups_yolo = group_by_model(acc_err_yolo)
+    perf_err_groups_noyolo = group_by_model(perf_err_noyolo)
+    perf_err_groups_yolo = group_by_model(perf_err_yolo)
 
     all_models = sorted(set(
         list(acc_groups_noyolo.keys())
         + list(perf_groups_noyolo.keys())
         + list(acc_groups_yolo.keys())
         + list(perf_groups_yolo.keys())
+        + list(acc_err_groups_noyolo.keys())
+        + list(acc_err_groups_yolo.keys())
+        + list(perf_err_groups_noyolo.keys())
+        + list(perf_err_groups_yolo.keys())
     ))
 
     if compare_yolo:
@@ -738,20 +723,21 @@ def print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, compare_yolo):
             f"{'Model':<20} {'YOLO':<6} "
             f"{'Acc':>6} "
             f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
-            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
+            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8} {'Errors':>7}"
         )
     else:
         header = (
             f"{'Model':<20} "
             f"{'Acc':>6} "
             f"{'Prec':>6} {'Rec':>6} {'F1':>6} {'MCC':>6} "
-            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8}"
+            f"{'Tok/s':>8} {'Total(s)':>10} {'Mem(GB)':>8} {'Errors':>7}"
         )
     print()
     print(header)
     print('─' * len(header))
 
-    def row_for(model, acc_groups, perf_groups, yolo_label=None):
+    def row_for(model, acc_groups, perf_groups, acc_err_groups, perf_err_groups,
+                yolo_label=None):
         if model in acc_groups:
             m = compute_metrics(acc_groups[model])
             acc_str = f"{m['accuracy']*100:.0f}%"
@@ -773,30 +759,37 @@ def print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, compare_yolo):
         else:
             tok_str = total_str = mem_str = "—"
 
+        err_count = len(acc_err_groups.get(model, [])) + len(perf_err_groups.get(model, []))
+        err_str = str(err_count) if err_count else "—"
+
         if yolo_label is not None:
             return (
                 f"{model:<20} {yolo_label:<6} "
                 f"{acc_str:>6} "
                 f"{prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} "
-                f"{tok_str:>8} {total_str:>10} {mem_str:>8}"
+                f"{tok_str:>8} {total_str:>10} {mem_str:>8} {err_str:>7}"
             )
         return (
             f"{model:<20} "
             f"{acc_str:>6} "
             f"{prec_str:>6} {rec_str:>6} {f1_str:>6} {mcc_str:>6} "
-            f"{tok_str:>8} {total_str:>10} {mem_str:>8}"
+            f"{tok_str:>8} {total_str:>10} {mem_str:>8} {err_str:>7}"
         )
 
     for model in all_models:
         if compare_yolo:
-            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo, 'no'))
-            print(row_for(model, acc_groups_yolo, perf_groups_yolo, 'yes'))
+            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo,
+                          acc_err_groups_noyolo, perf_err_groups_noyolo, 'no'))
+            print(row_for(model, acc_groups_yolo, perf_groups_yolo,
+                          acc_err_groups_yolo, perf_err_groups_yolo, 'yes'))
         else:
-            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo))
+            print(row_for(model, acc_groups_noyolo, perf_groups_noyolo,
+                          acc_err_groups_noyolo, perf_err_groups_noyolo))
 
     print()
     print("  Acc       = classification accuracy")
     print("  Prec/Rec/F1/MCC computed with fire as the positive class.")
+    print("  Errors    = inference failures (empty classification) across acc + perf.")
     if compare_yolo:
         print("  YOLO column indicates whether YOLO preprocessing was applied to the input.")
     print()
@@ -858,25 +851,20 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    acc_noyolo, acc_yolo = load_csvs(args.accuracy_dir, compare_yolo=args.compare_yolo)
-    perf_noyolo, perf_yolo = load_csvs(args.performance_dir, compare_yolo=args.compare_yolo)
+    acc_noyolo, acc_yolo, acc_err_noyolo, acc_err_yolo = load_csvs(
+        args.accuracy_dir, compare_yolo=args.compare_yolo)
+    perf_noyolo, perf_yolo, perf_err_noyolo, perf_err_yolo = load_csvs(
+        args.performance_dir, compare_yolo=args.compare_yolo)
 
     if args.compare_yolo:
         validate_compare_yolo(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo)
 
     print(f"Loaded {len(acc_noyolo)} accuracy rows (no YOLO), "
-          f"{len(acc_yolo)} accuracy rows (with YOLO)")
+          f"{len(acc_yolo)} accuracy rows (with YOLO), "
+          f"{len(acc_err_noyolo) + len(acc_err_yolo)} errors")
     print(f"Loaded {len(perf_noyolo)} performance rows (no YOLO), "
-          f"{len(perf_yolo)} performance rows (with YOLO)")
-
-    acc_total, acc_errors = count_errors(args.accuracy_dir)
-    perf_total, perf_errors = count_errors(args.performance_dir)
-    if acc_errors:
-        print(f"  Warning: {acc_errors}/{acc_total} accuracy rows skipped "
-              f"(inference failures — empty classification)")
-    if perf_errors:
-        print(f"  Warning: {perf_errors}/{perf_total} performance rows skipped "
-              f"(inference failures — empty classification)")
+          f"{len(perf_yolo)} performance rows (with YOLO), "
+          f"{len(perf_err_noyolo) + len(perf_err_yolo)} errors")
 
     # Always generate model size chart
     print("\nGenerating model size chart...")
@@ -890,7 +878,8 @@ def main():
         chart_accuracy(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
         chart_precision_recall_f1(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
         chart_mcc(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
-        chart_confusion(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
+        chart_confusion(acc_noyolo, acc_yolo, output_dir, args.compare_yolo,
+                        acc_err_noyolo, acc_err_yolo)
         chart_response_length(acc_noyolo, acc_yolo, output_dir, args.compare_yolo)
 
     if perf_noyolo or perf_yolo:
@@ -901,7 +890,8 @@ def main():
         chart_memory_usage(perf_noyolo, perf_yolo, output_dir, args.compare_yolo)
 
     if acc_noyolo or acc_yolo or perf_noyolo or perf_yolo:
-        print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, args.compare_yolo)
+        print_summary(acc_noyolo, acc_yolo, perf_noyolo, perf_yolo, args.compare_yolo,
+                      acc_err_noyolo, acc_err_yolo, perf_err_noyolo, perf_err_yolo)
 
     print(f"Done. Charts saved to {output_dir}/")
 
