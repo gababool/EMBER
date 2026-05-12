@@ -387,6 +387,7 @@ class ScenarioMap(QWidget):
         self._context_highlights_visible = False
         self._expanded = False
         self._marker_points: dict[str, QPointF] = {}
+        self._icon_cache: dict[tuple[str, str, int], QPixmap] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
         self.load_scenario_button = QPushButton("Load Scenario", self)
@@ -438,6 +439,7 @@ class ScenarioMap(QWidget):
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
+        self._icon_cache = {}
         self.load_scenario_button.setStyleSheet(f"""
             QPushButton {{
                 color: #ffffff;
@@ -797,15 +799,19 @@ class ScenarioMap(QWidget):
     def _draw_vector_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature):
         if feature.layer == "settlement":
             point = self._geo_to_screen(*feature.geometry[0], rect)
-            if not rect.adjusted(-12, -12, 12, 12).contains(point):
+            if not rect.adjusted(-16, -16, 16, 16).contains(point):
                 return
-            painter.setPen(QPen(QColor(self.theme.map_bg), 2))
-            painter.setBrush(QColor(self.theme.map_settlement))
-            painter.drawEllipse(point, 4, 4)
+            self._draw_icon_marker(
+                painter,
+                point,
+                "building-2.svg",
+                QColor(self.theme.map_settlement),
+                size=18,
+            )
             if feature.name and self._detail_scale and self._detail_scale > 220_000:
                 painter.setFont(app_font(FONT_SIZE_XS, bold=True))
                 painter.setPen(QColor(self.theme.text_primary))
-                painter.drawText(QRectF(point.x() + 7, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
+                painter.drawText(QRectF(point.x() + 11, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
             return
 
         path = QPainterPath()
@@ -919,9 +925,13 @@ class ScenarioMap(QWidget):
 
     def _draw_context_overlays(self, painter: QPainter, rect: QRectF, context: dict):
         scenario_point = self._geo_to_screen(self.loaded_scenario.longitude, self.loaded_scenario.latitude, rect)
-        painter.setPen(QPen(QColor(self.theme.bg_panel), 4))
-        painter.setBrush(QColor(self.theme.accent_orange))
-        painter.drawEllipse(scenario_point, 8, 8)
+        self._draw_icon_marker(
+            painter,
+            scenario_point,
+            "flame.svg",
+            QColor(self.theme.accent_orange),
+            size=24,
+        )
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Scenario")
@@ -941,6 +951,7 @@ class ScenarioMap(QWidget):
                 coordinates[1],
                 QColor(self.theme.accent_cyan),
                 label,
+                icon_name="droplet.svg",
             )
 
     def _draw_context_road_highlights(self, painter: QPainter, rect: QRectF, context: dict):
@@ -1001,14 +1012,17 @@ class ScenarioMap(QWidget):
         color: QColor,
         label: str,
         square: bool = False,
+        icon_name: str | None = None,
     ):
         point = self._geo_to_screen(lon, lat, rect)
-        painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
-        painter.setBrush(color)
-        if square:
+        if icon_name:
+            self._draw_icon_marker(painter, point, icon_name, color, size=20)
+        elif square:
+            painter.setPen(QPen(QColor(self.theme.bg_panel), 2))
+            painter.setBrush(color)
             painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
         else:
-            painter.drawEllipse(point, 5, 5)
+            self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS))
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(point.x() + 8, point.y() - 10, 150, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
@@ -1029,10 +1043,31 @@ class ScenarioMap(QWidget):
         if square:
             painter.drawRoundedRect(QRectF(point.x() - 5, point.y() - 5, 10, 10), 2, 2)
         else:
-            painter.drawEllipse(point, 5, 5)
+            self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
+
+    def _draw_icon_marker(self, painter: QPainter, point: QPointF, icon_name: str, color: QColor, size: int):
+        halo_size = size + 6
+        halo = self._map_icon(icon_name, QColor(self.theme.bg_panel), halo_size)
+        icon = self._map_icon(icon_name, color, size)
+        painter.drawPixmap(
+            int(point.x() - halo_size / 2),
+            int(point.y() - halo_size / 2),
+            halo,
+        )
+        painter.drawPixmap(
+            int(point.x() - size / 2),
+            int(point.y() - size / 2),
+            icon,
+        )
+
+    def _map_icon(self, icon_name: str, color: QColor, size: int) -> QPixmap:
+        key = (icon_name, color.name(), size)
+        if key not in self._icon_cache:
+            self._icon_cache[key] = load_svg_icon(icon_name, color.name(), size)
+        return self._icon_cache[key]
 
     def _context_water_coordinates(self, water: dict) -> tuple[float, float]:
         name = water.get("name")
