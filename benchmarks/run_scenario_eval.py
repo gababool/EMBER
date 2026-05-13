@@ -44,6 +44,7 @@ Usage:
 """
 
 import argparse
+import concurrent.futures
 import csv
 import json
 import sys
@@ -73,6 +74,8 @@ DEFAULT_PROMPT_FILE_NAME = 'latest.txt'
 DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PROMPT_FILE_NAME
 DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'
 DEFAULT_OUTPUT_DIR = Path('results') / 'scenarios'
+
+LLM_INFERENCE_TIMEOUT = 240
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 
@@ -273,15 +276,15 @@ def run_scenario_eval(
             image_path = scenario['image_path']
             json_path = scenario['json_path']
 
+            yolo_duration_s = None
+            yolo_detection_count = None
+            llm_input_path = image_path
+            yolo_context = None
+            resolved_yolo_input_mode = resolve_yolo_input_mode(yolo_input_mode)
+            yolo_enabled = with_yolo and resolved_yolo_input_mode != "disabled"
+
             try:
                 # Optional YOLO preprocessing.
-                yolo_duration_s = None
-                yolo_detection_count = None
-                llm_input_path = image_path
-                yolo_context = None
-                resolved_yolo_input_mode = resolve_yolo_input_mode(yolo_input_mode)
-                yolo_enabled = with_yolo and resolved_yolo_input_mode != "disabled"
-
                 if yolo_enabled:
                     yolo_result = run_yolo_for_llm(image_path, yolo_model, yolo_input_mode)
                     yolo_duration_s = yolo_result['duration_s']
@@ -290,14 +293,24 @@ def run_scenario_eval(
                     yolo_context = yolo_result['additional_context']
                     resolved_yolo_input_mode = yolo_result['yolo_input_mode']
 
-                # LLM inference with context.
-                result = call_llm(
-                    model_name,
-                    str(llm_input_path),
-                    system_prompt,
-                    context_file=str(json_path),
-                    additional_context=yolo_context,
-                )
+                # LLM inference with context and timeout.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(
+                        call_llm,
+                        model_name,
+                        str(llm_input_path),
+                        system_prompt,
+                        context_file=str(json_path),
+                        additional_context=yolo_context,
+                    )
+                    try:
+                        result = future.result(timeout=LLM_INFERENCE_TIMEOUT)
+                    except concurrent.futures.TimeoutError:
+                        future.cancel()
+                        raise TimeoutError(
+                            f"LLM inference timed out after {LLM_INFERENCE_TIMEOUT}s "
+                            f"(model={model_name}, scenario={scenario_id})"
+                        )
 
                 parsed = result['parsed']
                 memory_gb = track_memory_usage()
@@ -336,6 +349,31 @@ def run_scenario_eval(
 
             except Exception as e:
                 log_progress(f"  {scenario_id} -> ERROR: {e}")
+                append_scenario_result(csv_path, {
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'scenario_id': scenario_id,
+                    'model_name': model_name,
+                    'image_path': str(image_path),
+                    'context_file': str(json_path),
+                    'yolo_enabled': yolo_enabled,
+                    'yolo_model': yolo_model if yolo_enabled else '',
+                    'yolo_input_mode': resolved_yolo_input_mode if with_yolo else '',
+                    'yolo_detection_count': '',
+                    'yolo_duration_s': '',
+                    'classification': '',
+                    'reasoning': str(e)[:200],
+                    'recommendation': '',
+                    'situation_brief': '',
+                    'word_count': 0,
+                    'tokens_per_sec': 0,
+                    'prompt_eval_duration_s': 0,
+                    'prompt_eval_count': 0,
+                    'eval_duration_s': 0,
+                    'total_duration_s': 0,
+                    'load_duration_s': 0,
+                    'model_size_gb': get_model_size(model_name),
+                    'memory_usage_gb': '',
+                })
 
     log_progress(f"\nScenario evaluation complete. Results: {csv_path}")
 

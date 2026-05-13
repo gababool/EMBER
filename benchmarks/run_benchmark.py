@@ -38,6 +38,7 @@ Usage:
 """
 
 import argparse
+import concurrent.futures
 import json
 import sys
 import time
@@ -81,6 +82,8 @@ DEFAULT_SYSTEM_PROMPT = REPO_ROOT / 'pipeline' / 'llm' / 'prompts' / DEFAULT_PRO
 
 DEFAULT_CONTEXT_DIR = REPO_ROOT / 'data' / 'contexts'
 DEFAULT_SCENARIO = 'benchmark_scenario.json'
+
+LLM_INFERENCE_TIMEOUT = 240
 
 
 def _context_tag(with_context):
@@ -129,13 +132,23 @@ def run_single_inference(model_name, image_path, system_prompt,
     # LLM inference. Context file is passed through to call_llm which loads
     # and formats it internally. When context_file is None the LLM receives
     # only the image and system prompt (Cycle 1 behaviour).
-    result = call_llm(
-        model_name,
-        str(llm_input_path),
-        system_prompt,
-        context_file=str(context_file) if context_file else None,
-        additional_context=yolo_context,
-    )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            call_llm,
+            model_name,
+            str(llm_input_path),
+            system_prompt,
+            context_file=str(context_file) if context_file else None,
+            additional_context=yolo_context,
+        )
+        try:
+            result = future.result(timeout=LLM_INFERENCE_TIMEOUT)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(
+                f"LLM inference timed out after {LLM_INFERENCE_TIMEOUT}s "
+                f"(model={model_name}, image={Path(image_path).name})"
+            )
 
     classification_raw = result['classification']
     correct = evaluate_accuracy(classification_raw, ground_truth)
@@ -308,6 +321,32 @@ def run_accuracy(image_dir, system_prompt_file, models, output_dir, dry_run,
             except Exception as e:
                 error_count += 1
                 log_progress(f"  [{i+1}/{len(images)}] ERROR on {image_path.name}: {e}")
+                log_result(str(csv_file), {
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'model_name': model_name,
+                    'image_path': str(image_path),
+                    'ground_truth': get_ground_truth(image_path),
+                    'llm_classification': '',
+                    'correct': '',
+                    'response_text': str(e)[:200],
+                    'word_count': 0,
+                    'eval_count': 0,
+                    'prompt_eval_count': 0,
+                    'tokens_per_sec': 0,
+                    'prompt_eval_duration_s': 0,
+                    'eval_duration_s': 0,
+                    'total_duration_s': 0,
+                    'load_duration_s': 0,
+                    'model_size_gb': get_model_size(model_name),
+                    'memory_usage_gb': '',
+                    'yolo_enabled': with_yolo,
+                    'yolo_model': yolo_model if with_yolo else '',
+                    'yolo_input_mode': yolo_input_mode if with_yolo else '',
+                    'yolo_duration_s': '',
+                    'yolo_detection_count': '',
+                    'context_enabled': context_file is not None,
+                    'context_scenario': Path(context_file).name if context_file else '',
+                })
 
         total = len(images) - error_count
         accuracy = (correct_count / total * 100) if total > 0 else 0
@@ -431,6 +470,32 @@ def run_performance(image_dir, system_prompt_file, models, output_dir, dry_run,
 
             except Exception as e:
                 log_progress(f"  [{i+1}/{len(images)}] ERROR on {image_path.name}: {e}")
+                log_result(str(csv_file), {
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'model_name': model_name,
+                    'image_path': str(image_path),
+                    'ground_truth': get_ground_truth(image_path),
+                    'llm_classification': '',
+                    'correct': '',
+                    'response_text': str(e)[:200],
+                    'word_count': 0,
+                    'eval_count': 0,
+                    'prompt_eval_count': 0,
+                    'tokens_per_sec': 0,
+                    'prompt_eval_duration_s': 0,
+                    'eval_duration_s': 0,
+                    'total_duration_s': 0,
+                    'load_duration_s': 0,
+                    'model_size_gb': get_model_size(model_name),
+                    'memory_usage_gb': '',
+                    'yolo_enabled': with_yolo,
+                    'yolo_model': yolo_model if with_yolo else '',
+                    'yolo_input_mode': yolo_input_mode if with_yolo else '',
+                    'yolo_duration_s': '',
+                    'yolo_detection_count': '',
+                    'context_enabled': context_file is not None,
+                    'context_scenario': Path(context_file).name if context_file else '',
+                })
 
             if cooldown > 0 and i < len(images) - 1:
                 log_progress(f"  Cooling down {cooldown}s...")
