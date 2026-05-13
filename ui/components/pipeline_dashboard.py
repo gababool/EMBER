@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import uuid
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStackedWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,6 +34,7 @@ try:
     from ui.components.image_preview_dialog import ImagePreviewDialog
     from ui.components.model_combo_box import ModelComboBox
     from ui.components.result_panel import ResultPanel
+    from ui.components.scenario_map import ScenarioMap, load_scenarios
     from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from pipeline.object_detection.detections import YOLO_INPUT_MODES
@@ -53,6 +55,7 @@ except ImportError:
     from components.image_preview_dialog import ImagePreviewDialog
     from components.model_combo_box import ModelComboBox
     from components.result_panel import ResultPanel
+    from components.scenario_map import ScenarioMap, load_scenarios
     from pipeline.context.wind import build_mock_wind
     from pipeline.llm.inference import BENCHMARK_MODEL_TAGS, PROMPTS_DIR
     from pipeline.object_detection.detections import YOLO_INPUT_MODES
@@ -65,6 +68,8 @@ COMPACT_HEADER_CONTROL_WIDTH = 118
 HEADER_CONTROL_HEIGHT = 40
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
 _CONTEXT_MARKER = "structured operational context block"
+SCENARIO_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
+SCENARIO_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
 def _prompt_requires_context(prompt_path: str) -> bool:
@@ -90,6 +95,10 @@ class PipelineDashboard(QWidget):
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self._generated_mock_wind = None
+        self.detail_view_expanded = False
+        self.operational_compact_layout = False
+        self.selected_context_path = None
+        self.scenarios = load_scenarios()
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
 
@@ -102,7 +111,7 @@ class PipelineDashboard(QWidget):
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(10)
 
-        # Row 1: title + action buttons
+        # Row 1: title
         title_row = QWidget()
         title_row_layout = QHBoxLayout(title_row)
         title_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -114,11 +123,11 @@ class PipelineDashboard(QWidget):
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(4)
 
-        self.title_label = QLabel("Pipeline Demo")
+        self.title_label = QLabel("Operational Dashboard")
         self.title_label.setFont(app_font(FONT_SIZE_XL, bold=True))
         self.title_label.setMinimumWidth(0)
 
-        self.subtitle_label = QLabel("Run a wildfire image through screening, detection, and reasoning.")
+        self.subtitle_label = QLabel("Select a scenario and run the wildfire reasoning pipeline.")
         self.subtitle_label.setFont(app_font(FONT_SIZE_SM))
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setMinimumWidth(0)
@@ -132,16 +141,16 @@ class PipelineDashboard(QWidget):
         self.pick_button.setFixedHeight(40)
         self.pick_button.clicked.connect(self._open_image_picker)
 
-        self.rerun_button = QPushButton("Re-run")
-        self.rerun_button.setFont(app_font(FONT_SIZE_MD, bold=True))
-        self.rerun_button.setCursor(Qt.PointingHandCursor)
-        self.rerun_button.setFixedHeight(40)
-        self.rerun_button.setEnabled(False)
-
         self.start_button = QPushButton("Test Image")
         self.start_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.start_button.setCursor(Qt.PointingHandCursor)
         self.start_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+
+        self.run_scenario_button = QPushButton("Run Scenario")
+        self.run_scenario_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.run_scenario_button.setCursor(Qt.PointingHandCursor)
+        self.run_scenario_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+        self.run_scenario_button.setVisible(False)
 
         self.stop_llm_button = QPushButton("Stop LLM")
         self.stop_llm_button.setFont(app_font(FONT_SIZE_MD, bold=True))
@@ -152,12 +161,10 @@ class PipelineDashboard(QWidget):
         self.stop_llm_button.clicked.connect(self._request_llm_cancel)
 
         title_row_layout.addWidget(title_block, 1)
-        title_row_layout.addWidget(self.pick_button)
-        title_row_layout.addWidget(self.rerun_button)
-        title_row_layout.addWidget(self.start_button)
+        title_row_layout.addWidget(self.run_scenario_button)
         title_row_layout.addWidget(self.stop_llm_button)
 
-        # Row 2: settings controls
+        # Row 2: application settings
         controls_row = QWidget()
         controls_row_layout = QHBoxLayout(controls_row)
         controls_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -188,6 +195,12 @@ class PipelineDashboard(QWidget):
         self.skip_quality_button.setCheckable(True)
         self.skip_quality_button.toggled.connect(self._on_skip_quality_toggled)
 
+        self.rerun_button = QPushButton("Re-run")
+        self.rerun_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.rerun_button.setCursor(Qt.PointingHandCursor)
+        self.rerun_button.setFixedHeight(40)
+        self.rerun_button.setEnabled(False)
+
         self.llm_toggle_button = QPushButton("LLM: ON")
         self.llm_toggle_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.llm_toggle_button.setCursor(Qt.PointingHandCursor)
@@ -198,9 +211,12 @@ class PipelineDashboard(QWidget):
 
         self.context_select = ModelComboBox(theme)
         self.context_select.setMinimumWidth(150)
+        for scenario in self.scenarios:
+            self.context_select.addItem(scenario.title, str(scenario.context_path))
         for ctx_path in sorted(CONTEXTS_DIR.glob("*.json")):
             self.context_select.addItem(ctx_path.stem, str(ctx_path))
         self.context_select.setVisible(False)
+        self.context_select.currentIndexChanged.connect(self._on_context_changed)
 
         self.prompt_select = ModelComboBox(theme)
         self.prompt_select.setMinimumWidth(130)
@@ -229,20 +245,26 @@ class PipelineDashboard(QWidget):
         self.wind_speed_input = WindSpeedControl(theme)
         self.wind_speed_input.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
-        controls_row_layout.addWidget(self.image_filter_select)
         controls_row_layout.addWidget(self.yolo_mode_select)
-        controls_row_layout.addWidget(self.skip_quality_button)
+        controls_row_layout.addWidget(self.rerun_button)
         controls_row_layout.addWidget(self.llm_toggle_button)
         controls_row_layout.addStretch(1)
         controls_row_layout.addWidget(self.context_select)
-        controls_row_layout.addWidget(self.prompt_select)
         controls_row_layout.addWidget(self.model_select)
         controls_row_layout.addWidget(self.wind_mode_select)
         controls_row_layout.addWidget(self.wind_direction_select)
         controls_row_layout.addWidget(self.wind_speed_input)
 
+        self.settings_panel = ResultPanel(
+            "Ember Settings",
+            "",
+            controls_row,
+            theme,
+        )
+        self.settings_panel.setMinimumHeight(86)
+
         header_layout.addWidget(title_row)
-        header_layout.addWidget(controls_row)
+        header_layout.addWidget(self.settings_panel)
 
         self.grid = QGridLayout()
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -316,6 +338,77 @@ class PipelineDashboard(QWidget):
             theme,
         )
 
+        self.scenario_map = ScenarioMap(self.scenarios, theme)
+        self.scenario_map.scenario_selected.connect(self._on_scenario_selected)
+        self.scenario_map.scenario_loaded.connect(self._on_scenario_loaded)
+        self.scenario_map.scenario_unloaded.connect(self._on_scenario_unloaded)
+        self.scenario_map.expand_requested.connect(self.expand_map)
+        self.scenario_map.minimize_requested.connect(self.minimize_map)
+        self.map_panel = ResultPanel(
+            "Scenario Map",
+            "Select the operational context used for inference.",
+            self.scenario_map,
+            theme,
+        )
+        self._map_placeholder = QWidget()
+        self._map_placeholder.setVisible(False)
+        self._map_overlay = None
+        self._map_overlay_layout = None
+        self._map_expanded = False
+
+        self.expand_button = QPushButton("Expand")
+        self.expand_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.expand_button.setCursor(Qt.PointingHandCursor)
+        self.expand_button.setFixedHeight(34)
+        self.expand_button.clicked.connect(self.toggle_detail_view)
+
+        self.detail_collapse_button = QPushButton("Collapse")
+        self.detail_collapse_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.detail_collapse_button.setCursor(Qt.PointingHandCursor)
+        self.detail_collapse_button.setFixedHeight(34)
+        self.detail_collapse_button.clicked.connect(self.toggle_detail_view)
+
+        self.pipeline_demo_controls = QWidget()
+        pipeline_demo_layout = QHBoxLayout(self.pipeline_demo_controls)
+        pipeline_demo_layout.setContentsMargins(0, 0, 0, 0)
+        pipeline_demo_layout.setSpacing(8)
+        pipeline_demo_label = QLabel("Pipeline Demo Settings")
+        pipeline_demo_label.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.pipeline_demo_label = pipeline_demo_label
+        pipeline_demo_layout.addWidget(pipeline_demo_label)
+        pipeline_demo_layout.addStretch(1)
+        pipeline_demo_layout.addWidget(self.image_filter_select)
+        pipeline_demo_layout.addWidget(self.pick_button)
+        pipeline_demo_layout.addWidget(self.skip_quality_button)
+        pipeline_demo_layout.addWidget(self.prompt_select)
+        pipeline_demo_layout.addWidget(self.start_button)
+
+        self.compact_pipeline_body = QWidget()
+        self.compact_pipeline_layout = QVBoxLayout(self.compact_pipeline_body)
+        self.compact_pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        self.compact_pipeline_layout.setSpacing(12)
+
+        self.compact_classification_badge = ClassificationBadge(theme)
+        self.compact_image_placeholder = QLabel("Processed image will appear here")
+        self.compact_image_placeholder.setAlignment(Qt.AlignCenter)
+        self.compact_image_placeholder.setMinimumSize(320, 150)
+        self.compact_reasoning_text = QTextEdit()
+        self.compact_reasoning_text.setReadOnly(True)
+        self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
+        self.compact_reasoning_text.setFont(app_font(FONT_SIZE_SM))
+
+        self.compact_pipeline_layout.addWidget(self.compact_classification_badge)
+        self.compact_pipeline_layout.addWidget(self.compact_image_placeholder, 1)
+        self.compact_pipeline_layout.addWidget(self.compact_reasoning_text, 2)
+
+        self.compact_pipeline_panel = ResultPanel(
+            "Pipeline Summary",
+            "Classification, processed image, and tactical reasoning.",
+            self.compact_pipeline_body,
+            theme,
+            action_widget=self.expand_button,
+        )
+
         self.grid.addWidget(self.quality_panel, 0, 0)
         self.grid.addWidget(self.image_panel, 0, 1)
         self.grid.addWidget(self.reasoning_panel, 0, 2)
@@ -326,17 +419,52 @@ class PipelineDashboard(QWidget):
         self.history_strip = HistoryStrip(theme)
         self.history_strip.run_selected.connect(self.load_history_run)
 
+        self.full_page = QWidget()
+        self.full_layout = QVBoxLayout(self.full_page)
+        self.full_layout.setContentsMargins(0, 0, 0, 0)
+        self.full_layout.setSpacing(18)
+
+        detail_header = QWidget()
+        detail_header_layout = QHBoxLayout(detail_header)
+        detail_header_layout.setContentsMargins(0, 0, 0, 0)
+        detail_header_layout.setSpacing(8)
+        self.detail_title_label = QLabel("Pipeline Detail")
+        self.detail_title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
+        detail_header_layout.addWidget(self.detail_title_label)
+        detail_header_layout.addStretch()
+        detail_header_layout.addWidget(self.detail_collapse_button)
+        self.full_layout.addWidget(detail_header)
+        self.full_layout.addWidget(self.pipeline_demo_controls)
+        self.full_layout.addLayout(self.grid, 1)
+        self.full_layout.addWidget(self.history_strip)
+
+        self.operational_page = QWidget()
+        self.operational_grid = QGridLayout(self.operational_page)
+        self.operational_grid.setContentsMargins(0, 0, 0, 0)
+        self.operational_grid.setHorizontalSpacing(18)
+        self.operational_grid.setVerticalSpacing(18)
+        self.operational_grid.addWidget(self.map_panel, 0, 0)
+        self.operational_grid.addWidget(self.compact_pipeline_panel, 0, 1)
+        self.operational_grid.setColumnStretch(0, 3)
+        self.operational_grid.setColumnStretch(1, 2)
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.operational_page)
+        self.content_stack.addWidget(self.full_page)
+
         layout.addWidget(header)
-        layout.addLayout(self.grid, 1)
-        layout.addWidget(self.history_strip)
+        layout.addWidget(self.content_stack, 1)
 
         self.apply_theme(theme)
         self._on_prompt_changed(self.prompt_select.current_index)
         self._sync_wind_controls()
+        self._sync_context_from_map()
 
-    def reset_demo(self):
-        self.subtitle_label.setText("Selecting a random wildfire dataset image...")
+    def reset_demo(self, status_text: str = "Selecting a random wildfire dataset image..."):
+        self.subtitle_label.setText(status_text)
+        self.scenario_map.set_context_highlights_visible(True)
         self.start_button.setEnabled(False)
+        self.run_scenario_button.setEnabled(False)
         self.rerun_button.setEnabled(False)
         self.pick_button.setEnabled(False)
         self.model_select.setEnabled(False)
@@ -352,6 +480,7 @@ class PipelineDashboard(QWidget):
         self.stop_llm_button.setEnabled(False)
         self._set_llm_cancel_visible(False)
         self.start_button.setText("Running")
+        self.run_scenario_button.setText("Running")
         self.expected_label = None
         self._start_current_run_record()
         self._reset_stage_views()
@@ -377,9 +506,12 @@ class PipelineDashboard(QWidget):
         for row in self.quality_rows:
             row.set_state("pending")
         self._clear_processed_image("Processed image will appear here")
+        self.compact_image_placeholder.setPixmap(QPixmap())
+        self.compact_image_placeholder.setText("Processed image will appear here")
         self.classification_badge.set_classification(
             "pending" if self.llm_inference_enabled() else "disabled"
         )
+        self.compact_classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         if self.llm_inference_enabled():
             self.reasoning_text.setPlainText("Waiting for LLM reasoning...")
@@ -390,6 +522,7 @@ class PipelineDashboard(QWidget):
 
     def set_demo_finished(self):
         self.start_button.setEnabled(True)
+        self.run_scenario_button.setEnabled(True)
         self.rerun_button.setEnabled(self.last_image_path is not None)
         self.pick_button.setEnabled(True)
         self.wind_mode_select.setEnabled(True)
@@ -402,6 +535,7 @@ class PipelineDashboard(QWidget):
         self.stop_llm_button.setEnabled(False)
         self._set_llm_cancel_visible(False)
         self.start_button.setText("Test Image")
+        self.run_scenario_button.setText("Run Scenario")
         self.quality_panel.setVisible(True)
         self._save_current_run_to_history()
 
@@ -458,10 +592,28 @@ class PipelineDashboard(QWidget):
     def selected_prompt_file(self) -> str:
         return self.prompt_select.currentData()
 
+    def scenario_prompt_file(self) -> str:
+        return str(SCENARIO_PROMPT_FILE)
+
     def selected_context_file(self) -> str | None:
-        if not self.llm_inference_enabled() or not self.context_select.isVisible():
+        if not self.llm_inference_enabled() or self.selected_context_path:
+            return self.selected_context_path
+        if self.context_select.isVisible():
+            return self.context_select.currentData()
+        return None
+
+    def selected_scenario_image_path(self) -> str | None:
+        scenario = getattr(self.scenario_map, "loaded_scenario", None)
+        if scenario is None:
             return None
-        return self.context_select.currentData()
+
+        scenario_dir = scenario.context_path.parent
+        scenario_stem = scenario.context_path.stem
+        for suffix in SCENARIO_IMAGE_SUFFIXES:
+            candidate = scenario_dir / f"{scenario_stem}{suffix}"
+            if candidate.exists():
+                return str(candidate)
+        return None
 
     def selected_yolo_input_mode(self) -> str:
         return self.yolo_mode_select.currentData() or "annotated_image"
@@ -471,6 +623,125 @@ class PipelineDashboard(QWidget):
 
     def _on_prompt_changed(self, _index: int):
         self._sync_llm_controls()
+        
+    def _on_context_changed(self, _index: int):
+        self.selected_context_path = self.context_select.currentData()
+        self.scenario_map.set_selected_context_file(self.selected_context_path)
+
+    def _on_scenario_selected(self, scenario):
+        self._set_context_select_to_path(str(scenario.context_path))
+        self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
+        loaded_scenario = getattr(self.scenario_map, "loaded_scenario", None)
+        self.run_scenario_button.setVisible(loaded_scenario == scenario)
+
+    def _sync_context_from_map(self):
+        if self.scenario_map.selected_context_file():
+            self._set_context_select_to_path(self.scenario_map.selected_context_file())
+
+    def _set_context_select_to_path(self, context_path: str | None):
+        if not context_path:
+            return
+        for index, (_text, data) in enumerate(self.context_select.items):
+            if Path(data).resolve() == Path(context_path).resolve():
+                if self.context_select.current_index != index:
+                    self.context_select.setCurrentIndex(index)
+                return
+
+    def expand_map(self):
+        if self._map_expanded:
+            return
+        self.close_open_popups()
+        self._ensure_map_overlay()
+        self._map_placeholder.setMinimumSize(self.scenario_map.size())
+        self.map_panel.layout.replaceWidget(self.scenario_map, self._map_placeholder)
+        self.map_panel.body = self._map_placeholder
+        self._map_placeholder.show()
+        self._map_overlay_layout.addWidget(self.scenario_map)
+        self.scenario_map.set_expanded(True)
+        self._map_expanded = True
+        self._position_map_overlay()
+        self._map_overlay.show()
+        self._map_overlay.raise_()
+        window = self.window()
+        if window is not None:
+            window.installEventFilter(self)
+
+    def minimize_map(self):
+        if not self._map_expanded:
+            return
+        if self._map_overlay_layout is not None:
+            self._map_overlay_layout.removeWidget(self.scenario_map)
+        self.map_panel.layout.replaceWidget(self._map_placeholder, self.scenario_map)
+        self.map_panel.body = self.scenario_map
+        self._map_placeholder.hide()
+        self.scenario_map.set_expanded(False)
+        self._map_expanded = False
+        if self._map_overlay is not None:
+            self._map_overlay.hide()
+        window = self.window()
+        if window is not None:
+            window.removeEventFilter(self)
+
+    def _ensure_map_overlay(self):
+        if self._map_overlay is not None:
+            return
+        parent = self.window()
+        self._map_overlay = QFrame(parent)
+        self._map_overlay.setObjectName("ExpandedMapOverlay")
+        self._map_overlay.setAutoFillBackground(True)
+        self._map_overlay_layout = QVBoxLayout(self._map_overlay)
+        self._map_overlay_layout.setContentsMargins(12, 12, 12, 12)
+        self._map_overlay_layout.setSpacing(0)
+        self._style_map_overlay(self.theme)
+
+    def _position_map_overlay(self):
+        if self._map_overlay is None:
+            return
+        parent = self._map_overlay.parentWidget()
+        if parent is None:
+            return
+        self._map_overlay.setGeometry(parent.rect().adjusted(28, 28, -28, -28))
+
+    def _style_map_overlay(self, theme: Theme):
+        if self._map_overlay is None:
+            return
+        self._map_overlay.setStyleSheet(f"""
+            QFrame#ExpandedMapOverlay {{
+                background-color: {theme.bg_panel};
+                border: 1px solid {theme.accent_orange};
+                border-radius: 8px;
+            }}
+        """)
+
+    def eventFilter(self, watched, event):
+        if self._map_expanded and watched is self.window() and event.type() == QEvent.Resize:
+            self._position_map_overlay()
+        return super().eventFilter(watched, event)
+
+    def toggle_detail_view(self):
+        self.detail_view_expanded = not self.detail_view_expanded
+        self.content_stack.setCurrentWidget(
+            self.full_page if self.detail_view_expanded else self.operational_page
+        )
+        self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
+        self._apply_responsive_layout()
+
+    def _on_scenario_loaded(self, scenario):
+        self.selected_context_path = str(scenario.context_path)
+        self._set_context_select_to_path(str(scenario.context_path))
+        self.scenario_map.set_context_highlights_visible(False)
+        self.run_scenario_button.setVisible(True)
+        self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
+
+    def _on_scenario_unloaded(self):
+        self.selected_context_path = None
+        self.scenario_map.set_context_highlights_visible(False)
+        self.run_scenario_button.setVisible(False)
+        if self.scenario_map.selected_scenario is not None:
+            scenario = self.scenario_map.selected_scenario
+            self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
+        else:
+            self.subtitle_label.setText("Select a scenario and run the wildfire reasoning pipeline.")
 
     def selected_image_filter(self) -> str | None:
         data = self.image_filter_select.currentData()
@@ -583,6 +854,7 @@ class PipelineDashboard(QWidget):
         if self.current_run is not None:
             self.current_run["error"] = message
         self.reasoning_text.setPlainText(f"Pipeline error:\n{message}")
+        self.compact_reasoning_text.setPlainText(f"Pipeline error:\n{message}")
 
     def handle_pipeline_event(self, event):
         if event.event_type == "stage_started":
@@ -673,6 +945,7 @@ class PipelineDashboard(QWidget):
         parsed = result.get("parsed", {})
         if not parsed:
             self.reasoning_text.setPlainText("No reasoning returned.")
+            self.compact_reasoning_text.setPlainText("No reasoning returned.")
             return
 
         classification = parsed.get("classification", "unknown")
@@ -681,6 +954,7 @@ class PipelineDashboard(QWidget):
         situation_brief = parsed.get("situation_brief") or ""
         tactical_priority = parsed.get("tactical_priority") or ""
         self.classification_badge.set_classification(classification)
+        self.compact_classification_badge.set_classification(classification)
         self.correctness_badge.set_prediction(classification)
 
         parts = []
@@ -692,7 +966,9 @@ class PipelineDashboard(QWidget):
             parts.append(f"Tactical Priority:\n{tactical_priority}")
         if recommendation:
             parts.append(f"Recommendation:\n{recommendation}")
-        self.reasoning_text.setPlainText("\n\n".join(parts) if parts else "No reasoning returned.")
+        reasoning_output = "\n\n".join(parts) if parts else "No reasoning returned."
+        self.reasoning_text.setPlainText(reasoning_output)
+        self.compact_reasoning_text.setPlainText(reasoning_output)
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
@@ -726,6 +1002,7 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.border};
             }}
         """)
+        self.run_scenario_button.setStyleSheet(self.start_button.styleSheet())
         self.pick_button.setStyleSheet(f"""
             QPushButton {{
                 color: {theme.text_primary};
@@ -764,6 +1041,22 @@ class PipelineDashboard(QWidget):
                 border-color: {theme.border};
             }}
         """)
+        self.expand_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme.bg_panel};
+            }}
+        """)
+        self.detail_collapse_button.setStyleSheet(self.expand_button.styleSheet())
         self.open_preview_button.setStyleSheet(f"""
             QPushButton {{
                 color: {theme.text_primary};
@@ -792,6 +1085,8 @@ class PipelineDashboard(QWidget):
         self.image_filter_select.apply_theme(theme)
         self.yolo_mode_select.apply_theme(theme)
         self._style_skip_quality_button(theme)
+
+        self.settings_panel.apply_theme(theme)
         self._style_llm_toggle_button(theme)
         self._style_stop_llm_button(theme)
 
@@ -802,8 +1097,16 @@ class PipelineDashboard(QWidget):
             row.apply_theme(theme)
 
         self.classification_badge.apply_theme(theme)
+        self.compact_classification_badge.apply_theme(theme)
         self.correctness_badge.apply_theme(theme)
         self.history_strip.apply_theme(theme)
+        self.map_panel.apply_theme(theme)
+        self.compact_pipeline_panel.apply_theme(theme)
+        self.scenario_map.apply_theme(theme)
+        self._style_map_overlay(theme)
+        self.pipeline_demo_label.setStyleSheet(self._label_style(theme.text_primary))
+        self.detail_title_label.setStyleSheet(self._label_style(theme.text_primary))
+        self.pipeline_demo_controls.setStyleSheet("background: transparent; border: none;")
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};
@@ -811,7 +1114,32 @@ class PipelineDashboard(QWidget):
                 border: none;
             }}
         """)
+        self.compact_image_placeholder.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: 1px dashed {theme.border};
+                border-radius: 4px;
+            }}
+        """)
+        self.compact_image_placeholder.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: 1px dashed {theme.border};
+                border-radius: 4px;
+            }}
+        """)
         self.reasoning_text.setStyleSheet(f"""
+            QTextEdit {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+                padding: 10px;
+            }}
+        """)
+        self.compact_reasoning_text.setStyleSheet(f"""
             QTextEdit {{
                 color: {theme.text_primary};
                 background-color: {theme.bg_panel_alt};
@@ -853,6 +1181,21 @@ class PipelineDashboard(QWidget):
 
     def _apply_responsive_layout(self):
         compact = self.width() < 1250
+        if compact != self.operational_compact_layout:
+            self.operational_compact_layout = compact
+            for panel in (self.map_panel, self.compact_pipeline_panel):
+                self.operational_grid.removeWidget(panel)
+            if compact:
+                self.operational_grid.addWidget(self.map_panel, 0, 0)
+                self.operational_grid.addWidget(self.compact_pipeline_panel, 1, 0)
+                self.operational_grid.setColumnStretch(0, 1)
+                self.operational_grid.setColumnStretch(1, 0)
+            else:
+                self.operational_grid.addWidget(self.map_panel, 0, 0)
+                self.operational_grid.addWidget(self.compact_pipeline_panel, 0, 1)
+                self.operational_grid.setColumnStretch(0, 3)
+                self.operational_grid.setColumnStretch(1, 2)
+
         if compact == self.compact_layout:
             return
 
@@ -901,6 +1244,7 @@ class PipelineDashboard(QWidget):
             self._set_llm_cancel_visible(True)
             self.llm_started.emit()
             self.reasoning_text.setPlainText("Running LLM reasoning...")
+            self.compact_reasoning_text.setPlainText("Running LLM reasoning...")
 
     def _save_current_run_to_history(self, quality_failed: bool = False):
         if not self.current_run or not self.current_run.get("image_path"):
@@ -953,10 +1297,13 @@ class PipelineDashboard(QWidget):
         reasoning_result = run_record.get("reasoning_result")
         if reasoning_result:
             self.set_reasoning_result(reasoning_result)
+            self.scenario_map.set_context_highlights_visible(True)
         elif run_record.get("llm_enabled") is False:
             self.set_reasoning_result({"status": "disabled"})
+            self.scenario_map.set_context_highlights_visible(True)
         elif run_record.get("error"):
             self.reasoning_text.setPlainText(f"Pipeline error:\n{run_record['error']}")
+            self.scenario_map.set_context_highlights_visible(True)
 
         self.current_run = None
 
@@ -965,10 +1312,12 @@ class PipelineDashboard(QWidget):
             row.set_state("pending")
         self._clear_processed_image("Processed image will appear here")
         self.classification_badge.set_classification("pending")
+        self.compact_classification_badge.set_classification("pending")
         self.correctness_badge.reset()
         if expected_label:
             self.correctness_badge.set_expected_label(expected_label)
         self.reasoning_text.setPlainText("No LLM reasoning stored for this run.")
+        self.compact_reasoning_text.setPlainText("No LLM reasoning stored for this run.")
 
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
@@ -986,6 +1335,8 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.setPixmap(QPixmap())
         self.image_placeholder.setText(message)
         self.image_placeholder.unsetCursor()
+        self.compact_image_placeholder.setPixmap(QPixmap())
+        self.compact_image_placeholder.setText(message)
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self.open_preview_button.setEnabled(False)
@@ -996,6 +1347,14 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.setPixmap(
             self._current_preview_pixmap.scaled(
                 self.image_placeholder.size(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+        )
+        self.compact_image_placeholder.setText("")
+        self.compact_image_placeholder.setPixmap(
+            self._current_preview_pixmap.scaled(
+                self.compact_image_placeholder.size(),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             )

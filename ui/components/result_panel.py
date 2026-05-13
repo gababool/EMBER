@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 try:
     from ui.assets.design import (
@@ -25,6 +25,7 @@ class ResultPanel(QFrame):
         subtitle: str,
         body: QWidget,
         theme: Theme = DEFAULT_THEME,
+        action_widget: QWidget | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -38,14 +39,24 @@ class ResultPanel(QFrame):
         self.title_label = QLabel(title)
         self.title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
 
+        self.header_row = QWidget()
+        self.header_layout = QHBoxLayout(self.header_row)
+        self.header_layout.setContentsMargins(0, 0, 0, 0)
+        self.header_layout.setSpacing(8)
+        self.header_layout.addWidget(self.title_label)
+        self.header_layout.addStretch()
+        if action_widget is not None:
+            self.header_layout.addWidget(action_widget)
+
         self.subtitle_label = QLabel(subtitle)
         self.subtitle_label.setFont(app_font(FONT_SIZE_SM))
         self.subtitle_label.setWordWrap(True)
 
         self.body = body
 
-        self.layout.addWidget(self.title_label)
-        self.layout.addWidget(self.subtitle_label)
+        self.layout.addWidget(self.header_row)
+        if subtitle:
+            self.layout.addWidget(self.subtitle_label)
         self.layout.addWidget(self.body, 1)
 
         self.apply_theme(theme)
@@ -66,6 +77,7 @@ class ResultPanel(QFrame):
                 border: none;
             }}
         """)
+        self.header_row.setStyleSheet("background: transparent; border: none;")
         self.subtitle_label.setStyleSheet(f"""
             QLabel {{
                 color: {theme.text_muted};

@@ -39,6 +39,18 @@ class Theme:
     accent_purple: str
     danger: str
     shadow: str
+    map_bg: str
+    map_water_fill: str
+    map_water_stroke: str
+    map_protected_fill: str
+    map_protected_stroke: str
+    map_road_major: str
+    map_road_minor: str
+    map_track: str
+    map_power: str
+    map_waterway: str
+    map_settlement: str
+    map_building: str
 
 
 DARK_THEME = Theme(
@@ -57,6 +69,18 @@ DARK_THEME = Theme(
     accent_purple="#d34dff",
     danger="#ff5a66",
     shadow="#111317",
+    map_bg="#193620",
+    map_water_fill="#245f73",
+    map_water_stroke="#35a8c7",
+    map_protected_fill="#774545",
+    map_protected_stroke="#a05454",
+    map_road_major="#926835",
+    map_road_minor="#787266",
+    map_track="#5d5648",
+    map_power="#cd50ff",
+    map_waterway="#00d7ff",
+    map_settlement="#9eab09",
+    map_building="#8a725c",
 )
 
 LIGHT_THEME = Theme(
@@ -75,6 +99,18 @@ LIGHT_THEME = Theme(
     accent_purple="#8b37d6",
     danger="#cf2f43",
     shadow="#c6ccd4",
+    map_bg="#7caf85",
+    map_water_fill="#78c7db",
+    map_water_stroke="#2f9fbd",
+    map_protected_fill="#a88585",
+    map_protected_stroke="#4f9960",
+    map_road_major="#ff9f35",
+    map_road_minor="#716755",
+    map_track="#8d7d64",
+    map_power="#8b37d6",
+    map_waterway="#008dad",
+    map_settlement="#168a45",
+    map_building="#8d725a",
 )
 
 DEFAULT_THEME = DARK_THEME

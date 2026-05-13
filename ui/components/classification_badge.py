@@ -210,6 +210,11 @@ class CorrectnessBadge(QFrame):
             return
 
         expected = self.expected_label.lower()
+        if expected not in {"fire", "nofire"}:
+            self.state = "not_applicable"
+            self._render()
+            return
+
         predicted = self.predicted_classification.lower()
         is_correct = (
             expected == "fire"
@@ -258,6 +263,13 @@ class CorrectnessBadge(QFrame):
                 "Wrong",
                 f"Expected {expected}",
                 "circle-x.svg",
+            )
+        if self.state == "not_applicable":
+            return (
+                self.theme.text_muted,
+                "Not applicable",
+                f"Expected {expected}",
+                None,
             )
         if self.expected_label:
             return (
