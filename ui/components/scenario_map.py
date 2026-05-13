@@ -39,7 +39,7 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
-VECTOR_CACHE_VERSION = 4
+VECTOR_CACHE_VERSION = 5
 EARTH_RADIUS_M = 6_378_137
 
 
@@ -68,6 +68,7 @@ class VectorFeature:
     layer: str
     geometry: list[tuple[float, float]]
     name: str | None = None
+    ref: str | None = None
     closed: bool = False
     bounds: tuple[float, float, float, float] | None = None
 
@@ -139,6 +140,7 @@ def _read_vector_cache(source_path: Path) -> ScenarioVectorData | None:
                 layer=item["layer"],
                 geometry=[tuple(point) for point in item["geometry"]],
                 name=item.get("name"),
+                ref=item.get("ref"),
                 closed=bool(item.get("closed")),
                 bounds=tuple(item["bounds"]) if item.get("bounds") else None,
             )
@@ -168,6 +170,7 @@ def _write_vector_cache(data: ScenarioVectorData):
                     "layer": feature.layer,
                     "geometry": feature.geometry,
                     "name": feature.name,
+                    "ref": feature.ref,
                     "closed": feature.closed,
                     "bounds": feature.bounds,
                 }
@@ -232,6 +235,7 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                     layer=layer,
                     geometry=thinned_geometry,
                     name=tags.get("name"),
+                    ref=tags.get("ref"),
                     closed=closed,
                     bounds=_geometry_bounds(thinned_geometry),
                 )
@@ -257,6 +261,7 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                         layer=layer,
                         geometry=thinned_geometry,
                         name=tags.get("name"),
+                        ref=tags.get("ref"),
                         closed=True,
                         bounds=_geometry_bounds(thinned_geometry),
                     )
@@ -796,6 +801,7 @@ class ScenarioMap(QWidget):
             for feature in self._features_by_layer.get(layer, []):
                 if self._feature_in_view(feature, viewport):
                     self._draw_vector_feature(painter, rect, feature)
+        self._draw_road_labels(painter, rect, viewport)
         painter.restore()
 
     def _draw_vector_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature):
@@ -884,6 +890,87 @@ class ScenarioMap(QWidget):
             "settlement": 360_000,
         }
         return thresholds.get(layer, 0)
+
+    def _draw_road_labels(self, painter: QPainter, rect: QRectF, viewport: tuple[float, float, float, float]):
+        scale = self._detail_scale or 0
+        if scale < 160_000:
+            return
+
+        painter.save()
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        metrics = QFontMetrics(painter.font())
+        text_color = QColor(self.theme.text_primary)
+        text_color.setAlphaF(0.62 if self.theme.name == "light" else 0.7)
+        painter.setPen(text_color)
+
+        placed_rects: list[QRectF] = []
+        seen_labels: set[str] = set()
+        for layer in ("road_major", "road_minor", "track"):
+            if scale < self._minimum_scale_for_road_label(layer):
+                continue
+            for feature in self._features_by_layer.get(layer, []):
+                label = self._road_label_text(feature)
+                if not label or label in seen_labels:
+                    continue
+                if not self._feature_in_view(feature, viewport):
+                    continue
+                label_point = self._road_label_point(feature, rect)
+                if label_point is None:
+                    continue
+
+                text = label[:32]
+                width = min(metrics.horizontalAdvance(text) + 8, 190)
+                label_rect = QRectF(label_point.x() - width / 2, label_point.y() - 9, width, 18)
+                if not rect.adjusted(8, 8, -8, -8).contains(label_rect):
+                    continue
+                if any(label_rect.adjusted(-8, -4, 8, 4).intersects(existing) for existing in placed_rects):
+                    continue
+
+                painter.drawText(label_rect, Qt.AlignCenter, text)
+                placed_rects.append(label_rect)
+                seen_labels.add(label)
+        painter.restore()
+
+    @staticmethod
+    def _minimum_scale_for_road_label(layer: str) -> int:
+        thresholds = {
+            "road_major": 160_000,
+            "road_minor": 420_000,
+            "track": 820_000,
+        }
+        return thresholds.get(layer, 999_999_999)
+
+    @staticmethod
+    def _road_label_text(feature: VectorFeature) -> str | None:
+        name = (feature.name or "").strip()
+        ref = (feature.ref or "").strip()
+        if ref and name and ref.casefold() not in name.casefold():
+            return f"{ref} {name}"
+        return name or ref or None
+
+    def _road_label_point(self, feature: VectorFeature, rect: QRectF) -> QPointF | None:
+        if len(feature.geometry) < 2:
+            return None
+
+        best_midpoint = None
+        best_length = 0.0
+        previous = self._geo_to_screen(*feature.geometry[0], rect)
+        for lon, lat in feature.geometry[1:]:
+            current = self._geo_to_screen(lon, lat, rect)
+            length = math.hypot(current.x() - previous.x(), current.y() - previous.y())
+            if length > best_length:
+                best_length = length
+                best_midpoint = QPointF(
+                    (previous.x() + current.x()) / 2,
+                    (previous.y() + current.y()) / 2,
+                )
+            previous = current
+
+        if best_midpoint is not None and best_length >= 35:
+            return best_midpoint
+
+        lon, lat = self._feature_label_coordinates(feature)
+        return self._geo_to_screen(lon, lat, rect)
 
     def _geometry_for_scale(self, feature: VectorFeature) -> list[tuple[float, float]]:
         scale = self._detail_scale or 0
