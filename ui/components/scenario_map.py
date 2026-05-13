@@ -1043,6 +1043,8 @@ class ScenarioMap(QWidget):
                 icon_name="droplet.svg",
             )
 
+        self._draw_named_feature_highlights(painter, rect, context)
+
     def _draw_context_road_highlights(self, painter: QPainter, rect: QRectF, context: dict):
         primary = (context.get("roads") or {}).get("primary_access")
         if not primary:
@@ -1075,6 +1077,21 @@ class ScenarioMap(QWidget):
             label,
             square=True,
         )
+
+    def _draw_named_feature_highlights(self, painter: QPainter, rect: QRectF, context: dict):
+        for feature in context.get("named_features", []):
+            name = feature.get("name")
+            if not name:
+                continue
+            lon, lat = self._context_named_feature_coordinates(feature)
+            self._draw_named_feature_marker(
+                painter,
+                rect,
+                lon,
+                lat,
+                str(name),
+                str(feature.get("feature_type") or "feature"),
+            )
 
     def _draw_highlighted_line_feature(self, painter: QPainter, rect: QRectF, feature: VectorFeature, color: QColor):
         if len(feature.geometry) < 2:
@@ -1139,6 +1156,26 @@ class ScenarioMap(QWidget):
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
 
+    def _draw_named_feature_marker(
+        self,
+        painter: QPainter,
+        rect: QRectF,
+        lon: float,
+        lat: float,
+        label: str,
+        feature_type: str,
+    ):
+        point = self._geo_to_screen(lon, lat, rect)
+        color = QColor(self.theme.accent_purple)
+        self._draw_icon_marker(painter, point, "astroid.svg", color, size=18)
+
+        painter.setFont(app_font(FONT_SIZE_XS))
+        text_color = QColor(self.theme.text_primary)
+        text_color.setAlphaF(0.72 if self.theme.name == "light" else 0.82)
+        painter.setPen(text_color)
+        label_text = f"{label} ({feature_type})"
+        painter.drawText(QRectF(point.x() + 9, point.y() - 10, 210, 20), Qt.AlignLeft | Qt.AlignVCenter, label_text[:34])
+
     def _draw_icon_marker(self, painter: QPainter, point: QPointF, icon_name: str, color: QColor, size: int):
         if self.theme.name == "dark":
             halo_size = size + 6
@@ -1173,6 +1210,16 @@ class ScenarioMap(QWidget):
             if feature is not None:
                 return self._feature_label_coordinates(feature)
         return self._context_offset_coordinates(water)
+
+    def _context_named_feature_coordinates(self, item: dict) -> tuple[float, float]:
+        name = item.get("name")
+        matches = self._named_features(
+            ("settlement", "protected", "water", "waterway", "road_major", "road_minor", "track", "power"),
+            name,
+        )
+        if matches:
+            return self._feature_label_coordinates(min(matches, key=self._feature_distance_to_scenario))
+        return self._context_offset_coordinates(item)
 
     def _context_offset_coordinates(self, item: dict) -> tuple[float, float]:
         return self._offset_lon_lat(
