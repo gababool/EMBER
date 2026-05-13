@@ -467,6 +467,7 @@ def chart_response_length(rows_noyolo, rows_yolo, output_dir, compare_yolo):
         ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=8)
         ax.set_ylabel('Word Count')
         ax.set_title('Response Length by Model (no YOLO vs. with YOLO)')
+        ax.set_ylim(0, 400)
 
         save_chart(fig, output_dir, 'response_length.png')
         return
@@ -485,6 +486,7 @@ def chart_response_length(rows_noyolo, rows_yolo, output_dir, compare_yolo):
 
     ax.set_ylabel('Word Count')
     ax.set_title('Response Length by Model')
+    ax.set_ylim(0, 400)
     plt.xticks(rotation=25, ha='right')
 
     save_chart(fig, output_dir, 'response_length.png')
