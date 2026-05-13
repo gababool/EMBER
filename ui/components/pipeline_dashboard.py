@@ -68,7 +68,7 @@ COMPACT_HEADER_CONTROL_WIDTH = 118
 HEADER_CONTROL_HEIGHT = 40
 CONTEXTS_DIR = Path(__file__).resolve().parents[2] / "data" / "contexts"
 _CONTEXT_MARKER = "structured operational context block"
-SCENARIO_PROMPT_FILE = PROMPTS_DIR / "c2v6prompt.txt"
+SCENARIO_PROMPT_FILE = PROMPTS_DIR / "latest.txt"
 SCENARIO_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
 
 
