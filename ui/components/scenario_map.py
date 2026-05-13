@@ -40,6 +40,7 @@ MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
 VECTOR_CACHE_VERSION = 4
+EARTH_RADIUS_M = 6_378_137
 
 
 
@@ -758,6 +759,7 @@ class ScenarioMap(QWidget):
         painter.save()
         painter.setClipRect(detail_rect)
         self._draw_context_overlays(painter, detail_rect, context)
+        self._draw_scale_bar(painter, detail_rect)
         painter.restore()
 
         card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
@@ -1121,6 +1123,60 @@ class ScenarioMap(QWidget):
     def _feature_distance_to_scenario(self, feature: VectorFeature) -> float:
         lon, lat = self._feature_label_coordinates(feature)
         return (lon - self.loaded_scenario.longitude) ** 2 + (lat - self.loaded_scenario.latitude) ** 2
+
+    def _draw_scale_bar(self, painter: QPainter, rect: QRectF):
+        if self._detail_scale is None or self._detail_center_merc is None:
+            return
+
+        center_lat = self._inverse_mercator_y(self._detail_center_merc.y())
+        meters_per_pixel = (
+            EARTH_RADIUS_M
+            * max(math.cos(math.radians(center_lat)), 0.2)
+            / self._detail_scale
+        )
+        distance_m = self._nice_scale_distance(meters_per_pixel * 120)
+        bar_width = distance_m / meters_per_pixel
+        if bar_width < 28:
+            return
+
+        left = rect.left() + 18
+        bottom = rect.bottom() - 18
+        label = self._scale_label(distance_m)
+        label_rect = QRectF(left - 8, bottom - 34, bar_width + 16, 30)
+
+        painter.setPen(QPen(QColor(self.theme.border), 1))
+        painter.setBrush(self._theme_color(self.theme.bg_panel, 215 if self.theme.name == "dark" else 190))
+        painter.drawRoundedRect(label_rect, 4, 4)
+
+        y = bottom - 10
+        painter.setPen(QPen(QColor(self.theme.text_primary), 3, Qt.SolidLine, Qt.SquareCap))
+        painter.drawLine(QPointF(left, y), QPointF(left + bar_width, y))
+        painter.setPen(QPen(QColor(self.theme.text_primary), 2))
+        painter.drawLine(QPointF(left, y - 5), QPointF(left, y + 5))
+        painter.drawLine(QPointF(left + bar_width, y - 5), QPointF(left + bar_width, y + 5))
+
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_primary))
+        painter.drawText(QRectF(left, bottom - 32, bar_width, 16), Qt.AlignCenter, label)
+
+    @staticmethod
+    def _nice_scale_distance(raw_distance_m: float) -> float:
+        if raw_distance_m <= 0:
+            return 1
+        exponent = math.floor(math.log10(raw_distance_m))
+        base = 10 ** exponent
+        for multiplier in (1, 2, 5, 10):
+            candidate = multiplier * base
+            if candidate >= raw_distance_m:
+                return candidate
+        return 10 * base
+
+    @staticmethod
+    def _scale_label(distance_m: float) -> str:
+        if distance_m >= 1000:
+            km = distance_m / 1000
+            return f"{km:g} km"
+        return f"{distance_m:g} m"
 
     @staticmethod
     def _detail_map_rect(content: QRectF) -> QRectF:
