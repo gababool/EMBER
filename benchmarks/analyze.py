@@ -679,6 +679,7 @@ def chart_model_sizes(output_dir, models=None):
     ax.set_title('Model Size on Disk')
     ax.set_xticks(x)
     ax.set_xticklabels(models, rotation=25, ha='right')
+    ax.set_ylim(0, max(sizes) * 1.15)
 
     for bar, size in zip(bars, sizes):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.15,
