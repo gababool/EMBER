@@ -580,7 +580,10 @@ class ScenarioMap(QWidget):
         if not detail_rect.contains(pos):
             return
 
-        factor = 1.22 if event.angleDelta().y() > 0 else 1 / 1.22
+        delta = event.angleDelta().y()
+        if delta == 0:
+            return
+        factor = pow(1.0012, delta)
         self._zoom_detail(factor, anchor_pos=pos)
         event.accept()
 
@@ -1023,7 +1026,7 @@ class ScenarioMap(QWidget):
         )
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Scenario")
+        painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Fire origin")
 
         if not self._context_highlights_visible:
             return
