@@ -767,6 +767,7 @@ class PipelineDashboard(QWidget):
             self.full_page if self.detail_view_expanded else self.operational_page
         )
         self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
+        self._sync_llm_controls()
         self._apply_responsive_layout()
 
     def _toggle_context_inspector(self, checked: bool):
@@ -796,6 +797,8 @@ class PipelineDashboard(QWidget):
         self.run_scenario_button.setVisible(True)
         self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
         self.context_inspector_button.setEnabled(True)
+        self.wind_mode_select.setCurrentText("Scenario")
+        self._sync_wind_controls()
         if self.context_inspector_button.isChecked():
             self._refresh_context_inspector()
 
@@ -853,8 +856,11 @@ class PipelineDashboard(QWidget):
     def _sync_llm_controls(self):
         visible = self.llm_inference_enabled()
         enabled = visible and self.llm_toggle_button.isEnabled()
-        context_visible = visible and _prompt_requires_context(
-            self.prompt_select.currentData() or ""
+        # Context selector only shown in expanded/testing mode, not during normal scenario selection.
+        context_visible = (
+            visible
+            and self.detail_view_expanded
+            and _prompt_requires_context(self.prompt_select.currentData() or "")
         )
 
         self.model_select.setVisible(visible)
