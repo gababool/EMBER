@@ -142,6 +142,23 @@
       "bearing": "S"
     }
   ],
+  "fire_stations": [
+    {
+      "name": null,
+      "distance_m": 4351.890757489012,
+      "bearing": "W"
+    },
+    {
+      "name": "Södertörns Brandförsvarsförbund",
+      "distance_m": 7863.293499636979,
+      "bearing": "N"
+    },
+    {
+      "name": "Dalarö brandstation",
+      "distance_m": 10687.988740674751,
+      "bearing": "E"
+    }
+  ],
   "assets_at_risk": {
     "buildings_within_radius": 83,
     "has_permanent_structures": true,
@@ -188,12 +205,13 @@
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-13T14:57:09.583916Z",
+    "extracted_at": "2026-05-14T11:07:52.379191Z",
     "osm_dataset": "scenario_02-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
     "track_radius_m": 5000.0,
     "named_feature_radius_m": 10000.0,
-    "assets_radius_m": 2000.0
+    "assets_radius_m": 2000.0,
+    "fire_station_radius_m": 30000.0
   }
 }

@@ -10,8 +10,8 @@
   },
   "land_cover": "forest",
   "terrain": {
-    "elevation_m": 87.0,
-    "slope_degrees": 18.5,
+    "elevation_m": 82.0,
+    "slope_degrees": 20.0,
     "slope_steepness": "steep",
     "aspect": "W"
   },
@@ -142,6 +142,23 @@
       "bearing": "N"
     }
   ],
+  "fire_stations": [
+    {
+      "name": null,
+      "distance_m": 12827.746999318279,
+      "bearing": "E"
+    },
+    {
+      "name": "Räddningskåren Kramfors",
+      "distance_m": 13906.578981993316,
+      "bearing": "W"
+    },
+    {
+      "name": null,
+      "distance_m": 18219.544618840184,
+      "bearing": "NW"
+    }
+  ],
   "assets_at_risk": {
     "buildings_within_radius": 1,
     "has_permanent_structures": false,
@@ -182,18 +199,19 @@
     }
   ],
   "wind": {
-    "direction_degrees": 45.0,
-    "direction_compass": "NE",
-    "speed_mps": 5.6,
+    "direction_degrees": 270.0,
+    "direction_compass": "W",
+    "speed_mps": 8.5,
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-13T14:41:07.130474Z",
+    "extracted_at": "2026-05-14T11:08:13.011093Z",
     "osm_dataset": "scenario_03-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
     "track_radius_m": 5000.0,
     "named_feature_radius_m": 10000.0,
-    "assets_radius_m": 2000.0
+    "assets_radius_m": 2000.0,
+    "fire_station_radius_m": 30000.0
   }
 }
