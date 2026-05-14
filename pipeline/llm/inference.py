@@ -37,6 +37,7 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str | None = None
+    key_constraints: list[str] | None = None
 
 
 class LLMInferenceCancelled(RuntimeError):

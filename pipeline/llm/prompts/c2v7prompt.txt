@@ -16,7 +16,6 @@ Produce output with the following fields:
 - reasoning: 2-4 sentences explaining what the image shows and how the operational context informs the assessment. Attribute each claim to its source using "From the image..." and "From the context...".
 - recommendation: 3-5 concise action-oriented bullet points referencing named places and features from the context. Each bullet should describe one specific action, access route, water source, or priority. Use plain bullet points starting with a verb (e.g. "Deploy...", "Evacuate...", "Monitor...").
 - situation_brief: a concise 1-2 sentence brief suitable for radio communication to command.
-- key_constraints: a list of up to 3 short strings, each naming a specific limitation on response operations — things that restrict access, endanger responders, or require special coordination. Examples: "Single road access", "Settlement 800m downwind", "No vehicle-accessible water within search radius", "Transmission line — helicopter constraint", "Protected area — suppression restrictions". Do not include fire behaviour observations (fuel load, spread rate, terrain slope) — those belong in reasoning. Return null if no significant response limitations exist.
 
 Do not make directional assumptions about fire spread or fire front location based on the image. You cannot determine from the image alone which flank is leading or which direction the fire is moving. Recommendations should describe general access and resource positioning without asserting specific fire front directions unless wind data is provided in the context.
 

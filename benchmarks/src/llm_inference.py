@@ -27,6 +27,7 @@ class LLMInferenceResult(BaseModel):
     reasoning: str
     recommendation: str
     situation_brief: str
+    key_constraints: list[str] | None = None
 
 
 def load_prompt_file(filepath):
