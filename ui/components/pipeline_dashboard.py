@@ -95,6 +95,7 @@ class PipelineDashboard(QWidget):
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self._generated_mock_wind = None
+        self._last_reasoning_parsed: dict | None = None
         self.detail_view_expanded = False
         self.operational_compact_layout = False
         self.selected_context_path = None
@@ -670,6 +671,8 @@ class PipelineDashboard(QWidget):
     def _on_context_changed(self, _index: int):
         self.selected_context_path = self.context_select.currentData()
         self.scenario_map.set_selected_context_file(self.selected_context_path)
+        if self.context_inspector_button.isChecked():
+            self._refresh_context_inspector()
 
     def _on_scenario_selected(self, scenario):
         self._set_context_select_to_path(str(scenario.context_path))
@@ -763,6 +766,12 @@ class PipelineDashboard(QWidget):
 
     def toggle_detail_view(self):
         self.detail_view_expanded = not self.detail_view_expanded
+        if self.detail_view_expanded:
+            self.operational_grid.removeWidget(self.context_inspector_panel)
+            self.full_layout.addWidget(self.context_inspector_panel)
+        else:
+            self.full_layout.removeWidget(self.context_inspector_panel)
+            self.operational_grid.addWidget(self.context_inspector_panel, 1, 0, 1, 2)
         self.content_stack.setCurrentWidget(
             self.full_page if self.detail_view_expanded else self.operational_page
         )
@@ -1095,12 +1104,20 @@ class PipelineDashboard(QWidget):
         self.compact_classification_badge.set_classification(classification)
         self.correctness_badge.set_prediction(classification)
 
+        self._last_reasoning_parsed = parsed
         reasoning_html = self._build_reasoning_html(parsed)
         self.reasoning_text.setHtml(reasoning_html)
         self.compact_reasoning_text.setHtml(reasoning_html)
 
+    def _refresh_reasoning_html(self):
+        if self._last_reasoning_parsed:
+            html = self._build_reasoning_html(self._last_reasoning_parsed)
+            self.reasoning_text.setHtml(html)
+            self.compact_reasoning_text.setHtml(html)
+
     def apply_theme(self, theme: Theme):
         self.theme = theme
+        self._refresh_reasoning_html()
         self.setStyleSheet(f"""
             QWidget#PipelineDashboard {{
                 background-color: {theme.bg_main};
@@ -1323,18 +1340,25 @@ class PipelineDashboard(QWidget):
         compact = self.width() < 1250
         if compact != self.operational_compact_layout:
             self.operational_compact_layout = compact
-            for panel in (self.map_panel, self.compact_pipeline_panel):
+            for panel in (self.map_panel, self.compact_pipeline_panel, self.context_inspector_panel):
                 self.operational_grid.removeWidget(panel)
             if compact:
                 self.operational_grid.addWidget(self.map_panel, 0, 0)
                 self.operational_grid.addWidget(self.compact_pipeline_panel, 1, 0)
+                self.operational_grid.addWidget(self.context_inspector_panel, 2, 0)
                 self.operational_grid.setColumnStretch(0, 1)
                 self.operational_grid.setColumnStretch(1, 0)
+                self.operational_grid.setRowStretch(0, 1)
+                self.operational_grid.setRowStretch(1, 0)
+                self.operational_grid.setRowStretch(2, 0)
             else:
                 self.operational_grid.addWidget(self.map_panel, 0, 0)
                 self.operational_grid.addWidget(self.compact_pipeline_panel, 0, 1)
+                self.operational_grid.addWidget(self.context_inspector_panel, 1, 0, 1, 2)
                 self.operational_grid.setColumnStretch(0, 3)
                 self.operational_grid.setColumnStretch(1, 2)
+                self.operational_grid.setRowStretch(0, 1)
+                self.operational_grid.setRowStretch(1, 0)
 
         if compact == self.compact_layout:
             return

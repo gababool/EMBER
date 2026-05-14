@@ -11,10 +11,10 @@ from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 try:
-    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_MD, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
     from ui.components.icon_utils import load_svg_icon
 except ImportError:
-    from assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from assets.design import DEFAULT_THEME, FONT_SIZE_MD, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
     from components.icon_utils import load_svg_icon
 
 
@@ -669,20 +669,20 @@ class ScenarioMap(QWidget):
             return
 
         scenario = self.selected_scenario
-        card = QRectF(content.left() + 12, content.bottom() - 86, content.width() - 24, 70)
+        card = QRectF(content.left() + 12, content.bottom() - 100, content.width() - 24, 84)
         self._position_load_button(card)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
         painter.setBrush(QColor(self.theme.bg_panel_alt))
         painter.drawRoundedRect(card, 5, 5)
 
-        painter.setFont(app_font(FONT_SIZE_SM, bold=True))
+        painter.setFont(app_font(FONT_SIZE_MD, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(card.adjusted(12, 8, -12, -38), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
+        painter.drawText(card.adjusted(12, 8, -12, -50), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
 
         painter.setFont(app_font(FONT_SIZE_SM))
         painter.setPen(QColor(self.theme.text_muted))
         details = f"{scenario.region} | {scenario.description}"
-        painter.drawText(card.adjusted(12, 32, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
+        painter.drawText(card.adjusted(12, 40, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
 
     def _position_load_button(self, card: QRectF):
         self.load_scenario_button.setGeometry(
@@ -797,17 +797,17 @@ class ScenarioMap(QWidget):
         self._draw_map_legend(painter, detail_rect)
         painter.restore()
 
-        card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
+        card = QRectF(content.left() + 12, content.bottom() - 92, content.width() - 24, 76)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
         painter.setBrush(QColor(self.theme.bg_panel_alt))
         painter.drawRoundedRect(card, 5, 5)
-        painter.setFont(app_font(FONT_SIZE_SM, bold=True))
+        painter.setFont(app_font(FONT_SIZE_MD, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(card.adjusted(12, 6, -12, -34), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
+        painter.drawText(card.adjusted(12, 6, -12, -46), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
         painter.setFont(app_font(FONT_SIZE_SM))
         painter.setPen(QColor(self.theme.text_muted))
         painter.drawText(
-            card.adjusted(12, 28, -12, -6),
+            card.adjusted(12, 36, -12, -6),
             Qt.AlignLeft | Qt.TextWordWrap,
             self._detail_summary(context),
         )
