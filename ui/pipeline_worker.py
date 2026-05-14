@@ -27,6 +27,7 @@ DEFAULT_PROMPT_FILE = REPO_ROOT / "pipeline" / "llm" / "prompts" / "c2v4prompt.t
 WIND_MODE_NONE = "none"
 WIND_MODE_MANUAL = "manual"
 WIND_MODE_MOCKED = "mocked"
+WIND_MODE_SCENARIO = "scenario"
 DEFAULT_LLM_TIMEOUT_SECONDS = 120
 
 
@@ -176,6 +177,9 @@ class PipelineWorker(QObject):
         context = OperationalContext.model_validate_json(
             context_file.read_text(encoding="utf-8")
         )
+
+        if self.wind_mode == WIND_MODE_SCENARIO:
+            return context
 
         if self.wind_mode == WIND_MODE_NONE:
             wind = None
