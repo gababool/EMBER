@@ -813,7 +813,7 @@ class PipelineDashboard(QWidget):
     def _on_scenario_loaded(self, scenario):
         self.selected_context_path = str(scenario.context_path)
         self._set_context_select_to_path(str(scenario.context_path))
-        self.scenario_map.set_context_highlights_visible(False)
+        self.scenario_map.set_context_highlights_visible(True)
         self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
         self.context_inspector_button.setEnabled(True)
         self.wind_mode_select.setCurrentText("Scenario")
