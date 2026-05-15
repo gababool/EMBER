@@ -401,6 +401,7 @@ class ScenarioMap(QWidget):
         self._marker_points: dict[str, QPointF] = {}
         self._icon_cache: dict[tuple[str, str, int], QPixmap] = {}
         self._run_button: QPushButton | None = None
+        self._stop_button: QPushButton | None = None
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
         self.load_scenario_button = QPushButton("Load Scenario", self)
@@ -473,6 +474,26 @@ class ScenarioMap(QWidget):
         if self._run_button is not None:
             self._run_button.setFont(app_font(FONT_SIZE_XS, bold=True))
             self._run_button.setStyleSheet(_card_btn_style)
+        if self._stop_button is not None:
+            self._stop_button.setFont(app_font(FONT_SIZE_XS, bold=True))
+            self._stop_button.setStyleSheet(f"""
+                QPushButton {{
+                    color: {theme.danger};
+                    background-color: {theme.bg_panel_alt};
+                    border: 1px solid {theme.danger};
+                    border-radius: 4px;
+                    padding: 5px 10px;
+                }}
+                QPushButton:hover {{
+                    color: #ffffff;
+                    background-color: {theme.danger};
+                }}
+                QPushButton:disabled {{
+                    color: {theme.text_muted};
+                    background-color: {theme.bg_panel_alt};
+                    border-color: {theme.border};
+                }}
+            """)
         self.load_scenario_button.setStyleSheet(_card_btn_style)
         zoom_style = f"""
             QPushButton {{
@@ -519,6 +540,8 @@ class ScenarioMap(QWidget):
             self._draw_selected_card(painter, content)
             scenario_loaded = self.selected_scenario is not None and self.loaded_scenario == self.selected_scenario
             self.load_scenario_button.setVisible(self.selected_scenario is not None and not scenario_loaded)
+            if self._stop_button is not None:
+                self._stop_button.setVisible(False)
             self.zoom_in_button.setVisible(False)
             self.zoom_out_button.setVisible(False)
             self.exit_detail_button.setVisible(False)
@@ -526,8 +549,8 @@ class ScenarioMap(QWidget):
             self._position_expand_map_button(content, avoid_back_button=False)
         else:
             self.load_scenario_button.setVisible(False)
+            card = QRectF(content.left() + 12, content.bottom() - 92, content.width() - 24, 76)
             if self._run_button is not None:
-                card = QRectF(content.left() + 12, content.bottom() - 92, content.width() - 24, 76)
                 self._run_button.setGeometry(
                     int(card.right() - 120),
                     int(card.top() + 20),
@@ -535,6 +558,15 @@ class ScenarioMap(QWidget):
                     36,
                 )
                 self._run_button.setVisible(True)
+            if self._stop_button is not None:
+                stop_visible = self._stop_button.isEnabled()
+                self._stop_button.setGeometry(
+                    int(card.right() - 224),
+                    int(card.top() + 20),
+                    96,
+                    36,
+                )
+                self._stop_button.setVisible(stop_visible)
             self._position_zoom_buttons(content)
             self.zoom_in_button.setVisible(True)
             self.zoom_out_button.setVisible(True)
@@ -705,6 +737,10 @@ class ScenarioMap(QWidget):
 
     def set_run_button(self, button: QPushButton):
         self._run_button = button
+        button.setParent(self)
+
+    def set_stop_button(self, button: QPushButton):
+        self._stop_button = button
         button.setParent(self)
 
     def _position_load_button(self, card: QRectF):

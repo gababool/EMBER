@@ -154,16 +154,15 @@ class PipelineDashboard(QWidget):
         self.run_scenario_button.setFixedSize(96, 36)
         self.run_scenario_button.setVisible(False)
 
-        self.stop_llm_button = QPushButton("Stop LLM")
+        self.stop_llm_button = QPushButton("Stop")
         self.stop_llm_button.setFont(app_font(FONT_SIZE_MD, bold=True))
         self.stop_llm_button.setCursor(Qt.PointingHandCursor)
-        self.stop_llm_button.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
+        self.stop_llm_button.setFixedSize(96, 36)
         self.stop_llm_button.setEnabled(False)
         self.stop_llm_button.setVisible(False)
         self.stop_llm_button.clicked.connect(self._request_llm_cancel)
 
         title_row_layout.addWidget(title_block, 1)
-        title_row_layout.addWidget(self.stop_llm_button)
 
         # Row 2: application settings
         controls_row = QWidget()
@@ -270,15 +269,11 @@ class PipelineDashboard(QWidget):
         self.settings_panel = controls_row
         controls_row.setVisible(False)
 
-        self.settings_toggle_button = QPushButton("Settings")
-        self.settings_toggle_button.setFont(app_font(FONT_SIZE_MD, bold=True))
-        self.settings_toggle_button.setCursor(Qt.PointingHandCursor)
-        self.settings_toggle_button.setFixedHeight(40)
+        self.settings_toggle_button = QPushButton()
         self.settings_toggle_button.setCheckable(True)
         self.settings_toggle_button.setChecked(False)
+        self.settings_toggle_button.setVisible(False)
         self.settings_toggle_button.toggled.connect(controls_row.setVisible)
-
-        title_row_layout.addWidget(self.settings_toggle_button)
 
         header_layout.addWidget(title_row)
         header_layout.addWidget(controls_row)
@@ -362,6 +357,7 @@ class PipelineDashboard(QWidget):
         self.scenario_map.expand_requested.connect(self.expand_map)
         self.scenario_map.minimize_requested.connect(self.minimize_map)
         self.scenario_map.set_run_button(self.run_scenario_button)
+        self.scenario_map.set_stop_button(self.stop_llm_button)
         self.map_panel = ResultPanel(
             "",
             "",
@@ -426,19 +422,12 @@ class PipelineDashboard(QWidget):
         self.classification_dot.setFont(app_font(FONT_SIZE_MD))
         self.classification_dot.setToolTip("Awaiting result")
 
-        panel_header_actions = QWidget()
-        panel_header_actions_layout = QHBoxLayout(panel_header_actions)
-        panel_header_actions_layout.setContentsMargins(0, 0, 0, 0)
-        panel_header_actions_layout.setSpacing(8)
-        panel_header_actions_layout.addWidget(self.classification_dot)
-        panel_header_actions_layout.addWidget(self.expand_button)
-
         self.compact_pipeline_panel = ResultPanel(
             "",
             "",
             self.compact_pipeline_body,
             theme,
-            action_widget=panel_header_actions,
+            action_widget=self.classification_dot,
         )
 
         self.grid.addWidget(self.quality_panel, 0, 0)
@@ -939,6 +928,7 @@ class PipelineDashboard(QWidget):
     def _set_llm_cancel_visible(self, visible: bool):
         self.start_button.setVisible(not visible)
         self.stop_llm_button.setVisible(visible)
+        self.scenario_map.update()
 
     def set_selected_image(self, image_path: str):
         if self.current_run is None:

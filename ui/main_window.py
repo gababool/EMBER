@@ -64,6 +64,10 @@ class MainWindow(QMainWindow):
         self.main_layout.addWidget(self.top_bar)
 
         self.dashboard = PipelineDashboard(self.theme)
+        self.top_bar.settings_button.toggled.connect(self.dashboard.settings_panel.setVisible)
+        self.dashboard.settings_toggle_button.toggled.connect(self.top_bar.settings_button.setChecked)
+        self.top_bar.pipeline_view_button.clicked.connect(self.dashboard.toggle_detail_view)
+        self.dashboard.expand_button.clicked.connect(self._sync_pipeline_view_button)
         self.dashboard.start_button.clicked.connect(self.start_demo)
         self.dashboard.run_scenario_button.clicked.connect(self.start_scenario)
         self.dashboard.rerun_button.clicked.connect(self.rerun_demo)
@@ -286,6 +290,9 @@ class MainWindow(QMainWindow):
             wind_status.get("direction"),
             wind_status.get("speed_mps"),
         )
+
+    def _sync_pipeline_view_button(self):
+        self.top_bar.pipeline_view_button.setChecked(self.dashboard.detail_view_expanded)
 
     def _set_top_mode(self, mode: str):
         if hasattr(self.top_bar, "set_mode"):
