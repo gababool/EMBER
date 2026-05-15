@@ -93,7 +93,7 @@ One change from c2v5:
    in scenario eval: scenario 02 with 83 buildings and Tyresta by 666m away
    still returned suppress).
 
-### latest.txt (c2v7) ← current production prompt
+### c2v7prompt.txt (archived as c2v7)
 Two changes from c2v6:
 
 1. **Tactical priority removed**: field too volatile across minor prompt
@@ -107,6 +107,21 @@ Two changes from c2v6:
    well; Qwen3-VL produces thinking mode leakage into the recommendation field
    when generating structured lists — documented as a model limitation, not
    addressed in the prompt.
+
+### latest.txt (c2v8) ← current production prompt
+One change from c2v7:
+
+1. **`key_constraints` field added to schema**: list of up to 3 short strings
+   naming specific operational constraints visible in the image or present in
+   the context (e.g. "Single road access", "Settlement 800m downwind",
+   "Transmission line — helicopter constraint"). Null when no significant
+   constraints exist. Enables structured constraint display in UI and makes
+   bottlenecks extractable for analysis rather than buried in free text.
+
+   Context format also extended with: fire station proximity, fire behavior
+   synthesis note (wind × terrain × fuel), water tanker weight accessibility,
+   and power line voltage tier — all informing the constraints and
+   recommendations the model can now produce.
 
 ### qwen.txt
 Added for testing purposes. Qwen often fails with larger context, but part of it could be 

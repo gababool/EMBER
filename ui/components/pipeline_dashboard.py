@@ -95,6 +95,7 @@ class PipelineDashboard(QWidget):
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self._generated_mock_wind = None
+        self._last_reasoning_parsed: dict | None = None
         self.detail_view_expanded = False
         self.operational_compact_layout = False
         self.selected_context_path = None
@@ -222,6 +223,7 @@ class PipelineDashboard(QWidget):
         self.prompt_select.setMinimumWidth(130)
         for prompt_path in sorted(PROMPTS_DIR.glob("*.txt")):
             self.prompt_select.addItem(prompt_path.stem, str(prompt_path))
+        self.prompt_select.setCurrentText("latest")
         self.prompt_select.currentIndexChanged.connect(self._on_prompt_changed)
 
         self.model_select = ModelComboBox(theme)
@@ -231,6 +233,7 @@ class PipelineDashboard(QWidget):
 
         self.wind_mode_select = ModelComboBox(theme)
         self.wind_mode_select.addItem("No wind", "none")
+        self.wind_mode_select.addItem("Scenario", "scenario")
         self.wind_mode_select.addItem("Manual", "manual")
         self.wind_mode_select.addItem("Mocked", "mocked")
         self.wind_mode_select.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
@@ -245,9 +248,18 @@ class PipelineDashboard(QWidget):
         self.wind_speed_input = WindSpeedControl(theme)
         self.wind_speed_input.setFixedSize(HEADER_CONTROL_WIDTH, HEADER_CONTROL_HEIGHT)
 
+        self.context_inspector_button = QPushButton("Context")
+        self.context_inspector_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.context_inspector_button.setCursor(Qt.PointingHandCursor)
+        self.context_inspector_button.setFixedHeight(36)
+        self.context_inspector_button.setCheckable(True)
+        self.context_inspector_button.setEnabled(False)
+        self.context_inspector_button.toggled.connect(self._toggle_context_inspector)
+
         controls_row_layout.addWidget(self.yolo_mode_select)
         controls_row_layout.addWidget(self.rerun_button)
         controls_row_layout.addWidget(self.llm_toggle_button)
+        controls_row_layout.addWidget(self.context_inspector_button)
         controls_row_layout.addStretch(1)
         controls_row_layout.addWidget(self.context_select)
         controls_row_layout.addWidget(self.model_select)
@@ -389,9 +401,10 @@ class PipelineDashboard(QWidget):
         self.compact_pipeline_layout.setSpacing(12)
 
         self.compact_classification_badge = ClassificationBadge(theme)
-        self.compact_image_placeholder = QLabel("Processed image will appear here")
+        self.compact_image_placeholder = ClickableImageLabel("Processed image will appear here")
         self.compact_image_placeholder.setAlignment(Qt.AlignCenter)
         self.compact_image_placeholder.setMinimumSize(320, 150)
+        self.compact_image_placeholder.clicked.connect(self._open_image_preview)
         self.compact_reasoning_text = QTextEdit()
         self.compact_reasoning_text.setReadOnly(True)
         self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
@@ -438,6 +451,21 @@ class PipelineDashboard(QWidget):
         self.full_layout.addLayout(self.grid, 1)
         self.full_layout.addWidget(self.history_strip)
 
+        self.context_inspector_text = QTextEdit()
+        self.context_inspector_text.setReadOnly(True)
+        self.context_inspector_text.setFont(app_font(FONT_SIZE_SM))
+        self.context_inspector_text.setPlainText("Load a scenario to inspect its operational context.")
+        self.context_inspector_text.setMaximumHeight(220)
+
+        self.context_inspector_panel = ResultPanel(
+            "Operational Context",
+            "Formatted context block sent to the LLM alongside the image.",
+            self.context_inspector_text,
+            theme,
+        )
+        self.context_inspector_panel.setVisible(False)
+        self.context_inspector_panel.setMinimumHeight(0)
+
         self.operational_page = QWidget()
         self.operational_grid = QGridLayout(self.operational_page)
         self.operational_grid.setContentsMargins(0, 0, 0, 0)
@@ -445,8 +473,11 @@ class PipelineDashboard(QWidget):
         self.operational_grid.setVerticalSpacing(18)
         self.operational_grid.addWidget(self.map_panel, 0, 0)
         self.operational_grid.addWidget(self.compact_pipeline_panel, 0, 1)
+        self.operational_grid.addWidget(self.context_inspector_panel, 1, 0, 1, 2)
         self.operational_grid.setColumnStretch(0, 3)
         self.operational_grid.setColumnStretch(1, 2)
+        self.operational_grid.setRowStretch(0, 1)
+        self.operational_grid.setRowStretch(1, 0)
 
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.operational_page)
@@ -561,6 +592,19 @@ class PipelineDashboard(QWidget):
         if config["mode"] == "none":
             self._generated_mock_wind = None
             return "NO WIND"
+        if config["mode"] == "scenario":
+            self._generated_mock_wind = None
+            if self.selected_context_path:
+                try:
+                    import json as _json
+                    from pipeline.context.schemas import OperationalContext
+                    d = _json.loads(__import__("pathlib").Path(self.selected_context_path).read_text())
+                    ctx = OperationalContext(**d)
+                    if ctx.wind:
+                        return f"{ctx.wind.speed_mps:.1f}m/s {ctx.wind.direction_compass} (scenario)"
+                except Exception:
+                    pass
+            return "SCENARIO (no wind)"
         if config["mode"] == "mocked":
             if self._generated_mock_wind is None:
                 preview_wind = build_mock_wind("ui-preview")
@@ -627,6 +671,8 @@ class PipelineDashboard(QWidget):
     def _on_context_changed(self, _index: int):
         self.selected_context_path = self.context_select.currentData()
         self.scenario_map.set_selected_context_file(self.selected_context_path)
+        if self.context_inspector_button.isChecked():
+            self._refresh_context_inspector()
 
     def _on_scenario_selected(self, scenario):
         self._set_context_select_to_path(str(scenario.context_path))
@@ -720,11 +766,38 @@ class PipelineDashboard(QWidget):
 
     def toggle_detail_view(self):
         self.detail_view_expanded = not self.detail_view_expanded
+        if self.detail_view_expanded:
+            self.operational_grid.removeWidget(self.context_inspector_panel)
+            self.full_layout.addWidget(self.context_inspector_panel)
+        else:
+            self.full_layout.removeWidget(self.context_inspector_panel)
+            self.operational_grid.addWidget(self.context_inspector_panel, 1, 0, 1, 2)
         self.content_stack.setCurrentWidget(
             self.full_page if self.detail_view_expanded else self.operational_page
         )
         self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
+        self._sync_llm_controls()
         self._apply_responsive_layout()
+
+    def _toggle_context_inspector(self, checked: bool):
+        self.context_inspector_panel.setVisible(checked)
+        self._style_context_inspector_button(self.theme)
+        if checked:
+            self._refresh_context_inspector()
+
+    def _refresh_context_inspector(self):
+        if not self.selected_context_path:
+            self.context_inspector_text.setPlainText("No scenario loaded.")
+            return
+        try:
+            import json as _json
+            from pipeline.context.schemas import OperationalContext
+            from pipeline.context.format import format_context
+            data = _json.loads(Path(self.selected_context_path).read_text(encoding="utf-8"))
+            ctx = OperationalContext(**data)
+            self.context_inspector_text.setPlainText(format_context(ctx))
+        except Exception as exc:
+            self.context_inspector_text.setPlainText(f"Could not load context: {exc}")
 
     def _on_scenario_loaded(self, scenario):
         self.selected_context_path = str(scenario.context_path)
@@ -732,11 +805,19 @@ class PipelineDashboard(QWidget):
         self.scenario_map.set_context_highlights_visible(False)
         self.run_scenario_button.setVisible(True)
         self.subtitle_label.setText(f"Loaded scenario: {scenario.title} - {scenario.description}")
+        self.context_inspector_button.setEnabled(True)
+        self.wind_mode_select.setCurrentText("Scenario")
+        self._sync_wind_controls()
+        if self.context_inspector_button.isChecked():
+            self._refresh_context_inspector()
 
     def _on_scenario_unloaded(self):
         self.selected_context_path = None
         self.scenario_map.set_context_highlights_visible(False)
         self.run_scenario_button.setVisible(False)
+        self.context_inspector_button.setChecked(False)
+        self.context_inspector_button.setEnabled(False)
+        self.context_inspector_panel.setVisible(False)
         if self.scenario_map.selected_scenario is not None:
             scenario = self.scenario_map.selected_scenario
             self.subtitle_label.setText(f"Operational context: {scenario.title} - {scenario.description}")
@@ -784,8 +865,11 @@ class PipelineDashboard(QWidget):
     def _sync_llm_controls(self):
         visible = self.llm_inference_enabled()
         enabled = visible and self.llm_toggle_button.isEnabled()
-        context_visible = visible and _prompt_requires_context(
-            self.prompt_select.currentData() or ""
+        # Context selector only shown in expanded/testing mode, not during normal scenario selection.
+        context_visible = (
+            visible
+            and self.detail_view_expanded
+            and _prompt_requires_context(self.prompt_select.currentData() or "")
         )
 
         self.model_select.setVisible(visible)
@@ -905,6 +989,68 @@ class PipelineDashboard(QWidget):
 
         self._load_image_into_processed_box(annotated_path)
 
+    def _build_reasoning_html(self, parsed: dict) -> str:
+        import html as _html
+        t = self.theme
+        fg = t.text_primary
+        muted = t.text_muted
+
+        def esc(s: str) -> str:
+            return _html.escape(s or "")
+
+        def section(label: str, body_html: str) -> str:
+            return (
+                f'<p style="margin:0 0 4px 0;">'
+                f'<span style="color:{muted}; font-size:9pt; font-weight:700; '
+                f'text-transform:uppercase; letter-spacing:1px;">{label}</span>'
+                f'</p>'
+                f'<p style="margin:0 0 14px 0; color:{fg}; font-size:11pt;">{body_html}</p>'
+            )
+
+        parts: list[str] = [
+            f'<html><body style="color:{fg}; margin:0; padding:0;">'
+        ]
+
+        key_constraints = parsed.get("key_constraints") or []
+        if key_constraints:
+            body = "<br/>".join(f"• {esc(c)}" for c in key_constraints)
+            parts.append(section("Key Constraints", body))
+
+        situation_brief = (parsed.get("situation_brief") or "").strip()
+        if situation_brief:
+            parts.append(section("Situation Brief", esc(situation_brief).replace("\n", "<br/>")))
+
+        reasoning = (parsed.get("reasoning") or "").strip()
+        if reasoning:
+            parts.append(section("Reasoning", esc(reasoning).replace("\n", "<br/>")))
+
+        tactical_priority = (parsed.get("tactical_priority") or "").strip()
+        if tactical_priority:
+            parts.append(section("Tactical Priority", f"<b>{esc(tactical_priority)}</b>"))
+
+        recommendation = (parsed.get("recommendation") or "").strip()
+        if recommendation:
+            lines = [ln.strip() for ln in recommendation.splitlines() if ln.strip()]
+            bullet_lines = [
+                ln.lstrip("•-·123456789. ").strip()
+                for ln in lines
+                if ln.startswith(("•", "-", "·")) or (len(ln) > 2 and ln[0].isdigit() and ln[1] in ".)")
+            ]
+            if bullet_lines:
+                items = "".join(f'<li style="margin-bottom:4px; font-size:11pt;">{esc(b)}</li>' for b in bullet_lines)
+                rec_body = f'<ul style="margin:6px 0 0 16px; padding:0;">{items}</ul>'
+                parts.append(
+                    f'<p style="margin:0 0 4px 0;">'
+                    f'<span style="color:{muted}; font-size:9pt; font-weight:700; '
+                    f'text-transform:uppercase; letter-spacing:1px;">Recommendation</span>'
+                    f'</p>{rec_body}'
+                )
+            else:
+                parts.append(section("Recommendation", esc(recommendation).replace("\n", "<br/>")))
+
+        parts.append('</body></html>')
+        return "".join(parts)
+
     def set_reasoning_result(self, result: dict):
         if self.current_run is not None:
             self.current_run["reasoning_result"] = result
@@ -944,8 +1090,8 @@ class PipelineDashboard(QWidget):
         self._set_llm_cancel_visible(False)
         parsed = result.get("parsed", {})
         if not parsed:
-            self.reasoning_text.setPlainText("No reasoning returned.")
-            self.compact_reasoning_text.setPlainText("No reasoning returned.")
+            self.reasoning_text.setHtml("<p style='color:gray;'>No reasoning returned.</p>")
+            self.compact_reasoning_text.setHtml("<p style='color:gray;'>No reasoning returned.</p>")
             return
 
         classification = parsed.get("classification", "unknown")
@@ -953,25 +1099,25 @@ class PipelineDashboard(QWidget):
         recommendation = parsed.get("recommendation", "")
         situation_brief = parsed.get("situation_brief") or ""
         tactical_priority = parsed.get("tactical_priority") or ""
+        key_constraints = parsed.get("key_constraints") or []
         self.classification_badge.set_classification(classification)
         self.compact_classification_badge.set_classification(classification)
         self.correctness_badge.set_prediction(classification)
 
-        parts = []
-        if situation_brief:
-            parts.append(f"Situation Brief:\n{situation_brief}")
-        if reasoning:
-            parts.append(f"Reasoning:\n{reasoning}")
-        if tactical_priority:
-            parts.append(f"Tactical Priority:\n{tactical_priority}")
-        if recommendation:
-            parts.append(f"Recommendation:\n{recommendation}")
-        reasoning_output = "\n\n".join(parts) if parts else "No reasoning returned."
-        self.reasoning_text.setPlainText(reasoning_output)
-        self.compact_reasoning_text.setPlainText(reasoning_output)
+        self._last_reasoning_parsed = parsed
+        reasoning_html = self._build_reasoning_html(parsed)
+        self.reasoning_text.setHtml(reasoning_html)
+        self.compact_reasoning_text.setHtml(reasoning_html)
+
+    def _refresh_reasoning_html(self):
+        if self._last_reasoning_parsed:
+            html = self._build_reasoning_html(self._last_reasoning_parsed)
+            self.reasoning_text.setHtml(html)
+            self.compact_reasoning_text.setHtml(html)
 
     def apply_theme(self, theme: Theme):
         self.theme = theme
+        self._refresh_reasoning_html()
         self.setStyleSheet(f"""
             QWidget#PipelineDashboard {{
                 background-color: {theme.bg_main};
@@ -1089,6 +1235,17 @@ class PipelineDashboard(QWidget):
         self.settings_panel.apply_theme(theme)
         self._style_llm_toggle_button(theme)
         self._style_stop_llm_button(theme)
+        self._style_context_inspector_button(theme)
+        self.context_inspector_panel.apply_theme(theme)
+        self.context_inspector_text.setStyleSheet(f"""
+            QTextEdit {{
+                color: {theme.text_primary};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+                padding: 10px;
+            }}
+        """)
 
         for panel in (self.quality_panel, self.image_panel, self.reasoning_panel):
             panel.apply_theme(theme)
@@ -1183,18 +1340,25 @@ class PipelineDashboard(QWidget):
         compact = self.width() < 1250
         if compact != self.operational_compact_layout:
             self.operational_compact_layout = compact
-            for panel in (self.map_panel, self.compact_pipeline_panel):
+            for panel in (self.map_panel, self.compact_pipeline_panel, self.context_inspector_panel):
                 self.operational_grid.removeWidget(panel)
             if compact:
                 self.operational_grid.addWidget(self.map_panel, 0, 0)
                 self.operational_grid.addWidget(self.compact_pipeline_panel, 1, 0)
+                self.operational_grid.addWidget(self.context_inspector_panel, 2, 0)
                 self.operational_grid.setColumnStretch(0, 1)
                 self.operational_grid.setColumnStretch(1, 0)
+                self.operational_grid.setRowStretch(0, 1)
+                self.operational_grid.setRowStretch(1, 0)
+                self.operational_grid.setRowStretch(2, 0)
             else:
                 self.operational_grid.addWidget(self.map_panel, 0, 0)
                 self.operational_grid.addWidget(self.compact_pipeline_panel, 0, 1)
+                self.operational_grid.addWidget(self.context_inspector_panel, 1, 0, 1, 2)
                 self.operational_grid.setColumnStretch(0, 3)
                 self.operational_grid.setColumnStretch(1, 2)
+                self.operational_grid.setRowStretch(0, 1)
+                self.operational_grid.setRowStretch(1, 0)
 
         if compact == self.compact_layout:
             return
@@ -1328,6 +1492,7 @@ class PipelineDashboard(QWidget):
         self._current_preview_pixmap = pixmap
         self.image_placeholder.setText("")
         self.image_placeholder.setCursor(Qt.PointingHandCursor)
+        self.compact_image_placeholder.setCursor(Qt.PointingHandCursor)
         self.open_preview_button.setEnabled(True)
         self._refresh_processed_pixmap()
 
@@ -1337,6 +1502,7 @@ class PipelineDashboard(QWidget):
         self.image_placeholder.unsetCursor()
         self.compact_image_placeholder.setPixmap(QPixmap())
         self.compact_image_placeholder.setText(message)
+        self.compact_image_placeholder.unsetCursor()
         self.current_preview_image_path = None
         self._current_preview_pixmap = QPixmap()
         self.open_preview_button.setEnabled(False)
@@ -1477,6 +1643,30 @@ class PipelineDashboard(QWidget):
             theme.text_primary,
             "rgba(255, 90, 102, 72)",
         )
+
+    def _style_context_inspector_button(self, theme: Theme):
+        checked = self.context_inspector_button.isChecked()
+        border_color, text_color, background_color, hover_border, hover_text, hover_background = (
+            self._toggle_style_values(theme, active=checked)
+        )
+        self.context_inspector_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {text_color};
+                background-color: {background_color};
+                border: 1px solid {border_color};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                color: {hover_text};
+                background-color: {hover_background};
+                border-color: {hover_border};
+            }}
+            QPushButton:disabled {{
+                color: {theme.text_muted};
+                border-color: {theme.border};
+            }}
+        """)
 
     def _style_stop_llm_button(self, theme: Theme):
         self.stop_llm_button.setStyleSheet(f"""

@@ -70,6 +70,7 @@ from pipeline.context.schemas import (
     CompassBearing,
     Coordinates,
     ExtractionMetadata,
+    FireStation,
     LandCoverType,
     NamedFeature,
     NamedFeatureType,
@@ -100,12 +101,14 @@ WATER_RADIUS_M = 10_000
 ROAD_RADIUS_M = 5_000
 NAMED_FEATURE_RADIUS_M = 10_000
 ASSETS_RADIUS_M = 2_000
+FIRE_STATION_RADIUS_M = 30_000
 
 # Maximum results per category.
 MAX_SETTLEMENTS = 5
 MAX_WATER_SOURCES = 5
 MAX_TRACKS = 3
 MAX_NAMED_FEATURES = 5
+MAX_FIRE_STATIONS = 3
 
 # Water supply classification threshold.
 # Lakes and reservoirs above this area are classified as heavy supply.
@@ -429,6 +432,37 @@ class _AssetsHandler(osmium.SimpleHandler):
                 pass
 
 
+class _EmergencyResourceHandler(osmium.SimpleHandler):
+    """Collect fire station nodes and area footprints."""
+
+    def __init__(self):
+        super().__init__()
+        self.features: list[dict] = []
+        self._wkb = osmium.geom.WKBFactory()
+
+    def node(self, n):
+        tags = dict(n.tags)
+        if tags.get("amenity") != "fire_station":
+            return
+        try:
+            wkb = self._wkb.create_point(n)
+            geom = _load_wkb(wkb)
+        except Exception:
+            return
+        self.features.append({"name": tags.get("name"), "geometry": geom})
+
+    def area(self, a):
+        tags = dict(a.tags)
+        if tags.get("amenity") != "fire_station":
+            return
+        try:
+            wkb = self._wkb.create_multipolygon(a)
+            geom = _load_wkb(wkb)
+        except Exception:
+            return
+        self.features.append({"name": tags.get("name"), "geometry": geom})
+
+
 # ── Region handlers (two-pass, no area assembly) ───────────────────────────────
 
 class _RelationCollector(osmium.SimpleHandler):
@@ -685,6 +719,9 @@ def _load_pbf(pbf_path: Path, dem_path: Path | None = None) -> None:
     assets_handler = _AssetsHandler()
     assets_handler.apply_file(pbf_str, locations=True, idx="flex_mem")
 
+    emergency_handler = _EmergencyResourceHandler()
+    emergency_handler.apply_file(pbf_str, locations=True, idx="flex_mem")
+
     # Region loading: two-pass without area assembly.
     relation_collector = _RelationCollector()
     relation_collector.apply_file(pbf_str)
@@ -717,6 +754,7 @@ def _load_pbf(pbf_path: Path, dem_path: Path | None = None) -> None:
         "buildings": _to_gdf(assets_handler.buildings),
         "power_lines": _to_gdf(assets_handler.power_lines),
         "protected_areas": _to_gdf(assets_handler.protected_areas),
+        "fire_stations": _to_gdf(emergency_handler.features),
     }
 
     if dem_path and dem_path.exists():
@@ -1061,7 +1099,8 @@ def _query_assets_at_risk(
     if not power_gdf.empty:
         power_gdf = power_gdf.copy()
         power_gdf["distance_m"] = power_gdf.geometry.distance(point)
-        power_present = (power_gdf["distance_m"] <= radius_m).any()
+        nearby_power = power_gdf[power_gdf["distance_m"] <= radius_m]
+        power_present = not nearby_power.empty
 
     # Protected area containment.
     protected_name: str | None = None
@@ -1078,6 +1117,43 @@ def _query_assets_at_risk(
         protected_area=protected_name,
         assets_radius_m=float(radius_m),
     )
+
+
+def _query_fire_stations(
+    point_gdf: gpd.GeoDataFrame,
+    radius_m: float,
+) -> list[FireStation]:
+    """Find nearby fire stations within radius_m, sorted by distance."""
+    stations_gdf = _cache.get("fire_stations")
+    if stations_gdf is None or stations_gdf.empty:
+        return []
+
+    point = point_gdf.geometry.iloc[0]
+    stations_gdf = stations_gdf.copy()
+    stations_gdf["distance_m"] = stations_gdf.geometry.distance(point)
+    nearby = stations_gdf[
+        stations_gdf["distance_m"] <= radius_m
+    ].sort_values("distance_m")
+
+    results: list[FireStation] = []
+    seen_names: set[str] = set()
+    for _, row in nearby.iterrows():
+        if len(results) >= MAX_FIRE_STATIONS:
+            break
+        name = _nan_to_none(row.get("name"))
+        if name is not None:
+            key = name.strip().lower()
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+        geom = row["geometry"]
+        centroid = geom.centroid if geom.geom_type != "Point" else geom
+        results.append(FireStation(
+            name=name,
+            distance_m=float(row["distance_m"]),
+            bearing=_compute_bearing(point, centroid),
+        ))
+    return results
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -1210,6 +1286,7 @@ def extract_context(
     settlements = _query_settlements(point_gdf, SETTLEMENT_RADIUS_M)
     named_features = _query_named_features(point_gdf, NAMED_FEATURE_RADIUS_M)
     assets_at_risk = _query_assets_at_risk(point_gdf, ASSETS_RADIUS_M)
+    fire_stations = _query_fire_stations(point_gdf, FIRE_STATION_RADIUS_M)
 
     metadata = ExtractionMetadata(
         extracted_at=datetime.now(timezone.utc),
@@ -1219,6 +1296,7 @@ def extract_context(
         track_radius_m=float(ROAD_RADIUS_M),
         named_feature_radius_m=float(NAMED_FEATURE_RADIUS_M),
         assets_radius_m=float(ASSETS_RADIUS_M),
+        fire_station_radius_m=float(FIRE_STATION_RADIUS_M),
     )
 
     return OperationalContext(
@@ -1229,6 +1307,7 @@ def extract_context(
         water_sources=water_sources,
         roads=roads,
         settlements=settlements,
+        fire_stations=fire_stations,
         assets_at_risk=assets_at_risk,
         named_features=named_features,
         wind=(
@@ -1334,6 +1413,7 @@ def main() -> None:
     print(f"  Settlements:     {len(context.settlements)}")
     print(f"  Water sources:   {len(context.water_sources)}")
     print(f"  Named features:  {len(context.named_features)}")
+    print(f"  Fire stations:   {len(context.fire_stations)}")
     if context.wind:
         print(
             "  Wind:            "

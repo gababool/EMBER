@@ -11,8 +11,8 @@
   "land_cover": "forest",
   "terrain": {
     "elevation_m": 588.0,
-    "slope_degrees": 4.5,
-    "slope_steepness": "gentle",
+    "slope_degrees": 12.0,
+    "slope_steepness": "moderate",
     "aspect": "E"
   },
   "water_sources": [
@@ -142,6 +142,13 @@
       "bearing": "N"
     }
   ],
+  "fire_stations": [
+    {
+      "name": null,
+      "distance_m": 20069.958566359117,
+      "bearing": "E"
+    }
+  ],
   "assets_at_risk": {
     "buildings_within_radius": 2,
     "has_permanent_structures": false,
@@ -182,18 +189,19 @@
     }
   ],
   "wind": {
-    "direction_degrees": 45.0,
-    "direction_compass": "NE",
-    "speed_mps": 2.3,
+    "direction_degrees": 270.0,
+    "direction_compass": "W",
+    "speed_mps": 6.0,
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-13T14:57:27.525693Z",
+    "extracted_at": "2026-05-14T11:10:04.729582Z",
     "osm_dataset": "scenario_06-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
     "track_radius_m": 5000.0,
     "named_feature_radius_m": 10000.0,
-    "assets_radius_m": 2000.0
+    "assets_radius_m": 2000.0,
+    "fire_station_radius_m": 30000.0
   }
 }

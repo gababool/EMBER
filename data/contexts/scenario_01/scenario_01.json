@@ -142,6 +142,23 @@
       "bearing": "NE"
     }
   ],
+  "fire_stations": [
+    {
+      "name": "Virsbo Station 19",
+      "distance_m": 9057.807525727925,
+      "bearing": "N"
+    },
+    {
+      "name": "Surahammar Station 18",
+      "distance_m": 12643.72250827499,
+      "bearing": "SE"
+    },
+    {
+      "name": "Skultuna station 14",
+      "distance_m": 20476.757582744216,
+      "bearing": "SE"
+    }
+  ],
   "assets_at_risk": {
     "buildings_within_radius": 0,
     "has_permanent_structures": false,
@@ -182,18 +199,19 @@
     }
   ],
   "wind": {
-    "direction_degrees": 135.0,
-    "direction_compass": "SE",
-    "speed_mps": 8.9,
+    "direction_degrees": 225.0,
+    "direction_compass": "SW",
+    "speed_mps": 5.5,
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-07T13:49:20.924158Z",
+    "extracted_at": "2026-05-14T11:04:44.199159Z",
     "osm_dataset": "scenario_01-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
     "track_radius_m": 5000.0,
     "named_feature_radius_m": 10000.0,
-    "assets_radius_m": 2000.0
+    "assets_radius_m": 2000.0,
+    "fire_station_radius_m": 30000.0
   }
 }

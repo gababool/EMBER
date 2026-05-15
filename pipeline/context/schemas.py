@@ -568,6 +568,30 @@ class ExtractionMetadata(StrictBaseModel):
     track_radius_m: float = Field(..., gt=0, description="Road/track search radius. Unit: metres.")
     named_feature_radius_m: float = Field(..., gt=0, description="Named feature search radius. Unit: metres.")
     assets_radius_m: float = Field(..., gt=0, description="Assets-at-risk search radius. Unit: metres.")
+    fire_station_radius_m: float = Field(default=30_000.0, gt=0, description="Fire station search radius. Unit: metres.")
+
+
+class FireStation(StrictBaseModel):
+    """A nearby fire station that could provide crew staging resources."""
+
+    name: str | None = Field(
+        default=None,
+        description="Name of the fire station if available. Unit: none.",
+    )
+    distance_m: float = Field(
+        ..., ge=0,
+        description=(
+            "Shortest horizontal distance from the observation point to the fire station. "
+            "Unit: metres."
+        ),
+    )
+    bearing: CompassBearing | None = Field(
+        default=None,
+        description=(
+            "Compass direction from the observation point toward the fire station. "
+            "Unit: categorical compass bearing."
+        ),
+    )
 
 
 class OperationalContext(StrictBaseModel):
@@ -617,6 +641,13 @@ class OperationalContext(StrictBaseModel):
         description=(
             "Nearby settlements sorted by distance. May be empty. "
             "Units documented in Settlement."
+        ),
+    )
+    fire_stations: list[FireStation] = Field(
+        default_factory=list,
+        description=(
+            "Nearby fire stations within the configured search radius, sorted by distance. "
+            "May be empty. Units documented in FireStation."
         ),
     )
     assets_at_risk: AssetsAtRisk = Field(

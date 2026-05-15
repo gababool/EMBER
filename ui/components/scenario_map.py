@@ -11,10 +11,10 @@ from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPainterPath, Q
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 try:
-    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_MD, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
     from ui.components.icon_utils import load_svg_icon
 except ImportError:
-    from assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from assets.design import DEFAULT_THEME, FONT_SIZE_MD, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
     from components.icon_utils import load_svg_icon
 
 
@@ -39,7 +39,7 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
-VECTOR_CACHE_VERSION = 5
+VECTOR_CACHE_VERSION = 6
 EARTH_RADIUS_M = 6_378_137
 
 
@@ -320,6 +320,10 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                 return "water"
             if tags.get("boundary") == "protected_area" or tags.get("leisure") == "nature_reserve":
                 return "protected"
+            if tags.get("natural") == "wood" or tags.get("landuse") == "forest":
+                return "forest"
+            if tags.get("natural") == "wetland" or tags.get("landuse") == "wetland":
+                return "wetland"
             return None
 
     handler = OSMVectorHandler()
@@ -358,7 +362,7 @@ def _ring_to_points(coords) -> list[tuple[float, float]]:
 def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tuple[float, float]]:
     if layer in {"road_major", "road_minor"} or len(geometry) <= 120:
         return geometry
-    target_points = 260 if layer in {"water", "protected"} else 120
+    target_points = 260 if layer in {"water", "protected", "forest", "wetland"} else 120
     step = max(1, len(geometry) // target_points)
     thinned = geometry[::step]
     if thinned[-1] != geometry[-1]:
@@ -392,6 +396,8 @@ class ScenarioMap(QWidget):
         self._drag_last_pos = None
         self._context_highlights_visible = False
         self._expanded = False
+        self._legend_collapsed = True
+        self._legend_header_rect: QRectF | None = None
         self._marker_points: dict[str, QPointF] = {}
         self._icon_cache: dict[tuple[str, str, int], QPixmap] = {}
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
@@ -527,21 +533,35 @@ class ScenarioMap(QWidget):
             return
 
         if self.loaded_scenario is not None:
-            self._drag_last_pos = QPointF(event.position())
+            click_pos = QPointF(event.position())
+            if self._legend_header_rect is not None and self._legend_header_rect.contains(click_pos):
+                self._legend_collapsed = not self._legend_collapsed
+                self.update()
+                return
+            self._drag_last_pos = click_pos
             self.setCursor(Qt.ClosedHandCursor)
             return
 
         click_pos = QPointF(event.position())
-        nearest = None
-        nearest_distance = 18.0
+        CLICK_RADIUS = 20.0
+        candidates = []
         for scenario in self.scenarios:
             point = self._marker_points.get(scenario.scenario_id)
             if point is None:
                 continue
             distance = ((point.x() - click_pos.x()) ** 2 + (point.y() - click_pos.y()) ** 2) ** 0.5
-            if distance <= nearest_distance:
-                nearest = scenario
-                nearest_distance = distance
+            if distance <= CLICK_RADIUS:
+                candidates.append((distance, scenario))
+
+        if not candidates:
+            nearest = None
+        else:
+            # Prefer the nearest non-selected scenario so overlapping markers are reachable.
+            unselected = [(d, s) for d, s in candidates if s != self.selected_scenario]
+            if unselected:
+                nearest = min(unselected, key=lambda x: x[0])[1]
+            else:
+                nearest = min(candidates, key=lambda x: x[0])[1]
 
         if nearest is not None:
             self.selected_scenario = nearest
@@ -615,13 +635,24 @@ class ScenarioMap(QWidget):
         painter.setFont(app_font(FONT_SIZE_SM, bold=True))
         metrics = QFontMetrics(painter.font())
 
-        for scenario in self.scenarios:
+        # Build point list; draw unselected first so selected renders on top.
+        ordered = sorted(
+            self.scenarios,
+            key=lambda s: 1 if s == self.selected_scenario else 0,
+        )
+
+        for scenario in ordered:
             point = self._project(scenario.longitude, scenario.latitude, map_rect)
             self._marker_points[scenario.scenario_id] = point
             selected = scenario == self.selected_scenario
             fill_color = QColor(self.theme.accent_orange if selected else self.theme.accent_cyan)
             text_color = QColor(self.theme.bg_panel if selected else self.theme.bg_main)
             radius = 16 if selected else 13
+
+            if selected:
+                painter.setPen(QPen(fill_color, 2))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawEllipse(point, radius + 7, radius + 7)
 
             painter.setPen(QPen(QColor(self.theme.bg_panel), 4))
             painter.setBrush(fill_color)
@@ -637,30 +668,25 @@ class ScenarioMap(QWidget):
             painter.setPen(text_color)
             painter.drawText(label_rect, Qt.AlignCenter, label)
 
-            if selected:
-                painter.setPen(QPen(fill_color, 2))
-                painter.setBrush(Qt.NoBrush)
-                painter.drawEllipse(point, radius + 7, radius + 7)
-
     def _draw_selected_card(self, painter: QPainter, content: QRectF):
         if self.selected_scenario is None:
             return
 
         scenario = self.selected_scenario
-        card = QRectF(content.left() + 12, content.bottom() - 86, content.width() - 24, 70)
+        card = QRectF(content.left() + 12, content.bottom() - 100, content.width() - 24, 84)
         self._position_load_button(card)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
         painter.setBrush(QColor(self.theme.bg_panel_alt))
         painter.drawRoundedRect(card, 5, 5)
 
-        painter.setFont(app_font(FONT_SIZE_SM, bold=True))
+        painter.setFont(app_font(FONT_SIZE_MD, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(card.adjusted(12, 8, -12, -38), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
+        painter.drawText(card.adjusted(12, 8, -12, -50), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
 
-        painter.setFont(app_font(FONT_SIZE_XS))
+        painter.setFont(app_font(FONT_SIZE_SM))
         painter.setPen(QColor(self.theme.text_muted))
         details = f"{scenario.region} | {scenario.description}"
-        painter.drawText(card.adjusted(12, 32, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
+        painter.drawText(card.adjusted(12, 40, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
 
     def _position_load_button(self, card: QRectF):
         self.load_scenario_button.setGeometry(
@@ -671,10 +697,13 @@ class ScenarioMap(QWidget):
         )
 
     def _position_zoom_buttons(self, content: QRectF):
-        left = int(content.left() + 22)
+        # Zoom buttons: bottom-right corner of the detail map area (map ends 92px above content bottom).
+        right = int(content.right() - 22)
+        map_bottom = int(content.bottom() - 92)
+        self.zoom_out_button.move(right - 34, map_bottom - 12 - 30)
+        self.zoom_in_button.move(right - 34, map_bottom - 12 - 30 - 4 - 30)
+        # Back button stays top-right
         top = int(content.top() + 52)
-        self.zoom_in_button.move(left, top)
-        self.zoom_out_button.move(left, top + 34)
         self.exit_detail_button.move(int(content.right() - 92), top)
 
     def _position_expand_map_button(self, content: QRectF, avoid_back_button: bool):
@@ -701,6 +730,7 @@ class ScenarioMap(QWidget):
         self._detail_scale = None
         self._drag_last_pos = None
         self._context_highlights_visible = False
+        self._legend_header_rect = None
         self.setCursor(Qt.PointingHandCursor)
         self.scenario_unloaded.emit()
         self.update()
@@ -768,19 +798,20 @@ class ScenarioMap(QWidget):
         painter.setClipRect(detail_rect)
         self._draw_context_overlays(painter, detail_rect, context)
         self._draw_scale_bar(painter, detail_rect)
+        self._draw_map_legend(painter, detail_rect)
         painter.restore()
 
-        card = QRectF(content.left() + 12, content.bottom() - 78, content.width() - 24, 62)
+        card = QRectF(content.left() + 12, content.bottom() - 92, content.width() - 24, 76)
         painter.setPen(QPen(QColor(self.theme.accent_orange), 1))
         painter.setBrush(QColor(self.theme.bg_panel_alt))
         painter.drawRoundedRect(card, 5, 5)
-        painter.setFont(app_font(FONT_SIZE_SM, bold=True))
+        painter.setFont(app_font(FONT_SIZE_MD, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
-        painter.drawText(card.adjusted(12, 6, -12, -34), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
-        painter.setFont(app_font(FONT_SIZE_XS))
+        painter.drawText(card.adjusted(12, 6, -12, -46), Qt.AlignLeft | Qt.AlignVCenter, scenario.title)
+        painter.setFont(app_font(FONT_SIZE_SM))
         painter.setPen(QColor(self.theme.text_muted))
         painter.drawText(
-            card.adjusted(12, 28, -12, -6),
+            card.adjusted(12, 36, -12, -6),
             Qt.AlignLeft | Qt.TextWordWrap,
             self._detail_summary(context),
         )
@@ -821,7 +852,7 @@ class ScenarioMap(QWidget):
             )
             if feature.name and self._detail_scale and self._detail_scale > 220_000:
                 painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-                painter.setPen(QColor(self.theme.text_primary))
+                painter.setPen(QColor("#ffffff"))
                 painter.drawText(QRectF(point.x() + 11, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
             return
 
@@ -832,7 +863,15 @@ class ScenarioMap(QWidget):
         for lon, lat in geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
-        if feature.layer == "water":
+        if feature.layer == "forest":
+            painter.setPen(QPen(self._theme_color(self.theme.map_forest), 0.5))
+            painter.setBrush(self._theme_color(self.theme.map_forest))
+            painter.drawPath(path)
+        elif feature.layer == "wetland":
+            painter.setPen(QPen(self._theme_color(self.theme.map_wetland, 80), 0.5))
+            painter.setBrush(self._theme_color(self.theme.map_wetland, 70))
+            painter.drawPath(path)
+        elif feature.layer == "water":
             painter.setPen(QPen(QColor(self.theme.map_water_stroke), 1))
             painter.setBrush(QColor(self.theme.map_water_fill))
             painter.drawPath(path)
@@ -878,11 +917,13 @@ class ScenarioMap(QWidget):
 
     @staticmethod
     def _layer_draw_order() -> tuple[str, ...]:
-        return ("protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
+        return ("forest", "wetland", "protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
 
     @staticmethod
     def _minimum_scale_for_layer(layer: str) -> int:
         thresholds = {
+            "forest": 0,
+            "wetland": 0,
             "protected": 120_000,
             "water": 0,
             "waterway": 120_000,
@@ -902,9 +943,7 @@ class ScenarioMap(QWidget):
         painter.save()
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         metrics = QFontMetrics(painter.font())
-        text_color = QColor(self.theme.text_primary)
-        text_color.setAlphaF(0.62 if self.theme.name == "light" else 0.7)
-        painter.setPen(text_color)
+        painter.setPen(QColor("#ffffff"))
 
         placed_rects: list[QRectF] = []
         seen_labels: set[str] = set()
@@ -1025,7 +1064,7 @@ class ScenarioMap(QWidget):
             size=24,
         )
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_primary))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Fire origin")
 
         if not self._context_highlights_visible:
@@ -1047,6 +1086,19 @@ class ScenarioMap(QWidget):
             )
 
         self._draw_named_feature_highlights(painter, rect, context)
+
+        for station in context.get("fire_stations", []):
+            name = station.get("name") or "Fire station"
+            lon, lat = self._context_offset_coordinates(station)
+            self._draw_context_point(
+                painter,
+                rect,
+                lon,
+                lat,
+                QColor("#cc3333"),
+                name,
+                icon_name="building-2.svg",
+            )
 
     def _draw_context_road_highlights(self, painter: QPainter, rect: QRectF, context: dict):
         primary = (context.get("roads") or {}).get("primary_access")
@@ -1106,10 +1158,9 @@ class ScenarioMap(QWidget):
         for lon, lat in feature.geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
-        if self.theme.name == "dark":
-            painter.setPen(QPen(QColor(self.theme.bg_panel), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(path)
+        painter.setPen(QPen(QColor("#1d2025"), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(path)
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(color, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
@@ -1135,7 +1186,7 @@ class ScenarioMap(QWidget):
         else:
             self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS))
-        painter.setPen(QColor(self.theme.text_primary))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(point.x() + 8, point.y() - 10, 150, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
 
     def _draw_context_label(
@@ -1156,7 +1207,7 @@ class ScenarioMap(QWidget):
         else:
             self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_primary))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
 
     def _draw_named_feature_marker(
@@ -1173,21 +1224,18 @@ class ScenarioMap(QWidget):
         self._draw_icon_marker(painter, point, "astroid.svg", color, size=18)
 
         painter.setFont(app_font(FONT_SIZE_XS))
-        text_color = QColor(self.theme.text_primary)
-        text_color.setAlphaF(0.72 if self.theme.name == "light" else 0.82)
-        painter.setPen(text_color)
+        painter.setPen(QColor("#ffffff"))
         label_text = f"{label} ({feature_type})"
         painter.drawText(QRectF(point.x() + 9, point.y() - 10, 210, 20), Qt.AlignLeft | Qt.AlignVCenter, label_text[:34])
 
     def _draw_icon_marker(self, painter: QPainter, point: QPointF, icon_name: str, color: QColor, size: int):
-        if self.theme.name == "dark":
-            halo_size = size + 6
-            halo = self._map_icon(icon_name, QColor(self.theme.bg_panel), halo_size)
-            painter.drawPixmap(
-                int(point.x() - halo_size / 2),
-                int(point.y() - halo_size / 2),
-                halo,
-            )
+        halo_size = size + 6
+        halo = self._map_icon(icon_name, QColor("#1d2025"), halo_size)
+        painter.drawPixmap(
+            int(point.x() - halo_size / 2),
+            int(point.y() - halo_size / 2),
+            halo,
+        )
         icon = self._map_icon(icon_name, color, size)
         painter.drawPixmap(
             int(point.x() - size / 2),
@@ -1196,9 +1244,7 @@ class ScenarioMap(QWidget):
         )
 
     def _marker_outline_pen(self) -> QPen:
-        if self.theme.name == "dark":
-            return QPen(QColor(self.theme.bg_panel), 2)
-        return QPen(Qt.NoPen)
+        return QPen(QColor("#1d2025"), 2)
 
     def _map_icon(self, icon_name: str, color: QColor, size: int) -> QPixmap:
         key = (icon_name, color.name(), size)
@@ -1283,7 +1329,7 @@ class ScenarioMap(QWidget):
         label_rect = QRectF(left - 8, bottom - 34, bar_width + 16, 30)
 
         painter.setPen(QPen(QColor(self.theme.border), 1))
-        painter.setBrush(self._theme_color(self.theme.bg_panel, 215 if self.theme.name == "dark" else 190))
+        painter.setBrush(self._theme_color(self.theme.bg_panel, 215))
         painter.drawRoundedRect(label_rect, 4, 4)
 
         y = bottom - 10
@@ -1296,6 +1342,106 @@ class ScenarioMap(QWidget):
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         painter.setPen(QColor(self.theme.text_primary))
         painter.drawText(QRectF(left, bottom - 32, bar_width, 16), Qt.AlignCenter, label)
+
+    def _draw_map_legend(self, painter: QPainter, rect: QRectF):
+        """Draw a collapsible legend on the left side of the detail map."""
+        icon_entries = [
+            ("flame.svg",      QColor(self.theme.accent_orange),   "Fire origin"),
+            ("droplet.svg",    QColor(self.theme.accent_cyan),     "Water source"),
+            ("building-2.svg", QColor("#cc3333"),                  "Fire station"),
+            ("building-2.svg", QColor(self.theme.map_settlement),  "Settlement"),
+            ("astroid.svg",    QColor(self.theme.accent_purple),   "Named feature"),
+        ]
+        # (color, qt-style, stroke-width, fill-color-or-None, label)
+        line_entries = [
+            (QColor(self.theme.map_road_major),  Qt.SolidLine, 3.0, None,                             "Major road"),
+            (QColor(self.theme.accent_orange),   Qt.SolidLine, 2.5, None,                             "Road (highlighted)"),
+            (QColor(self.theme.map_road_minor),  Qt.SolidLine, 1.8, None,                             "Road"),
+            (QColor(self.theme.map_track),       Qt.DashLine,  1.2, None,                             "Track"),
+            (QColor(self.theme.map_waterway),    Qt.SolidLine, 1.4, None,                             "River / stream"),
+            (QColor(self.theme.map_water_stroke),    Qt.SolidLine, 1.0, QColor(self.theme.map_water_fill),                            "Water body"),
+            (QColor(self.theme.map_protected_stroke),Qt.DashLine,  1.0, self._theme_color(self.theme.map_protected_fill, 52), "Protected area"),
+            (QColor(self.theme.map_bg),                      Qt.SolidLine, 0.5, QColor(self.theme.map_bg),                      "Open terrain"),
+            (self._theme_color(self.theme.map_forest),       Qt.SolidLine, 0.5, self._theme_color(self.theme.map_forest),       "Forest"),
+            (self._theme_color(self.theme.map_wetland, 80),  Qt.SolidLine, 0.5, self._theme_color(self.theme.map_wetland, 70),  "Wetland"),
+            (QColor(self.theme.map_power),           Qt.DashLine,  1.2, None,                                                 "Power line"),
+        ]
+
+        row_h = 18
+        pad_x, pad_y = 8, 6
+        header_h = 22
+        legend_w = 142
+        body_h = pad_y * 2 + row_h * (len(icon_entries) + len(line_entries))
+        total_h = header_h + (0 if self._legend_collapsed else body_h)
+
+        left = rect.left() + 12
+        top = rect.top() + 12
+        legend_rect = QRectF(left, top, legend_w, total_h)
+
+        bg_alpha = 215
+        painter.save()
+        painter.setPen(QPen(QColor(self.theme.border), 1))
+        painter.setBrush(self._theme_color(self.theme.bg_panel, bg_alpha))
+        painter.drawRoundedRect(legend_rect, 4, 4)
+
+        # Header row (click to toggle)
+        header_rect = QRectF(left, top, legend_w, header_h)
+        self._legend_header_rect = header_rect
+
+        arrow = "▸" if self._legend_collapsed else "▾"
+        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
+        painter.setPen(QColor(self.theme.text_muted))
+        painter.drawText(
+            header_rect.adjusted(pad_x, 0, -pad_x, 0),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"{arrow}  LEGEND",
+        )
+
+        if self._legend_collapsed:
+            painter.restore()
+            return
+
+        icon_size = 12
+        col_x = left + pad_x + icon_size / 2
+        body_top = top + header_h + pad_y
+
+        for i, (icon_name, color, label) in enumerate(icon_entries):
+            y_center = body_top + i * row_h + row_h / 2
+            icon = self._map_icon(icon_name, color, icon_size)
+            painter.drawPixmap(int(col_x - icon_size / 2), int(y_center - icon_size / 2), icon)
+            painter.setFont(app_font(FONT_SIZE_XS))
+            painter.setPen(QColor(self.theme.text_primary))
+            text_x = col_x + icon_size / 2 + 5
+            painter.drawText(
+                QRectF(text_x, y_center - row_h / 2, legend_w - pad_x - icon_size - 10, row_h),
+                Qt.AlignLeft | Qt.AlignVCenter,
+                label,
+            )
+
+        line_x0 = left + pad_x
+        line_x1 = line_x0 + icon_size
+        swatch_top = body_top + len(icon_entries) * row_h
+        for j, (stroke_color, style, width, fill_color, label) in enumerate(line_entries):
+            y_center = swatch_top + j * row_h + row_h / 2
+            if fill_color is not None:
+                # Filled rectangle swatch for polygon layers (water bodies)
+                swatch = QRectF(line_x0, y_center - 4, icon_size, 8)
+                painter.setPen(QPen(stroke_color, 1))
+                painter.setBrush(fill_color)
+                painter.drawRect(swatch)
+            else:
+                painter.setPen(QPen(stroke_color, width, style, Qt.RoundCap))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawLine(QPointF(line_x0, y_center), QPointF(line_x1, y_center))
+            painter.setFont(app_font(FONT_SIZE_XS))
+            painter.setPen(QColor(self.theme.text_primary))
+            painter.drawText(
+                QRectF(line_x1 + 5, y_center - row_h / 2, legend_w - pad_x - icon_size - 10, row_h),
+                Qt.AlignLeft | Qt.AlignVCenter,
+                label,
+            )
+
+        painter.restore()
 
     @staticmethod
     def _nice_scale_distance(raw_distance_m: float) -> float:

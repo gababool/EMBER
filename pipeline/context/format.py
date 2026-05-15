@@ -51,6 +51,7 @@ from typing import Sequence
 
 from pipeline.context.schemas import (
     AssetsAtRisk,
+    FireStation,
     OperationalContext,
     Road,
     Settlement,
@@ -121,11 +122,10 @@ def _format_water_sources(sources: Sequence[WaterSource], radius_m: float) -> st
         type_str = _label(ws.source_type)
         dist = _km(ws.distance_m)
         brng = _bearing(ws.bearing)
-        road = (
-            f", road access {_km(ws.nearest_road_distance_m)}"
-            if ws.nearest_road_distance_m is not None
-            else ""
-        )
+        if ws.nearest_road_distance_m is not None:
+            road = f", road access {_km(ws.nearest_road_distance_m)}"
+        else:
+            road = ""
         lines.append(f"  - {supply} supply: {type_str}{name}, {dist} {brng}{road}")
 
     return "\n".join(lines)
@@ -227,6 +227,82 @@ def _format_wind(context: OperationalContext) -> str:
     )
 
 
+def _format_fire_stations(stations: Sequence[FireStation], radius_m: float) -> str:
+    if not stations:
+        return ""
+    radius_km = f"{radius_m / 1000:.0f} km"
+    lines = [f"Fire stations ({len(stations)} within {radius_km}):"]
+    for fs in stations:
+        name = f" {fs.name}" if fs.name else ""
+        lines.append(f"  - station{name}, {_km(fs.distance_m)} {_bearing(fs.bearing)}")
+    return "\n".join(lines)
+
+
+_COMPASS_DEG: dict[str, int] = {
+    "N": 0, "NE": 45, "E": 90, "SE": 135,
+    "S": 180, "SW": 225, "W": 270, "NW": 315,
+}
+
+_FUEL_HAZARD_MAP: dict[str, str] = {
+    "coniferous_forest": "dense conifer (high crown fire potential)",
+    "mixed_forest":      "mixed forest (moderate-high)",
+    "forest":            "forest (moderate)",
+    "broadleaf_forest":  "broadleaf (moderate)",
+    "shrubland":         "shrub (high surface spread)",
+    "grassland":         "grass/heath (high spread, low crown risk)",
+    "agricultural":      "agricultural (moderate)",
+    "wetland":           "wetland (low)",
+}
+
+
+def _wind_slope_relation(wind_compass: str, aspect_compass: str) -> str:
+    """Determine whether wind drives fire upslope, crossslope, or downslope.
+
+    Wind direction is the direction FROM which wind blows. Aspect is the
+    direction the slope faces (downhill). When wind blows FROM the same
+    direction the slope faces, the wind pushes fire uphill (upslope).
+    """
+    wind_deg = _COMPASS_DEG.get(wind_compass, -1)
+    aspect_deg = _COMPASS_DEG.get(aspect_compass, -1)
+    if wind_deg < 0 or aspect_deg < 0:
+        return "unknown"
+    diff = abs((wind_deg - aspect_deg + 360) % 360)
+    if diff <= 45 or diff >= 315:
+        return "upslope"
+    if 135 <= diff <= 225:
+        return "downslope"
+    return "crossslope"
+
+
+def _format_fire_behavior_note(context: OperationalContext) -> str:
+    """Return a fire behavior synthesis line, or empty string if insufficient data."""
+    wind = context.wind
+    terrain = context.terrain
+    if wind is None or terrain is None:
+        return ""
+    if terrain.aspect in ("flat", "unknown") or terrain.slope_steepness == "flat":
+        return ""
+
+    relation = _wind_slope_relation(wind.direction_compass, terrain.aspect)
+    steepness = _label(terrain.slope_steepness)
+    fuel = _FUEL_HAZARD_MAP.get(context.land_cover, "")
+
+    if relation == "upslope":
+        spread = "upslope acceleration likely"
+    elif relation == "downslope":
+        spread = "downslope spread"
+    else:
+        spread = "crossslope spread"
+
+    note = (
+        f"Fire behavior note: {wind.direction_compass} wind on "
+        f"{terrain.aspect}-facing {steepness} slope — {spread}."
+    )
+    if fuel:
+        note += f" Fuel: {fuel}."
+    return note
+
+
 _COMPASS_NAMES = {
     "N": "north",
     "NE": "northeast",
@@ -282,11 +358,14 @@ def format_context(context: OperationalContext) -> str:
 
     water_radius = context.extraction_metadata.water_source_radius_m
     settlement_radius = context.extraction_metadata.settlement_radius_m
+    fire_station_radius = context.extraction_metadata.fire_station_radius_m
 
     water = _format_water_sources(context.water_sources, water_radius)
     roads = _format_roads(context)
     settlements = _format_settlements(context.settlements, settlement_radius)
+    fire_stations = _format_fire_stations(context.fire_stations, fire_station_radius)
     assets = _format_assets(context.assets_at_risk)
+    fire_behavior = _format_fire_behavior_note(context)
     wind = _format_wind(context)
 
     named = _format_named_features(context)
@@ -302,9 +381,15 @@ def format_context(context: OperationalContext) -> str:
         roads,
         "",
         settlements,
-        "",
-        assets,
     ]
+
+    if fire_stations:
+        sections += ["", fire_stations]
+
+    sections += ["", assets]
+
+    if fire_behavior:
+        sections += ["", fire_behavior]
 
     if named:
         sections += ["", *named]
