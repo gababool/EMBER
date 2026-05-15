@@ -268,6 +268,17 @@ class PipelineDashboard(QWidget):
         controls_row_layout.addWidget(self.wind_speed_input)
 
         self.settings_panel = controls_row
+        controls_row.setVisible(False)
+
+        self.settings_toggle_button = QPushButton("Settings")
+        self.settings_toggle_button.setFont(app_font(FONT_SIZE_MD, bold=True))
+        self.settings_toggle_button.setCursor(Qt.PointingHandCursor)
+        self.settings_toggle_button.setFixedHeight(40)
+        self.settings_toggle_button.setCheckable(True)
+        self.settings_toggle_button.setChecked(False)
+        self.settings_toggle_button.toggled.connect(controls_row.setVisible)
+
+        title_row_layout.addWidget(self.settings_toggle_button)
 
         header_layout.addWidget(title_row)
         header_layout.addWidget(controls_row)
@@ -398,15 +409,15 @@ class PipelineDashboard(QWidget):
         self.compact_classification_badge = ClassificationBadge(theme)
         self.compact_image_placeholder = ClickableImageLabel("Processed image will appear here")
         self.compact_image_placeholder.setAlignment(Qt.AlignCenter)
-        self.compact_image_placeholder.setMinimumSize(320, 260)
+        self.compact_image_placeholder.setMinimumSize(320, 150)
         self.compact_image_placeholder.clicked.connect(self._open_image_preview)
         self.compact_reasoning_text = QTextEdit()
         self.compact_reasoning_text.setReadOnly(True)
         self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
         self.compact_reasoning_text.setFont(app_font(FONT_SIZE_SM))
 
-        self.compact_pipeline_layout.addWidget(self.compact_image_placeholder, 2)
-        self.compact_pipeline_layout.addWidget(self.compact_reasoning_text, 1)
+        self.compact_pipeline_layout.addWidget(self.compact_image_placeholder, 1)
+        self.compact_pipeline_layout.addWidget(self.compact_reasoning_text, 2)
 
         self.classification_dot = QLabel("●")
         self.classification_dot.setFont(app_font(FONT_SIZE_MD))
@@ -498,6 +509,7 @@ class PipelineDashboard(QWidget):
 
     def reset_demo(self, status_text: str = "Selecting a random wildfire dataset image..."):
         self.subtitle_label.setText(status_text)
+        self.settings_toggle_button.setChecked(False)
         self.scenario_map.set_context_highlights_visible(True)
         self.start_button.setEnabled(False)
         self.run_scenario_button.setEnabled(False)
@@ -1169,6 +1181,23 @@ class PipelineDashboard(QWidget):
             QPushButton:disabled {{
                 color: {theme.text_muted};
                 border-color: {theme.border};
+            }}
+        """)
+        self.settings_toggle_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 5px;
+                padding: 6px 14px;
+            }}
+            QPushButton:hover {{
+                border-color: {theme.accent_cyan};
+                color: {theme.text_primary};
+            }}
+            QPushButton:checked {{
+                color: {theme.accent_cyan};
+                border-color: {theme.accent_cyan};
             }}
         """)
         self.rerun_button.setStyleSheet(f"""
