@@ -828,6 +828,8 @@ class PipelineDashboard(QWidget):
         self.selected_context_path = None
         self.scenario_map.set_context_highlights_visible(False)
         self._clear_processed_image("Processed image will appear here")
+        self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
+        self._set_compact_reasoning_has_content(False)
         self.context_inspector_button.setChecked(False)
         self.context_inspector_button.setEnabled(False)
         self.context_inspector_panel.setVisible(False)
