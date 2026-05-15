@@ -848,7 +848,7 @@ class ScenarioMap(QWidget):
             )
             if feature.name and self._detail_scale and self._detail_scale > 220_000:
                 painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-                painter.setPen(QColor("#dce2e8"))
+                painter.setPen(QColor("#ffffff"))
                 painter.drawText(QRectF(point.x() + 11, point.y() - 10, 130, 20), Qt.AlignLeft | Qt.AlignVCenter, feature.name[:22])
             return
 
@@ -929,9 +929,7 @@ class ScenarioMap(QWidget):
         painter.save()
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
         metrics = QFontMetrics(painter.font())
-        text_color = QColor("#dce2e8")
-        text_color.setAlphaF(0.75)
-        painter.setPen(text_color)
+        painter.setPen(QColor("#ffffff"))
 
         placed_rects: list[QRectF] = []
         seen_labels: set[str] = set()
@@ -1052,7 +1050,7 @@ class ScenarioMap(QWidget):
             size=24,
         )
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor("#dce2e8"))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(scenario_point.x() + 12, scenario_point.y() - 12, 100, 24), Qt.AlignLeft | Qt.AlignVCenter, "Fire origin")
 
         if not self._context_highlights_visible:
@@ -1146,10 +1144,9 @@ class ScenarioMap(QWidget):
         for lon, lat in feature.geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
-        if self.theme.name == "dark":
-            painter.setPen(QPen(QColor(self.theme.bg_panel), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawPath(path)
+        painter.setPen(QPen(QColor("#1d2025"), 6.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(path)
         painter.setBrush(Qt.NoBrush)
         painter.setPen(QPen(color, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         painter.drawPath(path)
@@ -1175,7 +1172,7 @@ class ScenarioMap(QWidget):
         else:
             self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS))
-        painter.setPen(QColor(self.theme.text_primary))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(point.x() + 8, point.y() - 10, 150, 20), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:24])
 
     def _draw_context_label(
@@ -1196,7 +1193,7 @@ class ScenarioMap(QWidget):
         else:
             self._draw_icon_marker(painter, point, "droplet.svg", color, size=20)
         painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_primary))
+        painter.setPen(QColor("#ffffff"))
         painter.drawText(QRectF(point.x() + 9, point.y() - 11, 170, 22), Qt.AlignLeft | Qt.AlignVCenter, str(label)[:26])
 
     def _draw_named_feature_marker(
@@ -1213,21 +1210,18 @@ class ScenarioMap(QWidget):
         self._draw_icon_marker(painter, point, "astroid.svg", color, size=18)
 
         painter.setFont(app_font(FONT_SIZE_XS))
-        text_color = QColor(self.theme.text_primary)
-        text_color.setAlphaF(0.72 if self.theme.name == "light" else 0.82)
-        painter.setPen(text_color)
+        painter.setPen(QColor("#ffffff"))
         label_text = f"{label} ({feature_type})"
         painter.drawText(QRectF(point.x() + 9, point.y() - 10, 210, 20), Qt.AlignLeft | Qt.AlignVCenter, label_text[:34])
 
     def _draw_icon_marker(self, painter: QPainter, point: QPointF, icon_name: str, color: QColor, size: int):
-        if self.theme.name == "dark":
-            halo_size = size + 6
-            halo = self._map_icon(icon_name, QColor(self.theme.bg_panel), halo_size)
-            painter.drawPixmap(
-                int(point.x() - halo_size / 2),
-                int(point.y() - halo_size / 2),
-                halo,
-            )
+        halo_size = size + 6
+        halo = self._map_icon(icon_name, QColor("#1d2025"), halo_size)
+        painter.drawPixmap(
+            int(point.x() - halo_size / 2),
+            int(point.y() - halo_size / 2),
+            halo,
+        )
         icon = self._map_icon(icon_name, color, size)
         painter.drawPixmap(
             int(point.x() - size / 2),
@@ -1236,9 +1230,7 @@ class ScenarioMap(QWidget):
         )
 
     def _marker_outline_pen(self) -> QPen:
-        if self.theme.name == "dark":
-            return QPen(QColor(self.theme.bg_panel), 2)
-        return QPen(Qt.NoPen)
+        return QPen(QColor("#1d2025"), 2)
 
     def _map_icon(self, icon_name: str, color: QColor, size: int) -> QPixmap:
         key = (icon_name, color.name(), size)
@@ -1323,7 +1315,7 @@ class ScenarioMap(QWidget):
         label_rect = QRectF(left - 8, bottom - 34, bar_width + 16, 30)
 
         painter.setPen(QPen(QColor(self.theme.border), 1))
-        painter.setBrush(self._theme_color(self.theme.bg_panel, 215 if self.theme.name == "dark" else 190))
+        painter.setBrush(self._theme_color(self.theme.bg_panel, 215))
         painter.drawRoundedRect(label_rect, 4, 4)
 
         y = bottom - 10
@@ -1369,7 +1361,7 @@ class ScenarioMap(QWidget):
         top = rect.top() + 12
         legend_rect = QRectF(left, top, legend_w, total_h)
 
-        bg_alpha = 215 if self.theme.name == "dark" else 190
+        bg_alpha = 215
         painter.save()
         painter.setPen(QPen(QColor(self.theme.border), 1))
         painter.setBrush(self._theme_color(self.theme.bg_panel, bg_alpha))
