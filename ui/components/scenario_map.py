@@ -400,6 +400,7 @@ class ScenarioMap(QWidget):
         self._legend_header_rect: QRectF | None = None
         self._marker_points: dict[str, QPointF] = {}
         self._icon_cache: dict[tuple[str, str, int], QPixmap] = {}
+        self._run_button: QPushButton | None = None
         self._map_pixmap = QPixmap(str(SWEDEN_MAP_PATH))
 
         self.load_scenario_button = QPushButton("Load Scenario", self)
@@ -452,7 +453,7 @@ class ScenarioMap(QWidget):
     def apply_theme(self, theme: Theme):
         self.theme = theme
         self._icon_cache = {}
-        self.load_scenario_button.setStyleSheet(f"""
+        _card_btn_style = f"""
             QPushButton {{
                 color: #ffffff;
                 background-color: {theme.accent_orange};
@@ -468,7 +469,11 @@ class ScenarioMap(QWidget):
                 background-color: {theme.accent_blue};
                 border-color: {theme.accent_blue};
             }}
-        """)
+        """
+        if self._run_button is not None:
+            self._run_button.setFont(app_font(FONT_SIZE_XS, bold=True))
+            self._run_button.setStyleSheet(_card_btn_style)
+        self.load_scenario_button.setStyleSheet(_card_btn_style)
         zoom_style = f"""
             QPushButton {{
                 color: {theme.text_primary};
@@ -512,7 +517,8 @@ class ScenarioMap(QWidget):
             self._draw_sweden_map(painter, image_rect)
             self._draw_markers(painter, image_rect)
             self._draw_selected_card(painter, content)
-            self.load_scenario_button.setVisible(self.selected_scenario is not None)
+            scenario_loaded = self.selected_scenario is not None and self.loaded_scenario == self.selected_scenario
+            self.load_scenario_button.setVisible(self.selected_scenario is not None and not scenario_loaded)
             self.zoom_in_button.setVisible(False)
             self.zoom_out_button.setVisible(False)
             self.exit_detail_button.setVisible(False)
@@ -520,6 +526,15 @@ class ScenarioMap(QWidget):
             self._position_expand_map_button(content, avoid_back_button=False)
         else:
             self.load_scenario_button.setVisible(False)
+            if self._run_button is not None:
+                card = QRectF(content.left() + 12, content.bottom() - 92, content.width() - 24, 76)
+                self._run_button.setGeometry(
+                    int(card.right() - 120),
+                    int(card.top() + 20),
+                    96,
+                    36,
+                )
+                self._run_button.setVisible(True)
             self._position_zoom_buttons(content)
             self.zoom_in_button.setVisible(True)
             self.zoom_out_button.setVisible(True)
@@ -688,13 +703,27 @@ class ScenarioMap(QWidget):
         details = f"{scenario.region} | {scenario.description}"
         painter.drawText(card.adjusted(12, 40, -132, -8), Qt.AlignLeft | Qt.TextWordWrap, details)
 
+    def set_run_button(self, button: QPushButton):
+        self._run_button = button
+        button.setParent(self)
+
     def _position_load_button(self, card: QRectF):
         self.load_scenario_button.setGeometry(
-            int(card.right() - 124),
-            int(card.top() + 18),
-            108,
-            34,
+            int(card.right() - 120),
+            int(card.top() + 20),
+            96,
+            36,
         )
+        if self._run_button is not None:
+            show = self.loaded_scenario is not None and self.loaded_scenario == self.selected_scenario
+            self._run_button.setVisible(show)
+            if show:
+                self._run_button.setGeometry(
+                    int(card.right() - 120),
+                    int(card.top() + 20),
+                    96,
+                    36,
+                )
 
     def _position_zoom_buttons(self, content: QRectF):
         # Zoom buttons: bottom-right corner of the detail map area (map ends 92px above content bottom).
@@ -811,7 +840,7 @@ class ScenarioMap(QWidget):
         painter.setFont(app_font(FONT_SIZE_SM))
         painter.setPen(QColor(self.theme.text_muted))
         painter.drawText(
-            card.adjusted(12, 36, -12, -6),
+            card.adjusted(12, 36, -132, -6),
             Qt.AlignLeft | Qt.TextWordWrap,
             self._detail_summary(context),
         )
