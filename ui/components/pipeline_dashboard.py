@@ -810,10 +810,14 @@ class PipelineDashboard(QWidget):
         self._sync_wind_controls()
         if self.context_inspector_button.isChecked():
             self._refresh_context_inspector()
+        image_path = self.selected_scenario_image_path()
+        if image_path:
+            self._load_image_into_processed_box(image_path)
 
     def _on_scenario_unloaded(self):
         self.selected_context_path = None
         self.scenario_map.set_context_highlights_visible(False)
+        self._clear_processed_image("Processed image will appear here")
         self.run_scenario_button.setVisible(False)
         self.context_inspector_button.setChecked(False)
         self.context_inspector_button.setEnabled(False)
@@ -983,11 +987,8 @@ class PipelineDashboard(QWidget):
             return
 
         annotated_path = result.get("annotated_image_path")
-        if not annotated_path:
-            self._clear_processed_image("No annotated image returned")
-            return
-
-        self._load_image_into_processed_box(annotated_path)
+        if annotated_path:
+            self._load_image_into_processed_box(annotated_path)
 
     def _build_reasoning_html(self, parsed: dict) -> str:
         import html as _html
