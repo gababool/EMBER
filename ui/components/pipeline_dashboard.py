@@ -368,6 +368,9 @@ class PipelineDashboard(QWidget):
             self.scenario_map,
             theme,
         )
+        self.map_panel.header_row.setVisible(False)
+        self.map_panel.layout.setContentsMargins(8, 8, 8, 8)
+        self.map_panel.layout.setSpacing(0)
         self._map_placeholder = QWidget()
         self._map_placeholder.setVisible(False)
         self._map_overlay = None
