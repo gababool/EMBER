@@ -163,6 +163,12 @@
       "bearing": "N"
     },
     {
+      "name": "Lappkälsberget",
+      "feature_type": "peak",
+      "distance_m": 3442.884961671714,
+      "bearing": "NW"
+    },
+    {
       "name": "Gårdberget",
       "feature_type": "peak",
       "distance_m": 3502.9318415468783,
@@ -173,12 +179,6 @@
       "feature_type": "peak",
       "distance_m": 3673.975182903364,
       "bearing": "NE"
-    },
-    {
-      "name": "Storrösberget",
-      "feature_type": "peak",
-      "distance_m": 4349.263014086908,
-      "bearing": "E"
     }
   ],
   "wind": {
@@ -188,7 +188,7 @@
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-07T14:08:56.061679Z",
+    "extracted_at": "2026-05-13T14:41:07.130474Z",
     "osm_dataset": "scenario_03-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

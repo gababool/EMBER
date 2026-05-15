@@ -882,7 +882,16 @@ def _query_water_sources(
         )))
 
     results_raw.sort(key=lambda x: x[0])
-    return [ws for _, ws in results_raw[:MAX_WATER_SOURCES]]
+    seen_names: set[str] = set()
+    deduped: list[tuple] = []
+    for score, ws in results_raw:
+        if ws.name is not None:
+            key = ws.name.strip().lower()
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+        deduped.append((score, ws))
+    return [ws for _, ws in deduped[:MAX_WATER_SOURCES]]
 
 
 def _query_roads(
@@ -956,12 +965,21 @@ def _query_settlements(
     settlements_gdf["distance_m"] = settlements_gdf.geometry.distance(point)
     nearby = settlements_gdf[
         settlements_gdf["distance_m"] <= radius_m
-    ].sort_values("distance_m").head(MAX_SETTLEMENTS)
+    ].sort_values("distance_m")
 
     results: list[Settlement] = []
+    seen_names: set[str] = set()
     for _, row in nearby.iterrows():
+        if len(results) >= MAX_SETTLEMENTS:
+            break
+        name = _nan_to_none(row.get("name"))
+        if name is not None:
+            key = name.strip().lower()
+            if key in seen_names:
+                continue
+            seen_names.add(key)
         results.append(Settlement(
-            name=_nan_to_none(row.get("name")),
+            name=name,
             settlement_type=row["settlement_type"],
             distance_m=float(row["distance_m"]),
             bearing=_compute_bearing(point, row["geometry"]),
@@ -984,13 +1002,20 @@ def _query_named_features(
     features_gdf["distance_m"] = features_gdf.geometry.distance(point)
     nearby = features_gdf[
         features_gdf["distance_m"] <= radius_m
-    ].sort_values("distance_m").head(MAX_NAMED_FEATURES)
+    ].sort_values("distance_m")
 
     results: list[NamedFeature] = []
+    seen_names: set[str] = set()
     for _, row in nearby.iterrows():
+        if len(results) >= MAX_NAMED_FEATURES:
+            break
         name = row.get("name")
         if not name:
             continue
+        key = name.strip().lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
         geom = row["geometry"]
         centroid = geom.centroid if geom.geom_type != "Point" else geom
         results.append(NamedFeature(

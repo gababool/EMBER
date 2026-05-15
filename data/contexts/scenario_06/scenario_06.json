@@ -35,24 +35,6 @@
       "nearest_road_distance_m": 470.0812484406446
     },
     {
-      "name": "Mittilidbäcken",
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 677.7891440648434,
-      "bearing": "NE",
-      "area_m2": null,
-      "nearest_road_distance_m": 2.793941371464424
-    },
-    {
-      "name": "Mittilidbäcken",
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 696.5831605962587,
-      "bearing": "NE",
-      "area_m2": null,
-      "nearest_road_distance_m": 258.7587185725445
-    },
-    {
       "name": null,
       "source_type": "stream",
       "supply_category": "light",
@@ -60,6 +42,24 @@
       "bearing": "S",
       "area_m2": null,
       "nearest_road_distance_m": 647.8520159338883
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 1118.4280224774827,
+      "bearing": "W",
+      "area_m2": null,
+      "nearest_road_distance_m": 21.96396159592769
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 1143.493077708165,
+      "bearing": "W",
+      "area_m2": null,
+      "nearest_road_distance_m": 0.7596682894502106
     }
   ],
   "roads": {
@@ -188,7 +188,7 @@
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-07T13:56:05.055815Z",
+    "extracted_at": "2026-05-13T14:57:27.525693Z",
     "osm_dataset": "scenario_06-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,

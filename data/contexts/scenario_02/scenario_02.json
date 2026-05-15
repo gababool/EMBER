@@ -26,24 +26,6 @@
       "nearest_road_distance_m": 21.11231468670321
     },
     {
-      "name": "Bylsjöbäcken",
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 436.33122776983856,
-      "bearing": "S",
-      "area_m2": null,
-      "nearest_road_distance_m": 62.92764717172401
-    },
-    {
-      "name": "Bylsjöbäcken",
-      "source_type": "stream",
-      "supply_category": "light",
-      "distance_m": 438.1313534808775,
-      "bearing": "S",
-      "area_m2": null,
-      "nearest_road_distance_m": 116.61915167255191
-    },
-    {
       "name": null,
       "source_type": "pond",
       "supply_category": "light",
@@ -60,6 +42,24 @@
       "bearing": "S",
       "area_m2": null,
       "nearest_road_distance_m": 41.64873934853196
+    },
+    {
+      "name": null,
+      "source_type": "pond",
+      "supply_category": "light",
+      "distance_m": 607.0210485031557,
+      "bearing": "S",
+      "area_m2": 77.96268521442767,
+      "nearest_road_distance_m": 62.25447920342017
+    },
+    {
+      "name": null,
+      "source_type": "stream",
+      "supply_category": "light",
+      "distance_m": 671.0453827146705,
+      "bearing": "S",
+      "area_m2": null,
+      "nearest_road_distance_m": 0.33506024591888417
     }
   ],
   "roads": {
@@ -188,7 +188,7 @@
     "source": "mocked"
   },
   "extraction_metadata": {
-    "extracted_at": "2026-05-07T13:51:59.121714Z",
+    "extracted_at": "2026-05-13T14:57:09.583916Z",
     "osm_dataset": "scenario_02-50km.osm.pbf",
     "settlement_radius_m": 20000.0,
     "water_source_radius_m": 10000.0,
