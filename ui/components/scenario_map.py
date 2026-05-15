@@ -532,7 +532,7 @@ class ScenarioMap(QWidget):
 
         content = QRectF(self.rect()).adjusted(18, 18, -18, -18)
         if self.loaded_scenario is None:
-            map_rect = content.adjusted(10, 28, -10, -104)
+            map_rect = content.adjusted(10, 10, -10, -104)
             image_rect = self._image_rect(map_rect)
             self._draw_overview_background(painter, content)
             self._draw_sweden_map(painter, image_rect)
@@ -659,9 +659,6 @@ class ScenarioMap(QWidget):
         painter.setBrush(QColor(self.theme.bg_panel))
         painter.drawRoundedRect(content, 5, 5)
 
-        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_muted))
-        painter.drawText(content.adjusted(12, 10, -12, -10), Qt.AlignTop | Qt.AlignLeft, "OFFLINE SCENARIO OVERVIEW")
 
     def _draw_sweden_map(self, painter: QPainter, image_rect: QRectF):
         if self._map_pixmap.isNull():
@@ -854,9 +851,6 @@ class ScenarioMap(QWidget):
         painter.setBrush(QColor(self.theme.bg_panel))
         painter.drawRoundedRect(content, 5, 5)
 
-        painter.setFont(app_font(FONT_SIZE_XS, bold=True))
-        painter.setPen(QColor(self.theme.text_muted))
-        painter.drawText(content.adjusted(12, 10, -12, -10), Qt.AlignTop | Qt.AlignLeft, "LOADED SCENARIO DETAIL")
 
         self._draw_vector_map(painter, detail_rect)
         painter.save()
@@ -1529,7 +1523,7 @@ class ScenarioMap(QWidget):
 
     @staticmethod
     def _detail_map_rect(content: QRectF) -> QRectF:
-        return content.adjusted(12, 40, -12, -92)
+        return content.adjusted(12, 12, -12, -92)
 
     def _initialize_detail_view(self, rect: QRectF):
         if self._detail_center_merc is not None and self._detail_scale is not None:
