@@ -404,7 +404,7 @@ class PipelineDashboard(QWidget):
         self.compact_pipeline_body = QWidget()
         self.compact_pipeline_layout = QVBoxLayout(self.compact_pipeline_body)
         self.compact_pipeline_layout.setContentsMargins(0, 0, 0, 0)
-        self.compact_pipeline_layout.setSpacing(12)
+        self.compact_pipeline_layout.setSpacing(6)
 
         self.compact_classification_badge = ClassificationBadge(theme)
         self.compact_image_placeholder = ClickableImageLabel("Processed image will appear here")
@@ -416,8 +416,8 @@ class PipelineDashboard(QWidget):
         self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
         self.compact_reasoning_text.setFont(app_font(FONT_SIZE_SM))
 
-        self.compact_pipeline_layout.addWidget(self.compact_image_placeholder, 1)
-        self.compact_pipeline_layout.addWidget(self.compact_reasoning_text, 2)
+        self.compact_pipeline_layout.addWidget(self.compact_image_placeholder, 5)
+        self.compact_pipeline_layout.addWidget(self.compact_reasoning_text, 1)
 
         self.classification_dot = QLabel("●")
         self.classification_dot.setFont(app_font(FONT_SIZE_MD))
@@ -1103,6 +1103,7 @@ class PipelineDashboard(QWidget):
         if not parsed:
             self.reasoning_text.setHtml("<p style='color:gray;'>No reasoning returned.</p>")
             self.compact_reasoning_text.setHtml("<p style='color:gray;'>No reasoning returned.</p>")
+            self._set_compact_reasoning_has_content(False)
             return
 
         classification = parsed.get("classification", "unknown")
@@ -1119,6 +1120,7 @@ class PipelineDashboard(QWidget):
         reasoning_html = self._build_reasoning_html(parsed)
         self.reasoning_text.setHtml(reasoning_html)
         self.compact_reasoning_text.setHtml(reasoning_html)
+        self._set_compact_reasoning_has_content(True)
 
     def _refresh_reasoning_html(self):
         if self._last_reasoning_parsed:
@@ -1510,6 +1512,7 @@ class PipelineDashboard(QWidget):
             self.correctness_badge.set_expected_label(expected_label)
         self.reasoning_text.setPlainText("No LLM reasoning stored for this run.")
         self.compact_reasoning_text.setPlainText("No LLM reasoning stored for this run.")
+        self._set_compact_reasoning_has_content(False)
 
     def _load_image_into_processed_box(self, image_path: str):
         pixmap = QPixmap(image_path)
@@ -1523,6 +1526,10 @@ class PipelineDashboard(QWidget):
         self.compact_image_placeholder.setCursor(Qt.PointingHandCursor)
         self.open_preview_button.setEnabled(True)
         self._refresh_processed_pixmap()
+
+    def _set_compact_reasoning_has_content(self, has_content: bool):
+        self.compact_pipeline_layout.setStretch(0, 2 if has_content else 5)
+        self.compact_pipeline_layout.setStretch(1, 3 if has_content else 1)
 
     def _set_compact_classification(self, classification: str):
         self.compact_classification_badge.set_classification(classification)
