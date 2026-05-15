@@ -104,13 +104,13 @@ class PipelineDashboard(QWidget):
         self.setAutoFillBackground(True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(18)
+        layout.setContentsMargins(24, 12, 24, 24)
+        layout.setSpacing(0)
 
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(10)
+        header_layout.setSpacing(0)
 
         # Row 1: title
         title_row = QWidget()
@@ -275,6 +275,7 @@ class PipelineDashboard(QWidget):
         self.settings_toggle_button.setVisible(False)
         self.settings_toggle_button.toggled.connect(controls_row.setVisible)
 
+        title_row.setVisible(False)
         header_layout.addWidget(title_row)
         header_layout.addWidget(controls_row)
 
@@ -427,8 +428,10 @@ class PipelineDashboard(QWidget):
             "",
             self.compact_pipeline_body,
             theme,
-            action_widget=self.classification_dot,
         )
+        self.compact_pipeline_panel.header_row.setVisible(False)
+        self.compact_pipeline_panel.layout.setContentsMargins(8, 8, 8, 8)
+        self.compact_pipeline_panel.layout.setSpacing(0)
 
         self.grid.addWidget(self.quality_panel, 0, 0)
         self.grid.addWidget(self.image_panel, 0, 1)
