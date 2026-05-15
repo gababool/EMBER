@@ -39,7 +39,7 @@ MAP_MIN_LON = -10.0
 MAP_MAX_LON = 41.3
 MAP_MIN_LAT = 52.0
 MAP_MAX_LAT = 72.0
-VECTOR_CACHE_VERSION = 5
+VECTOR_CACHE_VERSION = 6
 EARTH_RADIUS_M = 6_378_137
 
 
@@ -320,6 +320,10 @@ def _extract_osm_vectors(source_path: Path) -> ScenarioVectorData:
                 return "water"
             if tags.get("boundary") == "protected_area" or tags.get("leisure") == "nature_reserve":
                 return "protected"
+            if tags.get("natural") == "wood" or tags.get("landuse") == "forest":
+                return "forest"
+            if tags.get("natural") == "wetland" or tags.get("landuse") == "wetland":
+                return "wetland"
             return None
 
     handler = OSMVectorHandler()
@@ -358,7 +362,7 @@ def _ring_to_points(coords) -> list[tuple[float, float]]:
 def _thin_geometry(geometry: list[tuple[float, float]], layer: str) -> list[tuple[float, float]]:
     if layer in {"road_major", "road_minor"} or len(geometry) <= 120:
         return geometry
-    target_points = 260 if layer in {"water", "protected"} else 120
+    target_points = 260 if layer in {"water", "protected", "forest", "wetland"} else 120
     step = max(1, len(geometry) // target_points)
     thinned = geometry[::step]
     if thinned[-1] != geometry[-1]:
@@ -859,7 +863,15 @@ class ScenarioMap(QWidget):
         for lon, lat in geometry[1:]:
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
-        if feature.layer == "water":
+        if feature.layer == "forest":
+            painter.setPen(QPen(self._theme_color(self.theme.map_forest, 80), 0.5))
+            painter.setBrush(self._theme_color(self.theme.map_forest, 70))
+            painter.drawPath(path)
+        elif feature.layer == "wetland":
+            painter.setPen(QPen(self._theme_color(self.theme.map_wetland, 80), 0.5))
+            painter.setBrush(self._theme_color(self.theme.map_wetland, 70))
+            painter.drawPath(path)
+        elif feature.layer == "water":
             painter.setPen(QPen(QColor(self.theme.map_water_stroke), 1))
             painter.setBrush(QColor(self.theme.map_water_fill))
             painter.drawPath(path)
@@ -905,11 +917,13 @@ class ScenarioMap(QWidget):
 
     @staticmethod
     def _layer_draw_order() -> tuple[str, ...]:
-        return ("protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
+        return ("forest", "wetland", "protected", "water", "waterway", "track", "road_minor", "road_major", "power", "settlement")
 
     @staticmethod
     def _minimum_scale_for_layer(layer: str) -> int:
         thresholds = {
+            "forest": 0,
+            "wetland": 0,
             "protected": 120_000,
             "water": 0,
             "waterway": 120_000,
@@ -1347,6 +1361,8 @@ class ScenarioMap(QWidget):
             (QColor(self.theme.map_waterway),    Qt.SolidLine, 1.4, None,                             "River / stream"),
             (QColor(self.theme.map_water_stroke),    Qt.SolidLine, 1.0, QColor(self.theme.map_water_fill),                            "Water body"),
             (QColor(self.theme.map_protected_stroke),Qt.DashLine,  1.0, self._theme_color(self.theme.map_protected_fill, 52), "Protected area"),
+            (self._theme_color(self.theme.map_forest, 80),  Qt.SolidLine, 0.5, self._theme_color(self.theme.map_forest, 70),  "Forest"),
+            (self._theme_color(self.theme.map_wetland, 80), Qt.SolidLine, 0.5, self._theme_color(self.theme.map_wetland, 70), "Wetland"),
             (QColor(self.theme.map_power),           Qt.DashLine,  1.2, None,                                                 "Power line"),
         ]
 

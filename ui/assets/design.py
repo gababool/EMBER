@@ -51,6 +51,8 @@ class Theme:
     map_waterway: str
     map_settlement: str
     map_building: str
+    map_forest: str
+    map_wetland: str
 
 
 DARK_THEME = Theme(
@@ -81,6 +83,8 @@ DARK_THEME = Theme(
     map_waterway="#00d7ff",
     map_settlement="#9eab09",
     map_building="#8a725c",
+    map_forest="#3d7a42",
+    map_wetland="#2d7070",
 )
 
 LIGHT_THEME = Theme(
@@ -111,6 +115,8 @@ LIGHT_THEME = Theme(
     map_waterway="#00d7ff",
     map_settlement="#9eab09",
     map_building="#8a725c",
+    map_forest="#3d7a42",
+    map_wetland="#2d7070",
 )
 
 DEFAULT_THEME = DARK_THEME
