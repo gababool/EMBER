@@ -71,7 +71,7 @@ DARK_THEME = Theme(
     accent_purple="#d34dff",
     danger="#ff5a66",
     shadow="#111317",
-    map_bg="#193620",
+    map_bg="#244B2B", 
     map_water_fill="#245f73",
     map_water_stroke="#35a8c7",
     map_protected_fill="#774545",
@@ -83,7 +83,7 @@ DARK_THEME = Theme(
     map_waterway="#00d7ff",
     map_settlement="#9eab09",
     map_building="#8a725c",
-    map_forest="#3d7a42",
+    map_forest="#193620",
     map_wetland="#2d7070",
 )
 

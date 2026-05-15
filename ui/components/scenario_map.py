@@ -864,8 +864,8 @@ class ScenarioMap(QWidget):
             path.lineTo(self._geo_to_screen(lon, lat, rect))
 
         if feature.layer == "forest":
-            painter.setPen(QPen(self._theme_color(self.theme.map_forest, 80), 0.5))
-            painter.setBrush(self._theme_color(self.theme.map_forest, 70))
+            painter.setPen(QPen(self._theme_color(self.theme.map_forest), 0.5))
+            painter.setBrush(self._theme_color(self.theme.map_forest))
             painter.drawPath(path)
         elif feature.layer == "wetland":
             painter.setPen(QPen(self._theme_color(self.theme.map_wetland, 80), 0.5))
@@ -1361,8 +1361,9 @@ class ScenarioMap(QWidget):
             (QColor(self.theme.map_waterway),    Qt.SolidLine, 1.4, None,                             "River / stream"),
             (QColor(self.theme.map_water_stroke),    Qt.SolidLine, 1.0, QColor(self.theme.map_water_fill),                            "Water body"),
             (QColor(self.theme.map_protected_stroke),Qt.DashLine,  1.0, self._theme_color(self.theme.map_protected_fill, 52), "Protected area"),
-            (self._theme_color(self.theme.map_forest, 80),  Qt.SolidLine, 0.5, self._theme_color(self.theme.map_forest, 70),  "Forest"),
-            (self._theme_color(self.theme.map_wetland, 80), Qt.SolidLine, 0.5, self._theme_color(self.theme.map_wetland, 70), "Wetland"),
+            (QColor(self.theme.map_bg),                      Qt.SolidLine, 0.5, QColor(self.theme.map_bg),                      "Open terrain"),
+            (self._theme_color(self.theme.map_forest),       Qt.SolidLine, 0.5, self._theme_color(self.theme.map_forest),       "Forest"),
+            (self._theme_color(self.theme.map_wetland, 80),  Qt.SolidLine, 0.5, self._theme_color(self.theme.map_wetland, 70),  "Wetland"),
             (QColor(self.theme.map_power),           Qt.DashLine,  1.2, None,                                                 "Power line"),
         ]
 
