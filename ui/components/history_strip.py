@@ -14,8 +14,12 @@ try:
     from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
     from ui.components.icon_utils import load_svg_icon
 except ImportError:
-    from assets.design import DEFAULT_THEME, FONT_SIZE_SM, FONT_SIZE_XS, Theme, app_font
+    from assets.design import DEFAULT_THEME, FONT_SIZE_SM, Theme, app_font
     from components.icon_utils import load_svg_icon
+
+
+EXPANDED_HEIGHT = 108
+COLLAPSED_HEIGHT = 36
 
 
 class HistoryStrip(QFrame):
@@ -26,26 +30,31 @@ class HistoryStrip(QFrame):
         self.theme = theme
         self.items = []
         self.active_index = None
-        self.setFixedHeight(132)
+        self._expanded = True
+        self.setFixedHeight(EXPANDED_HEIGHT)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(0)
 
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
+        header = QWidget()
+        header.setFixedHeight(COLLAPSED_HEIGHT)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
 
-        self.title_label = QLabel("Recent Processed Images")
-        self.title_label.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.title_label = QLabel("Recent Runs")
+        self.title_label.setFont(app_font(FONT_SIZE_XS, bold=True))
 
-        self.count_label = QLabel("0")
-        self.count_label.setFont(app_font(FONT_SIZE_XS, bold=True))
-        self.count_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.toggle_button = QPushButton("▾")
+        self.toggle_button.setFixedSize(22, 22)
+        self.toggle_button.setCursor(Qt.PointingHandCursor)
+        self.toggle_button.setFont(app_font(FONT_SIZE_XS, bold=True))
+        self.toggle_button.clicked.connect(self._toggle)
 
-        header.addWidget(self.title_label)
-        header.addStretch()
-        header.addWidget(self.count_label)
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.toggle_button)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -60,10 +69,16 @@ class HistoryStrip(QFrame):
         self.items_layout.addStretch()
         self.scroll_area.setWidget(self.items_widget)
 
-        layout.addLayout(header)
+        layout.addWidget(header)
         layout.addWidget(self.scroll_area, 1)
 
         self.apply_theme(theme)
+
+    def _toggle(self):
+        self._expanded = not self._expanded
+        self.scroll_area.setVisible(self._expanded)
+        self.setFixedHeight(EXPANDED_HEIGHT if self._expanded else COLLAPSED_HEIGHT)
+        self.toggle_button.setText("▾" if self._expanded else "▸")
 
     def add_run(self, run_record: dict):
         index = len(self.items)
@@ -71,7 +86,6 @@ class HistoryStrip(QFrame):
         item.clicked.connect(lambda checked=False, i=index: self.select_run(i))
         self.items_layout.insertWidget(index, item)
         self.items.append(item)
-        self.count_label.setText(str(len(self.items)))
         self.select_run(index)
 
     def select_run(self, index: int):
@@ -109,8 +123,19 @@ class HistoryStrip(QFrame):
                 width: 0;
             }}
         """)
-        self.title_label.setStyleSheet(self._label_style(theme.text_primary))
-        self.count_label.setStyleSheet(self._label_style(theme.text_muted))
+        self.title_label.setStyleSheet(self._label_style(theme.text_muted))
+        self.toggle_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_muted};
+                background: transparent;
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                color: {theme.text_primary};
+                border-color: {theme.accent_orange};
+            }}
+        """)
         self.items_widget.setStyleSheet("background: transparent;")
         for item in self.items:
             item.apply_theme(theme)
