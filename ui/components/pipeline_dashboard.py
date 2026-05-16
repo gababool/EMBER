@@ -99,6 +99,7 @@ class PipelineDashboard(QWidget):
         self.detail_view_expanded = False
         self.operational_compact_layout = False
         self.selected_context_path = None
+        self._scenario_image_path = None
         self.scenarios = load_scenarios()
         self.setObjectName("PipelineDashboard")
         self.setAutoFillBackground(True)
@@ -786,6 +787,8 @@ class PipelineDashboard(QWidget):
         self.content_stack.setCurrentWidget(
             self.full_page if self.detail_view_expanded else self.operational_page
         )
+        if not self.detail_view_expanded and self._scenario_image_path and self.current_run is None:
+            self._load_image_into_processed_box(self._scenario_image_path)
         self.expand_button.setText("Collapse" if self.detail_view_expanded else "Expand")
         self._sync_llm_controls()
         self._apply_responsive_layout()
@@ -821,11 +824,13 @@ class PipelineDashboard(QWidget):
         if self.context_inspector_button.isChecked():
             self._refresh_context_inspector()
         image_path = self.selected_scenario_image_path()
+        self._scenario_image_path = image_path
         if image_path:
             self._load_image_into_processed_box(image_path)
 
     def _on_scenario_unloaded(self):
         self.selected_context_path = None
+        self._scenario_image_path = None
         self.scenario_map.set_context_highlights_visible(False)
         self._clear_processed_image("Processed image will appear here")
         self.compact_reasoning_text.setPlainText("LLM reasoning will appear here after the demo runs.")
