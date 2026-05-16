@@ -329,8 +329,13 @@ class PipelineDashboard(QWidget):
 
         self.classification_badge = ClassificationBadge(theme)
         self.correctness_badge = CorrectnessBadge(theme)
-        reasoning_layout.addWidget(self.classification_badge)
-        reasoning_layout.addWidget(self.correctness_badge)
+        badges_row = QWidget()
+        badges_row_layout = QHBoxLayout(badges_row)
+        badges_row_layout.setContentsMargins(0, 0, 0, 0)
+        badges_row_layout.setSpacing(8)
+        badges_row_layout.addWidget(self.classification_badge, 1)
+        badges_row_layout.addWidget(self.correctness_badge, 1)
+        reasoning_layout.addWidget(badges_row)
         reasoning_layout.addWidget(self.reasoning_text, 1)
 
         self.quality_panel = ResultPanel(
@@ -346,11 +351,12 @@ class PipelineDashboard(QWidget):
             theme,
         )
         self.reasoning_panel = ResultPanel(
-            "LLM Reasoning",
+            "",
             "",
             self.reasoning_body,
             theme,
         )
+        self.reasoning_panel.header_row.setVisible(False)
 
         self.scenario_map = ScenarioMap(self.scenarios, theme)
         self.scenario_map.scenario_selected.connect(self._on_scenario_selected)
