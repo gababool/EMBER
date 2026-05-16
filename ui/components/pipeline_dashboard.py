@@ -335,19 +335,19 @@ class PipelineDashboard(QWidget):
 
         self.quality_panel = ResultPanel(
             "Quality Screening",
-            "Checklist for image suitability before detection.",
+            "",
             self.quality_body,
             theme,
         )
         self.image_panel = ResultPanel(
             "Processed Image",
-            "Detection output with bounding boxes.",
+            "",
             self.image_body,
             theme,
         )
         self.reasoning_panel = ResultPanel(
             "LLM Reasoning",
-            "Structured assessment and recommendation.",
+            "",
             self.reasoning_body,
             theme,
         )
