@@ -449,16 +449,6 @@ class PipelineDashboard(QWidget):
         self.full_layout.setContentsMargins(0, 0, 0, 0)
         self.full_layout.setSpacing(18)
 
-        detail_header = QWidget()
-        detail_header_layout = QHBoxLayout(detail_header)
-        detail_header_layout.setContentsMargins(0, 0, 0, 0)
-        detail_header_layout.setSpacing(8)
-        self.detail_title_label = QLabel("Pipeline Detail")
-        self.detail_title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
-        detail_header_layout.addWidget(self.detail_title_label)
-        detail_header_layout.addStretch()
-        detail_header_layout.addWidget(self.detail_collapse_button)
-        self.full_layout.addWidget(detail_header)
         self.full_layout.addWidget(self.pipeline_demo_controls)
         self.full_layout.addLayout(self.grid, 1)
         self.full_layout.addWidget(self.history_strip)
@@ -1299,7 +1289,6 @@ class PipelineDashboard(QWidget):
         self.scenario_map.apply_theme(theme)
         self._style_map_overlay(theme)
         self.pipeline_demo_label.setStyleSheet(self._label_style(theme.text_primary))
-        self.detail_title_label.setStyleSheet(self._label_style(theme.text_primary))
         self.pipeline_demo_controls.setStyleSheet("background: transparent; border: none;")
         self.image_placeholder.setStyleSheet(f"""
             QLabel {{
