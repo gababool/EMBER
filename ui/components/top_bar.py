@@ -91,6 +91,20 @@ class TopBar(QWidget):
         self.theme_button.setCursor(Qt.PointingHandCursor)
         self.theme_button.setFixedHeight(32)
 
+        self.settings_button = QPushButton("SETTINGS")
+        self.settings_button.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.settings_button.setCursor(Qt.PointingHandCursor)
+        self.settings_button.setFixedHeight(32)
+        self.settings_button.setCheckable(True)
+        self.settings_button.setChecked(False)
+
+        self.pipeline_view_button = QPushButton("PIPELINE VIEW")
+        self.pipeline_view_button.setFont(app_font(FONT_SIZE_SM, bold=True))
+        self.pipeline_view_button.setCursor(Qt.PointingHandCursor)
+        self.pipeline_view_button.setFixedHeight(32)
+        self.pipeline_view_button.setCheckable(True)
+        self.pipeline_view_button.setChecked(False)
+
         self.signal_label = QLabel("⌁")
         self.signal_label.setFont(app_font(FONT_SIZE_LG, bold=True))
 
@@ -98,6 +112,8 @@ class TopBar(QWidget):
         status_layout.addWidget(self.cpu_meter)
         status_layout.addWidget(self.ram_meter)
         status_layout.addWidget(self.gpu_meter)
+        status_layout.addWidget(self.pipeline_view_button)
+        status_layout.addWidget(self.settings_button)
         status_layout.addWidget(self.theme_button)
         status_layout.addWidget(self.signal_label)
 
@@ -130,6 +146,40 @@ class TopBar(QWidget):
         self.gpu_meter.accent_color = theme.accent_purple
         self.gpu_meter.apply_theme(theme)
         self.signal_label.setStyleSheet(self._label_style(theme.accent_orange))
+        self.pipeline_view_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+                padding: 4px 12px;
+            }}
+            QPushButton:hover {{
+                color: {theme.text_primary};
+                border-color: {theme.accent_orange};
+            }}
+            QPushButton:checked {{
+                color: {theme.accent_orange};
+                border-color: {theme.accent_orange};
+            }}
+        """)
+        self.settings_button.setStyleSheet(f"""
+            QPushButton {{
+                color: {theme.text_muted};
+                background-color: {theme.bg_panel_alt};
+                border: 1px solid {theme.border};
+                border-radius: 4px;
+                padding: 4px 12px;
+            }}
+            QPushButton:hover {{
+                color: {theme.text_primary};
+                border-color: {theme.accent_cyan};
+            }}
+            QPushButton:checked {{
+                color: {theme.accent_cyan};
+                border-color: {theme.accent_cyan};
+            }}
+        """)
         self.theme_button.setText("LIGHT" if theme.name == "dark" else "DARK")
         self.theme_button.setStyleSheet(f"""
             QPushButton {{

@@ -6,9 +6,9 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel
 
 try:
-    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_LG, FONT_SIZE_SM, Theme, app_font
+    from ui.assets.design import DEFAULT_THEME, FONT_SIZE_SM, Theme, app_font
 except ImportError:
-    from assets.design import DEFAULT_THEME, FONT_SIZE_LG, FONT_SIZE_SM, Theme, app_font
+    from assets.design import DEFAULT_THEME, FONT_SIZE_SM, Theme, app_font
 
 
 ICONS_DIR = Path(__file__).resolve().parents[1] / "assets" / "icons"
@@ -19,22 +19,22 @@ class ClassificationBadge(QFrame):
         super().__init__(parent)
         self.theme = theme
         self.classification = "pending"
-        self.setFixedHeight(58)
+        self.setFixedHeight(38)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 14, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(8)
 
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(28, 28)
+        self.icon_label.setFixedSize(20, 20)
         self.icon_label.setAlignment(Qt.AlignCenter)
 
         text_layout = QHBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(10)
+        text_layout.setSpacing(8)
 
         self.title_label = QLabel("Awaiting Result")
-        self.title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
+        self.title_label.setFont(app_font(FONT_SIZE_SM, bold=True))
 
         self.detail_label = QLabel("LLM classification")
         self.detail_label.setFont(app_font(FONT_SIZE_SM))
@@ -71,7 +71,7 @@ class ClassificationBadge(QFrame):
         self.detail_label.setStyleSheet(self._label_style(self.theme.text_muted))
 
         if icon_name:
-            self.icon_label.setPixmap(self._load_icon(icon_name, color, 28))
+            self.icon_label.setPixmap(self._load_icon(icon_name, color, 20))
         else:
             self.icon_label.setText("○")
             self.icon_label.setStyleSheet(self._label_style(self.theme.text_muted))
@@ -156,22 +156,22 @@ class CorrectnessBadge(QFrame):
         self.state = "pending"
         self.expected_label = None
         self.predicted_classification = None
-        self.setFixedHeight(58)
+        self.setFixedHeight(38)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 14, 0)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(8)
 
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(28, 28)
+        self.icon_label.setFixedSize(20, 20)
         self.icon_label.setAlignment(Qt.AlignCenter)
 
         text_layout = QHBoxLayout()
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(10)
+        text_layout.setSpacing(8)
 
         self.title_label = QLabel("Awaiting Check")
-        self.title_label.setFont(app_font(FONT_SIZE_LG, bold=True))
+        self.title_label.setFont(app_font(FONT_SIZE_SM, bold=True))
 
         self.detail_label = QLabel("Ground truth comparison")
         self.detail_label.setFont(app_font(FONT_SIZE_SM))
