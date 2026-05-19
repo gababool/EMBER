@@ -323,6 +323,19 @@ def chart_precision_recall_f1(rows_noyolo, rows_yolo, output_dir, compare_yolo):
         ax.bar(x + positions[5], [m_yolo[m]['f1'] * 100 for m in models],
                width, label='F1 (with YOLO)', color='#FF9800',
                hatch=hatch_pattern_for_yolo(), edgecolor='black', linewidth=0.5)
+
+        all_values = [
+            [m_noyolo[m]['precision'] * 100 for m in models],
+            [m_noyolo[m]['recall'] * 100 for m in models],
+            [m_noyolo[m]['f1'] * 100 for m in models],
+            [m_yolo[m]['precision'] * 100 for m in models],
+            [m_yolo[m]['recall'] * 100 for m in models],
+            [m_yolo[m]['f1'] * 100 for m in models],
+        ]
+        for pos, values in zip(positions, all_values):
+            for i, v in enumerate(values):
+                ax.text(i + pos, v + 0.5, f'{v:.0f}',
+                        ha='center', va='bottom', fontsize=6)
     else:
         width = 0.25
         metrics = {m: compute_metrics(groups_noyolo[m]) for m in models}
@@ -400,6 +413,12 @@ def chart_confusion(rows_noyolo, rows_yolo, output_dir, compare_yolo,
         ax.bar(x,             fps, width, label='FP (false alarm)', color='#FFC107')
         ax.bar(x + 1 * width, fns, width, label='FN (missed fire)', color=INCORRECT_COLOR)
         ax.bar(x + 2 * width, errs, width, label='Error (inference failed)', color=ERROR_COLOR)
+
+        for i, (tp, tn, fp, fn, err) in enumerate(zip(tps, tns, fps, fns, errs)):
+            for offset, val in [(-2*width, tp), (-width, tn), (0, fp), (width, fn), (2*width, err)]:
+                if val > 0:
+                    ax.text(i + offset, val + 0.3, str(val),
+                            ha='center', va='bottom', fontsize=7)
 
         title = 'Prediction Outcomes by Model'
         if variant:
@@ -558,6 +577,10 @@ def chart_inference_breakdown(rows_noyolo, rows_yolo, output_dir, compare_yolo):
             for i in range(len(models)):
                 ax.text(i + offset, -0.5, label, ha='center', va='top',
                         fontsize=7, color='gray')
+            for i, (p, g, o) in enumerate(zip(prompts, gens, overheads)):
+                total = p + g + o
+                ax.text(i + offset, total + 0.2, f'{total:.1f}s',
+                        ha='center', va='bottom', fontsize=7)
     else:
         width = 0.5
         prompts, gens, overheads = [], [], []
@@ -572,6 +595,11 @@ def chart_inference_breakdown(rows_noyolo, rows_yolo, output_dir, compare_yolo):
         ax.bar(x, overheads, width,
                bottom=[p + g for p, g in zip(prompts, gens)],
                label='Ollama Overhead', color='#BDBDBD')
+
+        for i, (p, g, o) in enumerate(zip(prompts, gens, overheads)):
+            total = p + g + o
+            ax.text(i, total + 0.2, f'{total:.1f}s',
+                    ha='center', va='bottom', fontsize=9)
 
     ax.set_ylabel('Time (seconds)')
     title = 'Inference Time Breakdown by Model (median)'
@@ -633,6 +661,11 @@ def chart_memory_usage(rows_noyolo, rows_yolo, output_dir, compare_yolo):
         ax.bar(x + 0.5 * width, mem_yolo, width, label='RSS (with YOLO)',
                color='#FF9800', hatch=hatch_pattern_for_yolo(),
                edgecolor='black', linewidth=0.5)
+
+        for i, (s, mn, my) in enumerate(zip(sizes, mem_noyolo, mem_yolo)):
+            ax.text(i - 1.5 * width, s + 0.1, f'{s:.1f}', ha='center', va='bottom', fontsize=7)
+            ax.text(i - 0.5 * width, mn + 0.1, f'{mn:.1f}', ha='center', va='bottom', fontsize=7)
+            ax.text(i + 0.5 * width, my + 0.1, f'{my:.1f}', ha='center', va='bottom', fontsize=7)
     else:
         width = 0.35
         sizes = [model_size(groups_noyolo[m]) for m in models]
@@ -641,6 +674,10 @@ def chart_memory_usage(rows_noyolo, rows_yolo, output_dir, compare_yolo):
                color='#BDBDBD')
         ax.bar(x + width / 2, mems, width, label='RSS Memory (runtime)',
                color='#FF9800')
+
+        for i, (s, mem) in enumerate(zip(sizes, mems)):
+            ax.text(i - width / 2, s + 0.1, f'{s:.1f}', ha='center', va='bottom', fontsize=9)
+            ax.text(i + width / 2, mem + 0.1, f'{mem:.1f}', ha='center', va='bottom', fontsize=9)
 
     ax.axhline(y=16, color='red', linestyle='--', alpha=0.5, label='16GB RAM limit')
     ax.set_ylabel('GB')
