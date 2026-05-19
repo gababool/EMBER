@@ -416,11 +416,15 @@ def chart_confusion(rows_noyolo, rows_yolo, output_dir, compare_yolo,
         err_groups_noyolo = group_by_model(errors_noyolo)
         err_groups_yolo = group_by_model(errors_yolo)
 
-        fig, axes = plt.subplots(1, 2, figsize=(20, 5), sharey=True)
-        _draw(axes[0], groups_noyolo, err_groups_noyolo, 'no YOLO')
-        _draw(axes[1], groups_yolo, err_groups_yolo, 'with YOLO')
-        axes[0].legend(loc='upper right', fontsize=8)
-        save_chart(fig, output_dir, 'confusion_matrix.png')
+        fig_no, ax_no = plt.subplots(figsize=(11, 5))
+        _draw(ax_no, groups_noyolo, err_groups_noyolo, 'no YOLO')
+        ax_no.legend(loc='upper right', fontsize=8)
+        save_chart(fig_no, output_dir, 'confusion_matrix_noyolo.png')
+
+        fig_yes, ax_yes = plt.subplots(figsize=(11, 5))
+        _draw(ax_yes, groups_yolo, err_groups_yolo, 'with YOLO')
+        ax_yes.legend(loc='upper right', fontsize=8)
+        save_chart(fig_yes, output_dir, 'confusion_matrix_yolo.png')
         return
 
     groups = group_by_model(rows_noyolo)
