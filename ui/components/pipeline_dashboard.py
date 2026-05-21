@@ -1046,21 +1046,17 @@ class PipelineDashboard(QWidget):
         if recommendation:
             lines = [ln.strip() for ln in recommendation.splitlines() if ln.strip()]
             bullet_lines = [
-                ln.lstrip("•-·123456789. ").strip()
+                ln.lstrip("•*-·123456789. ").strip()
                 for ln in lines
-                if ln.startswith(("•", "-", "·")) or (len(ln) > 2 and ln[0].isdigit() and ln[1] in ".)")
+                if ln.startswith(("•", "*", "-", "·")) or (len(ln) > 2 and ln[0].isdigit() and ln[1] in ".)")
             ]
+            if not bullet_lines:
+                import re as _re
+                joined = " ".join(lines)
+                bullet_lines = [s.strip() for s in _re.split(r"(?<=[.!?])\s+(?=[A-Z])", joined) if s.strip()]
             if bullet_lines:
-                items = "".join(f'<li style="margin-bottom:4px; font-size:11pt;">{esc(b)}</li>' for b in bullet_lines)
-                rec_body = f'<ul style="margin:6px 0 0 16px; padding:0;">{items}</ul>'
-                parts.append(
-                    f'<p style="margin:0 0 4px 0;">'
-                    f'<span style="color:{muted}; font-size:9pt; font-weight:700; '
-                    f'text-transform:uppercase; letter-spacing:1px;">Recommendation</span>'
-                    f'</p>{rec_body}'
-                )
-            else:
-                parts.append(section("Recommendation", esc(recommendation).replace("\n", "<br/>")))
+                body = "<br/>".join(f"• {esc(b)}" for b in bullet_lines)
+                parts.append(section("Recommendation", body))
 
         parts.append('</body></html>')
         return "".join(parts)
